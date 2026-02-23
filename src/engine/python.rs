@@ -13,9 +13,11 @@ use crate::data::DataFeed;
 use crate::event_manager::EventManager;
 use crate::execution::{RealtimeExecutionClient, SimulatedExecutionClient};
 use crate::history::HistoryBuffer;
+use crate::market::corporate_action::CorporateActionManager;
 use crate::market::manager::MarketManager;
 use crate::model::{
     Bar, ExecutionMode, Instrument, Order, Trade, TradingSession,
+    corporate_action::CorporateAction,
 };
 use crate::portfolio::Portfolio;
 use crate::risk::{RiskConfig, RiskManager};
@@ -80,6 +82,7 @@ impl Engine {
             instruments: HashMap::new(),
             current_date: None,
             market_manager: MarketManager::new(),
+            corporate_action_manager: CorporateActionManager::new(),
             execution_model: Box::new(SimulatedExecutionClient::new()),
             execution_mode: ExecutionMode::NextOpen,
             clock: Clock::new(),
@@ -173,6 +176,13 @@ impl Engine {
         self.force_session_continuous = enabled;
     }
 
+    /// 添加公司行为 (除权除息)
+    ///
+    /// :param action: 公司行为对象
+    fn add_corporate_action(&mut self, action: CorporateAction) {
+        self.corporate_action_manager.add(action);
+    }
+
     /// 启用中国期货市场默认配置
     /// - 切换到 ChinaMarket
     /// - 设置 T+0
@@ -185,7 +195,7 @@ impl Engine {
         // Deprecated: logic moved to SettlementManager
     }
 
-    /// 设置股票费率规则
+    /// 设置股票费率规则 (按交易金额比例)
     ///
     /// :param commission_rate: 佣金率 (如 0.0003)
     /// :param stamp_tax: 印花税率 (如 0.001)
@@ -227,6 +237,25 @@ impl Engine {
     /// :param commission_per_contract: 每张合约佣金 (如 5.0)
     fn set_option_fee_rules(&mut self, commission_per_contract: f64) {
         self.market_manager.set_option_fee_rules(commission_per_contract);
+    }
+
+    /// 设置加密货币费率规则 (按金额比例)
+    ///
+    /// :param commission_rate: 佣金率 (如 0.001)
+    fn set_crypto_fee_rules(&mut self, commission_rate: f64) {
+        // Crypto fees are usually percentage based, similar to Stock/Future
+        // For now, reuse stock fee rules logic or future logic?
+        // Let's assume simple percentage fee for now.
+        // Actually, we should probably add specific methods in MarketManager.
+        // For now, let's map it to stock rules but with zero tax/transfer fee.
+        self.market_manager.set_stock_fee_rules(commission_rate, 0.0, 0.0, 0.0);
+    }
+
+    /// 设置外汇费率规则 (按金额比例)
+    ///
+    /// :param commission_rate: 佣金率 (如 0.00005)
+    fn set_forex_fee_rules(&mut self, commission_rate: f64) {
+        self.market_manager.set_stock_fee_rules(commission_rate, 0.0, 0.0, 0.0);
     }
 
     /// 设置滑点模型

@@ -5,9 +5,9 @@ use crate::execution::slippage::SlippageModel;
 use crate::model::{ExecutionMode, Instrument, Order};
 use rust_decimal::Decimal;
 
-pub struct OptionMatcher;
+pub struct CryptoMatcher;
 
-impl ExecutionMatcher for OptionMatcher {
+impl ExecutionMatcher for CryptoMatcher {
     fn match_order(
         &self,
         order: &mut Order,
@@ -18,9 +18,6 @@ impl ExecutionMatcher for OptionMatcher {
         volume_limit_pct: Decimal,
         bar_index: usize,
     ) -> Option<Event> {
-        // Option specific logic
-        // Similar to Futures, options are traded in contracts (lots).
-        // Usually 1 contract is the minimum.
         CommonMatcher::match_order(
             order,
             event,

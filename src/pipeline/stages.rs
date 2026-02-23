@@ -2,9 +2,11 @@ use crate::context::EngineContext;
 use crate::data::FeedAction;
 use crate::engine::Engine;
 use crate::event::Event;
-use crate::model::{ExecutionMode, OrderStatus, TradingSession};
+use crate::model::{Bar, ExecutionMode, OrderStatus, TradingSession};
 use crate::pipeline::processor::{Processor, ProcessorResult};
 use pyo3::prelude::*;
+use rust_decimal::Decimal;
+use std::collections::HashSet;
 
 pub struct ChannelProcessor;
 
@@ -76,11 +78,41 @@ impl Processor for ChannelProcessor {
 
 pub struct DataProcessor {
     last_timestamp: i64,
+    seen_symbols: HashSet<String>,
 }
 
 impl DataProcessor {
     pub fn new() -> Self {
-        Self { last_timestamp: 0 }
+        Self {
+            last_timestamp: 0,
+            seen_symbols: HashSet::new(),
+        }
+    }
+
+    fn fill_missing_bars(&self, engine: &Engine) {
+        if self.last_timestamp == 0 {
+            return;
+        }
+        if let Ok(mut buffer) = engine.history_buffer.write() {
+            for (symbol, _) in engine.instruments.iter() {
+                if !self.seen_symbols.contains(symbol) {
+                    if let Some(&last_price) = engine.last_prices.get(symbol) {
+                        // Create synthetic bar
+                        let bar = Bar {
+                            timestamp: self.last_timestamp,
+                            symbol: symbol.clone(),
+                            open: last_price,
+                            high: last_price,
+                            low: last_price,
+                            close: last_price,
+                            volume: Decimal::ZERO,
+                            extra: Default::default(),
+                        };
+                        buffer.update(&bar);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -91,7 +123,10 @@ impl Processor for DataProcessor {
 
         match action {
             FeedAction::Wait => Ok(ProcessorResult::Loop),
-            FeedAction::End => Ok(ProcessorResult::Break),
+            FeedAction::End => {
+                self.fill_missing_bars(engine);
+                Ok(ProcessorResult::Break)
+            }
             FeedAction::Timer(_timestamp) => {
                 if let Some(timer) = engine.timers.pop() {
                     let local_dt = Engine::local_datetime_from_ns(timer.timestamp, engine.timezone_offset);
@@ -112,6 +147,9 @@ impl Processor for DataProcessor {
                 };
 
                 if self.last_timestamp != 0 && timestamp > self.last_timestamp {
+                    self.fill_missing_bars(engine);
+                    self.seen_symbols.clear();
+
                     engine.bar_count += 1;
                     if let Some(pb) = &engine.progress_bar {
                         pb.inc(1);
@@ -143,6 +181,13 @@ impl Processor for DataProcessor {
                     }
                     engine.current_date = Some(local_date);
 
+                    // Process Corporate Actions (Split/Dividend)
+                    engine.corporate_action_manager.process_date(
+                        local_date,
+                        &mut engine.state.portfolio,
+                        &mut engine.state.order_manager.trade_tracker,
+                    );
+
                     // Settlement Manager (T+1, Option Expiry, Day Order Expiry)
                     let mut expired_orders = Vec::new();
                     engine.settlement_manager.process_daily_settlement(
@@ -161,6 +206,7 @@ impl Processor for DataProcessor {
                 }
 
                 if let Event::Bar(ref b) = event {
+                    self.seen_symbols.insert(b.symbol.clone());
                     // Update History Buffer
                     if let Ok(mut buffer) = engine.history_buffer.write() {
                         buffer.update(b);
@@ -281,5 +327,221 @@ impl Processor for StatisticsProcessor {
             }
         }
         Ok(ProcessorResult::Next)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::Engine;
+    use crate::model::{Instrument, AssetType, InstrumentEnum, StockInstrument, Bar};
+    use rust_decimal_macros::dec;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn create_instrument(symbol: &str) -> Instrument {
+        Instrument {
+            asset_type: AssetType::Stock,
+            inner: InstrumentEnum::Stock(StockInstrument {
+                symbol: symbol.to_string(),
+                lot_size: dec!(100),
+                tick_size: dec!(0.01),
+            }),
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_data_alignment_late_fill() {
+        pyo3::prepare_freethreaded_python();
+
+        let mut engine = Engine::new();
+        engine.instruments.insert("A".to_string(), create_instrument("A"));
+        engine.instruments.insert("B".to_string(), create_instrument("B"));
+
+        engine.last_prices.insert("A".to_string(), dec!(100));
+        engine.last_prices.insert("B".to_string(), dec!(200));
+
+        let mut processor = DataProcessor::new();
+
+        let bar_t1_a = Bar {
+            timestamp: 1000,
+            symbol: "A".to_string(),
+            open: dec!(100),
+            high: dec!(100),
+            low: dec!(100),
+            close: dec!(100),
+            volume: dec!(100),
+            extra: HashMap::new(),
+        };
+
+        let bar_t2_b = Bar {
+            timestamp: 2000,
+            symbol: "B".to_string(),
+            open: dec!(205),
+            high: dec!(205),
+            low: dec!(205),
+            close: dec!(205),
+            volume: dec!(200),
+            extra: HashMap::new(),
+        };
+
+        let bar_t3_a = Bar {
+            timestamp: 3000,
+            symbol: "A".to_string(),
+            open: dec!(102),
+            high: dec!(102),
+            low: dec!(102),
+            close: dec!(102),
+            volume: dec!(100),
+            extra: HashMap::new(),
+        };
+
+        engine.state.feed.add_bar(bar_t1_a).unwrap();
+        engine.state.feed.add_bar(bar_t2_b).unwrap();
+        engine.state.feed.add_bar(bar_t3_a).unwrap();
+
+        Python::with_gil(|py| {
+            let locals = py.import("builtins").unwrap();
+            let strategy = locals.getattr("None").unwrap();
+
+            // Step 1: Process T1 A
+            processor.process(&mut engine, py, &strategy).unwrap();
+
+            // Step 2: Process T2 B (Fill T1)
+            processor.process(&mut engine, py, &strategy).unwrap();
+
+            // Verify T1 Fill
+            {
+                let buffer = engine.history_buffer.read().unwrap();
+                let hist_b = buffer.data.get("B").unwrap();
+                assert_eq!(hist_b.timestamps[0], 1000);
+                assert_eq!(hist_b.closes[0], 200.0);
+                assert_eq!(hist_b.volumes[0], 0.0);
+            }
+
+            engine.last_prices.insert("B".to_string(), dec!(205));
+
+            // Step 3: Process T3 A (Fill T2)
+            processor.process(&mut engine, py, &strategy).unwrap();
+
+             // Verify T2 Fill
+            {
+                let buffer = engine.history_buffer.read().unwrap();
+                let hist_a = buffer.data.get("A").unwrap();
+                assert_eq!(hist_a.timestamps[1], 2000);
+                assert_eq!(hist_a.closes[1], 100.0);
+                assert_eq!(hist_a.volumes[1], 0.0);
+            }
+        });
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_corporate_action_processing() {
+        pyo3::prepare_freethreaded_python();
+
+        use crate::model::corporate_action::{CorporateAction, CorporateActionType};
+        use chrono::NaiveDate;
+
+        let mut engine = Engine::new();
+        let symbol = "AAPL".to_string();
+        engine.instruments.insert(symbol.clone(), create_instrument(&symbol));
+
+        // Initial Position: 100 shares, Cash 0
+        {
+            let positions = Arc::make_mut(&mut engine.state.portfolio.positions);
+            positions.insert(symbol.clone(), dec!(100));
+            let available = Arc::make_mut(&mut engine.state.portfolio.available_positions);
+            available.insert(symbol.clone(), dec!(100));
+        }
+        engine.state.portfolio.cash = dec!(0);
+
+        // Add Split Action: 1-to-2 split on 2023-01-02
+        let split_date = NaiveDate::from_ymd_opt(2023, 1, 2).unwrap();
+        let split_action = CorporateAction {
+            symbol: symbol.clone(),
+            date: split_date,
+            action_type: CorporateActionType::Split,
+            value: dec!(2.0),
+        };
+        engine.corporate_action_manager.add(split_action);
+
+        // Add Dividend Action: $0.5 per share on 2023-01-03
+        let div_date = NaiveDate::from_ymd_opt(2023, 1, 3).unwrap();
+        let div_action = CorporateAction {
+            symbol: symbol.clone(),
+            date: div_date,
+            action_type: CorporateActionType::Dividend,
+            value: dec!(0.5),
+        };
+        engine.corporate_action_manager.add(div_action);
+
+        let mut processor = DataProcessor::new();
+
+        // T1: 2023-01-01 (Before Split)
+        let bar_t1 = Bar {
+            timestamp: 1672531200_000_000_000, // 2023-01-01
+            symbol: symbol.clone(),
+            open: dec!(100), high: dec!(100), low: dec!(100), close: dec!(100), volume: dec!(100),
+            extra: HashMap::new(),
+        };
+        engine.state.feed.add_bar(bar_t1).unwrap();
+
+        // T2: 2023-01-02 (Split Day)
+        let bar_t2 = Bar {
+            timestamp: 1672617600_000_000_000, // 2023-01-02
+            symbol: symbol.clone(),
+            open: dec!(50), high: dec!(50), low: dec!(50), close: dec!(50), volume: dec!(100),
+            extra: HashMap::new(),
+        };
+        engine.state.feed.add_bar(bar_t2).unwrap();
+
+        // T3: 2023-01-03 (Dividend Day)
+        let bar_t3 = Bar {
+            timestamp: 1672704000_000_000_000, // 2023-01-03
+            symbol: symbol.clone(),
+            open: dec!(50), high: dec!(50), low: dec!(50), close: dec!(50), volume: dec!(100),
+            extra: HashMap::new(),
+        };
+        engine.state.feed.add_bar(bar_t3).unwrap();
+
+        Python::with_gil(|py| {
+            let locals = py.import("builtins").unwrap();
+            let strategy = locals.getattr("None").unwrap();
+
+            // Process T1
+            processor.process(&mut engine, py, &strategy).unwrap();
+            // Verify T1 state: 100 shares
+            assert_eq!(engine.state.portfolio.positions.get(&symbol).unwrap(), &dec!(100));
+
+            // Process T2 (Split happens at day start/end depending on logic, here logic is triggered by date change)
+            // Our logic: when processing T2 event, we detect date change T1 -> T2, then trigger end-of-day actions for T2?
+            // Wait, let's check DataProcessor logic:
+            // if self.last_timestamp != 0 && timestamp > self.last_timestamp {
+            //    ...
+            //    engine.clock.update(timestamp, ...);
+            //    let local_date = local_dt.date_naive();
+            //    if engine.current_date != Some(local_date) {
+            //       // New Day!
+            //       engine.current_date = Some(local_date);
+            //       process_date(local_date) <--- This processes actions for the NEW date
+            //    }
+            // }
+
+            // So when T2 bar comes in, date changes to 2023-01-02.
+            // process_date(2023-01-02) is called. Split happens.
+
+            processor.process(&mut engine, py, &strategy).unwrap();
+
+            // Verify T2 Split: 100 shares * 2 = 200 shares
+            assert_eq!(engine.state.portfolio.positions.get(&symbol).unwrap(), &dec!(200));
+
+            // Process T3 (Dividend)
+            processor.process(&mut engine, py, &strategy).unwrap();
+
+            // Verify T3 Dividend: 200 shares * 0.5 = 100 Cash
+            assert_eq!(engine.state.portfolio.cash, dec!(100));
+        });
     }
 }

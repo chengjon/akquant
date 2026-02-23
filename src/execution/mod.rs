@@ -1,4 +1,6 @@
 pub mod common;
+pub mod crypto;
+pub mod forex;
 pub mod futures;
 pub mod matcher;
 pub mod option;

@@ -78,6 +78,8 @@ pub enum AssetType {
     Fund,
     Futures,
     Option,
+    Crypto,
+    Forex,
 }
 
 #[pymethods]

@@ -92,11 +92,41 @@ akquant/
     *   `OrderSide`: `Buy` / `Sell`。
     *   `OrderType`: `Market` (市价), `Limit` (限价), `StopMarket` (止损市价), `StopLimit` (止损限价)。
     *   `TimeInForce`: `Day` (当日有效), `GTC` (撤前有效), `IOC`/`FOK`。
-    *   `AssetType`: `Stock`, `Fund`, `Futures`, `Option`。
+    *   `AssetType`: `Stock`, `Fund`, `Futures`, `Option`, `Crypto`, `Forex`。
 *   **`instrument.rs`**: `Instrument` 包含 `multiplier` (合约乘数), `tick_size`, `margin_ratio` 等。
 *   **`market_data.rs`**: `Bar` (OHLCV) 和 `Tick` (最新价/量)。
 
 ### 2.2 执行层 (`src/execution/`)
+
+执行层负责处理订单的生命周期，包括验证、撮合和生成成交报告。
+
+#### 2.2.1 模拟执行 (`simulated.rs`)
+*   **订单队列**: 维护一个 `order_queue`，确保订单按照提交时间的先后顺序进行处理。
+*   **资产分发**: 根据 `Instrument` 的 `asset_type`，将订单分发给不同的 `ExecutionMatcher` (如 `StockMatcher`, `FuturesMatcher`, `CryptoMatcher`, `ForexMatcher`)。
+*   **动态风控**: 在成交前一刻再次检查账户资金（Free Margin）。如果资金不足，会自动削减订单数量 (`Partial Fill`) 而不是直接拒单，这在资金利用率高的策略中非常有用。
+
+#### 2.2.2 股票撮合器 (`StockMatcher`)
+`StockMatcher` 实现了高精度的撮合逻辑，以模拟真实交易所行为：
+
+1.  **穿透检查 (Penetration Check)**:
+    *   **限价买单**: 只有当 `Bar.Low <= Limit Price` 时才成交。
+    *   **限价卖单**: 只有当 `Bar.High >= Limit Price` 时才成交。
+2.  **价格改善 (Price Improvement)**:
+    *   如果买单限价 10.00，但市场开盘价为 9.80（低开），则以 **9.80** 成交。
+    *   遵循“以更有利的价格成交”原则。
+3.  **止损单逻辑 (Stop Order)**:
+    *   **跳空触发 (Gap Trigger)**: 如果开盘价直接跳过触发价（如止损卖单触发价 10.0，开盘 9.5），则以开盘价 9.5 成交。
+    *   **Bar 内触发 (In-Bar Trigger)**: 如果触发价在 High/Low 范围内，且未发生跳空，则以**触发价**成交（模拟触价即发）。
+4.  **停牌检查**:
+    *   如果 `Bar.Volume <= 0`，则视为停牌，不进行任何撮合。
+
+#### 2.2.3 加密货币与外汇撮合器 (`CryptoMatcher` & `ForexMatcher`)
+这些撮合器复用了通用的撮合逻辑 (`CommonMatcher`)，但针对各自市场特性进行了调整：
+*   **7x24小时交易**: 不受传统市场收盘限制。
+*   **小数位支持**: 允许非整数数量的成交 (Fractional Trading)。
+*   **费率计算**: 支持按成交金额比例计算手续费。
+
+### 2.3 市场层 (`src/market/`)
 
 `ExecutionClient` Trait 定义了执行层的标准接口，支持模拟和实盘的无缝切换。
 
@@ -127,7 +157,7 @@ akquant/
 
 *   **检查规则**: 限制名单、最大单笔数量/金额、最大持仓比例。
 *   **配置**: Python 端 `RiskConfig` 自动注入 Rust 引擎。
-*   支持针对不同资产类型 (Stock/Futures/Option) 的特定风控规则。
+*   支持针对不同资产类型 (Stock/Futures/Option/Crypto/Forex) 的特定风控规则。
 
 ### 2.5 账户层 (`src/portfolio.rs`)
 
@@ -144,7 +174,7 @@ akquant/
 
 *   **事件循环**: 消费 `Bar` 或 `Tick` 事件。
 *   **历史数据管理**: `Engine` 内部维护 `History` 模块，这是一个高效的环形缓冲区，用于存储最近 N 个 Bar 的数据，供策略通过 `get_history` 快速访问，无需在 Python 端累积数据。
-*   **日切处理**: 触发 T+1 解锁、过期订单清理。
+*   **日切处理**: 触发 T+1 解锁、过期订单清理、**公司行为处理 (分红/拆股)**。
 
 ### 2.7 分析层 (`src/analysis/`)
 
@@ -177,6 +207,18 @@ akquant/
     *   **`set_validation`**: 配置 Walk-forward Validation 参数 (训练窗口、测试窗口、滚动步长)。
 *   **`SklearnAdapter`**:
     *   封装 Scikit-learn 风格的模型 (如 RandomForest, LinearRegression)，使其适配 `QuantModel` 接口。
+
+### 2.10 公司行为处理模块 (`src/market/corporate_action.rs`)
+
+负责处理除权除息 (Ex-Rights/Ex-Dividend) 逻辑：
+
+*   **拆股 (Split)**:
+    *   调整持仓数量：`Quantity *= Ratio`。
+    *   调整平均成本：`AvgCost /= Ratio`。
+    *   保持总市值 (Market Value) 不变。
+*   **分红 (Dividend)**:
+    *   增加账户现金：`Cash += Quantity * DividendPerShare`。
+*   **触发时机**: 在每日日切 (Day Switch) 时，检查当日是否有公司行为并执行。
 
 ## 3. 关键工作流详解
 

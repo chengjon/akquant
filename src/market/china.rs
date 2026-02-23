@@ -120,6 +120,9 @@ impl MarketModel for ChinaMarket {
                     panic!("Option market configuration not found but received option order");
                 }
             }
+            AssetType::Crypto | AssetType::Forex => {
+                panic!("Crypto/Forex not supported in ChinaMarket");
+            }
         }
     }
 
@@ -167,6 +170,9 @@ impl MarketModel for ChinaMarket {
                 } else {
                     panic!("Option market configuration not found for position update");
                 }
+            }
+            AssetType::Crypto | AssetType::Forex => {
+                panic!("Crypto/Forex not supported in ChinaMarket");
             }
         }
     }

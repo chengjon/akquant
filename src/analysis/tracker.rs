@@ -46,6 +46,24 @@ impl TradeTracker {
         }
     }
 
+    pub fn on_split(&mut self, symbol: &str, ratio: Decimal) {
+        // Adjust Long Inventory
+        if let Some(queue) = self.long_inventory.get_mut(symbol) {
+            for (qty, price, _, _, _, _, _) in queue.iter_mut() {
+                *qty *= ratio;
+                *price /= ratio;
+            }
+        }
+
+        // Adjust Short Inventory
+        if let Some(queue) = self.short_inventory.get_mut(symbol) {
+            for (qty, price, _, _, _, _, _) in queue.iter_mut() {
+                *qty *= ratio;
+                *price /= ratio;
+            }
+        }
+    }
+
     pub fn get_unrealized_pnl(
         &self,
         symbol: &str,

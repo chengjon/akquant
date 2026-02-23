@@ -1,7 +1,7 @@
 use crate::event::Event;
 use crate::execution::matcher::ExecutionMatcher;
 use crate::execution::slippage::{SlippageModel, ZeroSlippage};
-use crate::execution::{futures, option, stock, ExecutionClient};
+use crate::execution::{crypto, forex, futures, option, stock, ExecutionClient};
 use crate::model::{AssetType, Order, OrderStatus, TimeInForce, TradingSession};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
@@ -27,6 +27,8 @@ impl SimulatedExecutionClient {
         matchers.insert(AssetType::Fund, Box::new(stock::StockMatcher)); // Fund uses StockMatcher
         matchers.insert(AssetType::Futures, Box::new(futures::FuturesMatcher));
         matchers.insert(AssetType::Option, Box::new(option::OptionMatcher));
+        matchers.insert(AssetType::Crypto, Box::new(crypto::CryptoMatcher));
+        matchers.insert(AssetType::Forex, Box::new(forex::ForexMatcher));
 
         SimulatedExecutionClient {
             slippage_model: Box::new(ZeroSlippage),

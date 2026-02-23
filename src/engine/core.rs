@@ -14,6 +14,7 @@ use crate::event::Event;
 use crate::event_manager::EventManager;
 use crate::execution::ExecutionClient;
 use crate::history::HistoryBuffer;
+use crate::market::corporate_action::CorporateActionManager;
 use crate::market::manager::MarketManager;
 use crate::model::{
     ExecutionMode, Instrument, Order, Timer, Trade,
@@ -43,6 +44,7 @@ pub struct Engine {
     pub(crate) instruments: HashMap<String, Instrument>,
     pub(crate) current_date: Option<NaiveDate>,
     pub(crate) market_manager: MarketManager,
+    pub(crate) corporate_action_manager: CorporateActionManager,
     pub(crate) execution_model: Box<dyn ExecutionClient>,
     pub(crate) execution_mode: ExecutionMode,
     pub(crate) clock: Clock,
