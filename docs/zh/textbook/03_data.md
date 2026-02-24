@@ -83,6 +83,7 @@ print(df.head())
 ### 3.3.2 数据存储 (Storage)
 
 对于高频或海量数据，CSV 并非最佳选择。推荐使用更高效的二进制格式：
+
 *   **Parquet / Feather**：列式存储，读取速度快，压缩率高，Pandas 完美支持。
 *   **HDF5**：适合大规模数值矩阵存储。
 *   **KDB+ / DolphinDB**：专业的时序数据库 (Time Series Database)，适合机构级应用。

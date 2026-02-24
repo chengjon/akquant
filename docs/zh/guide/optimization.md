@@ -3,6 +3,7 @@
 参数优化是量化策略开发中至关重要的一环。AKQuant 提供了强大的优化工具，帮助你探索参数对策略表现的影响，并评估策略的稳健性。
 
 目前支持两种主要的优化模式：
+
 1.  **网格搜索 (Grid Search)**: `run_grid_search`
 2.  **滚动优化 (Walk-Forward Optimization)**: `run_walk_forward`
 

@@ -30,6 +30,7 @@ Miniconda is a minimal installer for conda. It is the industry standard for data
     ```
 
     **Method B: Via Installer Script**
+
     1.  Download script for [Apple Silicon](https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh) or [Intel](https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh).
     2.  Run in terminal: `bash Miniconda3-latest-MacOSX-arm64.sh`.
 

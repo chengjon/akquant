@@ -50,10 +50,12 @@ Here are some common quantitative strategy implementations that you can use dire
 
 **Core Concept**:
 The Dual Moving Average strategy uses two moving averages (SMA) with different periods to determine market trends.
+
 - **Golden Cross**: Short-term SMA crosses above Long-term SMA -> Buy.
 - **Death Cross**: Short-term SMA crosses below Long-term SMA -> Sell.
 
 **AKQuant Features**:
+
 - Using `get_history` to fetch historical data (including current Bar).
 - A-Share trading rules (1 lot = 100 shares).
 
@@ -93,11 +95,13 @@ class DualMovingAverageStrategy(Strategy):
 
 **Core Concept**:
 A mechanical trading strategy based on price fluctuations.
+
 - **Buy Dip**: Buy a portion for every X% price drop.
 - **Sell Rally**: Sell a portion for every X% price rise.
 - **Suitable for**: Oscillating markets.
 
 **AKQuant Features**:
+
 - Managing custom state variables (`self.last_trade_price`) inside `on_bar`.
 - Complex position management.
 
@@ -140,12 +144,14 @@ class GridTradingStrategy(Strategy):
 
 **Core Concept**:
 Uses ATR (Average True Range) to build price channels and capture trend breakouts.
+
 - **Upper Band**: Previous Close + k * ATR
 - **Lower Band**: Previous Close - k * ATR
 - **Breakout**: Price > Upper Band -> Buy.
 - **Breakdown**: Price < Lower Band -> Sell.
 
 **AKQuant Features**:
+
 - **Avoiding Look-ahead Bias**: Use `get_history` and slice with `[:-1]` to exclude the current Bar, using strictly historical data to calculate today's breakout thresholds.
 
 ```python
@@ -187,10 +193,12 @@ class AtrBreakoutStrategy(Strategy):
 
 **Core Concept**:
 Hold the asset with the strongest recent momentum (return) among a pool of assets.
+
 - Calculate momentum for candidates periodically (e.g., daily).
 - Sell weak assets and buy the strongest one.
 
 **AKQuant Features**:
+
 - **Multi-Asset Data**: Passing `Dict[str, DataFrame]` to the engine.
 - **Cross-Asset Comparison**: Iterating `self.symbols` and calling `get_history` for each.
 - **Target Position**: Using `order_target_percent` for easy rotation.

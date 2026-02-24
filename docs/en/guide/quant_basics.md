@@ -33,6 +33,7 @@ To help you understand quantitative trading intuitively, let's tell the story of
 ### Act 1: Slave to Emotions vs. Machine Discipline
 **Story**:
 K used to be a typical manual trader. He stared at the screen every day, his mood fluctuating with the red and green candles.
+
 *   10:00 AM, price skyrockets: "Buy now! Or I'll miss out!" -> Result: Bought at the peak.
 *   2:00 PM, price dives: "It's over! Sell everything!" -> Result: Sold at the bottom.
 At the end of the day, K was exhausted and lost money. He realized his biggest enemy was not the market, but **Greed and Fear**.
@@ -50,6 +51,7 @@ He wished for a time machine to go back and simulate trading with this rule to s
 **Quant Perspective**:
 This time machine is **Backtesting**.
 Backtesting is the process of verifying a trading strategy using **historical data**.
+
 *   **Input**: Your strategy logic (e.g., "Buy after 3 down days").
 *   **Data**: Historical OHLCV data (Open, High, Low, Close, Volume).
 *   **Output**: Your final return and max loss if you had traded this way.
@@ -62,6 +64,7 @@ A quant veteran told him: "In this market, surviving is more important than maki
 
 **Quant Perspective**:
 This is **Risk Management**. In quant reports, we look not only at how much you made (Return) but also at how much risk you took.
+
 *   **Max Drawdown**: The largest decline from a historical peak. A -50% Max Drawdown means your assets could be cut in half.
 *   **Sharpe Ratio**: A metric for cost-effectiveness. How much excess return you get per unit of risk.
 
@@ -78,6 +81,7 @@ This is called **Overfitting**. The strategy only memorized the noise in histori
 
 ## 1.5 Core Data Format (OHLCV)
 Back to the technical side, the most basic data unit in quantitative trading is the Bar (or Candle), which typically contains:
+
 *   **Open**: Opening price
 *   **High**: Highest price
 *   **Low**: Lowest price
@@ -109,6 +113,7 @@ print("Installation successful!")
 ## 3. Hands-on: Developing Your First Strategy (Dual Moving Average)
 
 We will implement a classic **Dual Moving Average Strategy**.
+
 *   **Buy Signal (Golden Cross)**: Short-term MA (e.g., 5-day) crosses *above* Long-term MA (e.g., 20-day).
 *   **Sell Signal (Death Cross)**: Short-term MA crosses *below* Long-term MA.
 

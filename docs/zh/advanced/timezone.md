@@ -78,6 +78,7 @@ ts_daily = pd.Timestamp("2023-01-01 15:00:00")  # 北京时间 15:00
 在 `run_backtest` 或 `BacktestEngine` 初始化时，通过 `timezone` 参数指定回测的默认时区。
 
 **注意**：此参数主要用于：
+
 1.  策略中的 `self.now` 和日志输出的时区显示。
 2.  对齐定时器（Timer）的触发时间。
 3.  **不影响** Naive 数据的加载默认值（Naive 数据始终默认为 Shanghai）。

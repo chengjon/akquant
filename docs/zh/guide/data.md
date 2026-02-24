@@ -21,6 +21,7 @@ AKQuant 的核心引擎（Rust）和 Python 接口层主要通过 `pandas.DataFr
 | `symbol` | `str` | 标的代码 (如 "000001", "AAPL") |
 
 **注意：**
+
 1.  **列名标准化**：建议在传入前将列名统一重命名为英文小写（如 `open`, `close`）。
 2.  **Symbol 列**：即使只回测一支股票，也必须包含 `symbol` 列，以便引擎识别数据所属标的。
 

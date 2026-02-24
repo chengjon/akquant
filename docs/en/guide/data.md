@@ -21,6 +21,7 @@ Your DataFrame **must** contain the following columns (column names are case-ins
 | `symbol` | `str` | Ticker symbol (e.g., "000001", "AAPL") |
 
 **Note:**
+
 1.  **Column Standardization**: It is recommended to rename columns to lowercase English (e.g., `open`, `close`) before passing them in.
 2.  **Symbol Column**: Even if backtesting a single stock, you must include the `symbol` column so the engine can identify the asset.
 

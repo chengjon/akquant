@@ -20,6 +20,7 @@ result.report(
 ```
 
 This generates a consolidated dashboard including:
+
 - **Equity Curve**: Interactive chart of account equity over time.
 - **Drawdown**: Historical drawdown analysis.
 - **Monthly Heatmap**: Monthly return performance grid.
@@ -28,6 +29,7 @@ This generates a consolidated dashboard including:
 ### Intraday Support (New)
 
 The plotting module automatically detects and adapts to intraday (minute-level) backtests:
+
 - **Smart Downsampling**: For large datasets (>10k points), it switches to WebGL rendering (`Scattergl`) for high performance.
 - **Adaptive X-Axis**: Automatically formats time labels (e.g., `%Y-%m-%d %H:%M`) and prevents label overlap.
 - **Adaptive Duration Units**: Trade duration analysis automatically switches units (Days, Hours, or Minutes) based on the strategy's average holding period.

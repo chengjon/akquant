@@ -3,6 +3,7 @@
 Parameter optimization is a crucial part of quantitative strategy development. AKQuant provides powerful optimization tools to help you explore how parameters affect strategy performance and evaluate strategy robustness.
 
 Currently, two main optimization modes are supported:
+
 1.  **Grid Search**: `run_grid_search`
 2.  **Walk-Forward Optimization**: `run_walk_forward`
 

@@ -38,7 +38,9 @@ def run_pandas_backtest(df):
 事件驱动回测模拟了真实世界的时间流逝。它本质上是一个**无限循环 (Event Loop)**，不断地从队列中取出事件并处理。
 
 **状态机 (State Machine)** 模型：
+
 $$ State_{t+1} = f(State_t, Event_t) $$
+
 其中 $State$ 包含账户资金、持仓、挂单等，$Event$ 包含行情更新、订单成交等。
 
 **Backtrader (Python 经典框架)**：
@@ -123,6 +125,7 @@ python examples/textbook/ch04_comparison.py
 ### 4.3.2 涨跌停处理
 
 在 A 股市场，涨跌停板会锁死流动性。
+
 *   **涨停 (Limit Up)**：$High = LimitUp$。此时**买入**市价单无法成交，买入限价单也无法成交（除非排队在前）。
 *   **跌停 (Limit Down)**：$Low = LimitDown$。此时**卖出**订单无法成交。
 
@@ -135,17 +138,22 @@ python examples/textbook/ch04_comparison.py
 ### 4.4.1 线性滑点模型
 
 最简单的模型，假设滑点与交易量无关。
+
 $$ P_{fill} = P_{market} \pm \text{Slippage} $$
+
 其中 $\text{Slippage}$ 可以是固定值（如 0.01 元）或百分比（如 0.1%）。
 
 ### 4.4.2 平方根法则 (Square Root Law)
 
 这是学术界和业界公认的冲击成本模型，由 Barra 提出。
+
 $$ \text{Cost} \propto \sigma \times \sqrt{\frac{Q}{V}} $$
+
 其中：
-*   $\sigma$：资产的波动率。
-*   $Q$：你的交易量。
-*   $V$：市场的总成交量。
+
+- $\sigma$：资产的波动率。
+- $Q$：你的交易量。
+- $V$：市场的总成交量。
 
 这表明：**冲击成本与交易量的平方根成正比**。如果你想把交易量翻倍，冲击成本只会增加 $\sqrt{2} \approx 1.414$ 倍，而不是 2 倍。这为大资金拆单提供了理论依据。
 
@@ -222,16 +230,19 @@ graph TD
 
 #### 1. Engine (引擎)
 引擎是系统的调度中心 (Dispatcher)。它维护着全局时钟 (Global Clock) 和事件优先队列 (Priority Queue)。在 `akquant` 中，`Engine` 是一个 Rust 结构体，它完全接管了 Python 的控制流。
+
 *   **职责**：推进时间、分发事件、触发回调。
 *   **特性**：单线程极速循环，避免了 Python GIL 的锁竞争。
 
 #### 2. DataFeed (数据源)
 负责按时间顺序向引擎“滴灌”行情数据。
+
 *   **实现**：在 Rust 中，`DataFeed` 内部维护了一个时间排序的 B-Tree 或 Vec，确保数据严格按时间戳推送。
 *   **多标的同步**：当回测多个标的时，DataFeed 会自动对齐时间，确保 `on_bar` 接收到的数据在时间轴上是同步的。
 
 #### 3. StrategyContext (策略上下文)
 这是 Python 策略与 Rust 引擎通信的桥梁。
+
 *   **数据共享**：`StrategyContext` 在 Rust 中持有对 Portfolio 和 Orders 的引用，并通过 PyO3 暴露给 Python。
 *   **零拷贝访问**：当你访问 `self.ctx.positions` 时，你实际上是直接读取 Rust 的内存，没有数据复制。
 
@@ -376,13 +387,16 @@ $$ \text{Unrealized PnL} = (\text{Current Price} - \text{Entry Price}) \times \t
 当平仓发生时，浮动盈亏转化为平仓盈亏。`akquant` 采用 **FIFO (先进先出)** 原则进行结算。
 
 **示例**：
+
 1.  买入 100 股 @ 10 元。
 2.  买入 100 股 @ 12 元。
 3.  卖出 100 股 @ 15 元。
 
 **结算**：
 卖出的 100 股会优先匹配第一笔 10 元的买单。
+
 $$ \text{Realized PnL} = (15 - 10) \times 100 = 500 $$
+
 剩余持仓：100 股 @ 12 元。
 
 ### 4.7.3 总权益 (Total Equity)

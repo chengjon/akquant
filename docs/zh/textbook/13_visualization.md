@@ -7,12 +7,14 @@
 ### 13.1.1 权益曲线 (Equity Curve)
 
 最基础的图表，展示账户总资产随时间的变化。
+
 *   **线性坐标 (Linear Scale)**：适合短期回测。
 *   **对数坐标 (Logarithmic Scale)**：适合长期回测。在对数坐标下，直线的斜率代表复利增长率，且能清晰展示早期的波动（避免被后期的指数增长掩盖）。
 
 ### 13.1.2 水下曲线 (Underwater Plot)
 
 专门用于展示**回撤 (Drawdown)** 的深度和持续时间。
+
 *   **Y轴**：当前净值距离历史最高点的百分比跌幅（0% ~ -100%）。
 *   **阴影面积**：反映了投资者承受痛苦的“时间和空间”。
 *   **分析**：重点关注**回撤修复期 (Recovery Period)**。如果修复期过长（如超过 1 年），说明策略可能已经失效。
@@ -20,6 +22,7 @@
 ### 13.1.3 收益分布图 (Return Distribution)
 
 展示日收益率的直方图 (Histogram) 和核密度估计 (KDE)。
+
 *   **尖峰肥尾 (Fat Tails)**：金融数据的典型特征。关注分布的**左尾 (Left Tail)**，那是“黑天鹅”藏身之处。
 *   **偏度 (Skewness)**：
     *   **正偏 (Positive Skew)**：小亏大赚（趋势策略）。
@@ -30,12 +33,14 @@
 ### 13.2.1 月度热力图 (Monthly Heatmap)
 
 将收益率按年份和月份排列成矩阵，用颜色深浅表示收益高低。
+
 *   **用途**：识别**季节性 (Seasonality)** 和**策略衰退**。
 *   **特征**：如果某一年份全是绿色（亏损），可能意味着市场风格发生了根本性转变。
 
 ### 13.2.2 滚动指标 (Rolling Metrics)
 
 静态指标（如全周期夏普）可能掩盖局部的剧烈波动。
+
 *   **滚动波动率**：观察市场恐慌时策略的风险暴露。
 *   **滚动夏普**：观察策略表现的稳定性。
 
@@ -156,6 +161,7 @@ ax.set_ylabel('Time to Expiry')
 ax.set_zlabel('Implied Volatility')
 ```
 **观察要点**：
+
 *   **Smile/Skew**：沿 Strike 轴的弯曲程度。
 *   **Term Structure**：沿 Time 轴的倾斜程度。
 
@@ -224,6 +230,7 @@ ax.set_ylabel('Time to Expiry')
 ax.set_zlabel('Implied Volatility')
 ```
 **观察要点**：
+
 *   **Smile/Skew**：沿 Strike 轴的弯曲程度。
 *   **Term Structure**：沿 Time 轴的倾斜程度。
 

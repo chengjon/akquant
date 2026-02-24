@@ -50,10 +50,12 @@ df = df[cols].sort_values("date").reset_index(drop=True)
 
 **核心概念**:
 利用长短两条均线的交叉来判断趋势。
+
 - **金叉 (Golden Cross)**: 短期均线上穿长期均线，买入信号。
 - **死叉 (Death Cross)**: 短期均线下穿长期均线，卖出信号。
 
 **AKQuant 特性演示**:
+
 - 使用 `get_history` 获取历史数据（包含当前 Bar）。
 - A股交易规则（1手=100股）。
 
@@ -93,11 +95,13 @@ class DualMovingAverageStrategy(Strategy):
 
 **核心概念**:
 一种基于价格波动的机械式交易策略。
+
 - **下跌加仓**: 价格每下跌一定比例，买入一份。
 - **上涨减仓**: 价格每上涨一定比例，卖出一份。
 - **适合震荡市**: 在价格反复震荡中通过高抛低吸获利。
 
 **AKQuant 特性演示**:
+
 - 在 `on_bar` 中维护自定义状态变量 (`self.last_trade_price`)。
 - 复杂持仓管理。
 
@@ -140,12 +144,14 @@ class GridTradingStrategy(Strategy):
 
 **核心概念**:
 利用 ATR (平均真实波幅) 构建价格通道，捕捉趋势突破。
+
 - **上轨**: 昨日收盘价 + k * ATR
 - **下轨**: 昨日收盘价 - k * ATR
 - **突破买入**: 价格突破上轨。
 - **跌破卖出**: 价格跌破下轨。
 
 **AKQuant 特性演示**:
+
 - **避免未来函数**: 使用 `get_history` 获取数据后，通过切片 `[:-1]` 剔除当前 Bar，仅使用历史数据计算今日的突破阈值。
 
 ```python
@@ -187,10 +193,12 @@ class AtrBreakoutStrategy(Strategy):
 
 **核心概念**:
 在多只标的之间，持有近期动量（收益率）最强的那一只。
+
 - 定期（如每日）计算候选标的的动量。
 - 卖出弱势标的，全仓买入最强标的。
 
 **AKQuant 特性演示**:
+
 - **多标的数据**: 传入 `Dict[str, DataFrame]` 给回测引擎。
 - **跨标的比较**: 在策略中遍历 `self.symbols`，分别调用 `get_history`。
 - **目标仓位管理**: 使用 `order_target_percent` 方便地进行换仓。

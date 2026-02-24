@@ -38,6 +38,7 @@
 $$ E(R_p) = R_f + \beta_p (E(R_m) - R_f) + \alpha_p $$
 
 其中：
+
 *   $R_f$：无风险收益率（Risk-Free Rate），通常以国债收益率为锚。
 *   $\beta_p (E(R_m) - R_f)$：**市场收益 (Beta)**。$\beta$ 衡量了组合对市场波动的敏感度。这是被动承担市场风险所获得的补偿。
 *   $\alpha_p$：**超额收益 (Alpha)**。这是剔除市场因素后，由投资经理的主动管理能力带来的收益。
@@ -98,6 +99,7 @@ $$ E(R_p) = R_f + \beta_p (E(R_m) - R_f) + \alpha_p $$
 *   **主观 (Fundamental)**：擅长深度。能深入调研一家公司，理解商业模式和管理层，但覆盖面窄，易受情绪影响。
 
 未来的趋势是二者的融合：
+
 1.  **量化赋能主观**：用量化模型筛选出初选池，再由研究员深入调研。
 2.  **主观赋能量化**：将研究员的逻辑（如供应链关系、行业景气度）转化为量化因子，增强模型的可解释性和适应性。
 
@@ -152,6 +154,7 @@ pip install akquant akshare pandas matplotlib -i https://pypi.tuna.tsinghua.edu.
 #### 1. Trae (AI Native IDE) - 强烈推荐
 
 **Trae** 是字节跳动推出的一款 AI 原生 IDE，内置了强大的 **AI 编程助手**。
+
 *   **Context7 深度集成**：能够理解你的整个项目上下文，准确回答关于 `akquant` 架构的问题。
 *   **智能代码补全**：根据你的策略逻辑，自动补全 `on_bar` 中的代码。
 *   **一键重构**：帮你把复杂的 Python 循环重构为高效的 Pandas 向量化操作。
@@ -159,12 +162,14 @@ pip install akquant akshare pandas matplotlib -i https://pypi.tuna.tsinghua.edu.
 #### 2. Visual Studio Code (VS Code)
 
 微软出品的轻量级编辑器，插件生态极其丰富。
+
 *   **推荐插件**：Python, Pylance, Jupyter, Markdown All in One。
 *   **优点**：启动快，资源占用低，远程开发 (Remote-SSH) 体验极佳。
 
 #### 3. PyCharm
 
 JetBrains 出品的专业 Python IDE。
+
 *   **优点**：代码分析能力最强，重构功能极其强大，调试体验好。
 *   **版本选择**：初学者可以使用免费的 **Community 版**；**Professional 版** 额外支持 Jupyter Notebook、科学绘图和远程开发功能，适合进阶用户。
 

@@ -210,6 +210,7 @@ class MLStrategy(Strategy):
 
 "Help me write a Dual Moving Average strategy using AKQuant.
 Requirements:
+
 1.  Fast MA = 10, Slow MA = 60.
 2.  Buy when Fast crosses above Slow.
 3.  Sell when Fast crosses below Slow.
@@ -220,6 +221,7 @@ Requirements:
 
 "Help me write an ML strategy using AKQuant.
 Requirements:
+
 1.  Use `RandomForestClassifier` via `SklearnAdapter`.
 2.  Features: RSI(14), MACD, and Log Returns.
 3.  Label: Next day return > 0.

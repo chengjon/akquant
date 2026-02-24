@@ -30,6 +30,7 @@ Miniconda 是 Anaconda 的精简版，是数据科学领域的行业标准。它
     ```
 
     **方法 B：使用安装脚本**
+
     1.  下载 [macOS 安装脚本](https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh) (M1/M2/M3) 或 [Intel 版](https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh)。
         *   或者从 [清华镜像](https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/) 下载对应的 `.sh` 文件。
     2.  在终端运行：`bash Miniconda3-latest-MacOSX-arm64.sh`。
