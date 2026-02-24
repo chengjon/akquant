@@ -369,18 +369,14 @@ impl Engine {
         show_progress: bool,
     ) -> PyResult<String> {
         // Configure history buffer if strategy has _history_depth set
-        if let Ok(depth_attr) = strategy.getattr("_history_depth") {
-            if let Ok(depth) = depth_attr.extract::<usize>() {
-                if depth > 0 {
+        if let Ok(depth_attr) = strategy.getattr("_history_depth")
+            && let Ok(depth) = depth_attr.extract::<usize>()
+                && depth > 0 {
                     self.set_history_depth(depth);
                 }
-            }
-        }
 
         // Trigger Strategy on_start
-        if let Err(e) = strategy.call_method0("on_start") {
-            return Err(e);
-        }
+        strategy.call_method0("on_start")?;
 
         // Progress Bar Initialization
         let total_events = self.state.feed.len_hint().unwrap_or(0);
@@ -412,7 +408,7 @@ impl Engine {
         self.progress_bar = pb;
 
         // Record initial equity
-        if let Some(_) = self.state.feed.peek_timestamp() {
+        if self.state.feed.peek_timestamp().is_some() {
             let _equity = self
                 .state
                 .portfolio
@@ -433,8 +429,8 @@ impl Engine {
         self.state.order_manager.cleanup_finished_orders();
 
         // Record final snapshot if we have data
-        if self.current_date.is_some() {
-            if let Some(timestamp) = self.clock.timestamp() {
+        if self.current_date.is_some()
+            && let Some(timestamp) = self.clock.timestamp() {
                 self.statistics_manager.record_snapshot(
                     timestamp,
                     &self.state.portfolio,
@@ -443,7 +439,6 @@ impl Engine {
                     &self.state.order_manager.trade_tracker,
                 );
             }
-        }
 
         if let Some(pb) = &self.progress_bar {
             pb.finish_with_message("Backtest completed");

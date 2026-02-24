@@ -3,7 +3,7 @@ use pyo3_stub_gen::derive::*;
 use std::cmp::Ordering;
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Timer {
     #[pyo3(get, set)]

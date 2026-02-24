@@ -74,19 +74,19 @@ impl Engine {
         step_trades: Vec<Trade>,
     ) -> StrategyContext {
         // Create a temporary context for the strategy to use
-        StrategyContext::new(
-            self.state.portfolio.cash,
-            self.state.portfolio.positions.clone(),
-            self.state.portfolio.available_positions.clone(),
-            self.clock.session,
-            self.clock.timestamp().unwrap_or(0),
+        StrategyContext::new(crate::context::ContextInit {
+            cash: self.state.portfolio.cash,
+            positions: self.state.portfolio.positions.clone(),
+            available_positions: self.state.portfolio.available_positions.clone(),
+            session: self.clock.session,
+            current_time: self.clock.timestamp().unwrap_or(0),
             active_orders,
-            self.state.order_manager.trade_tracker.closed_trades.clone(),
-            step_trades,
-            Some(self.history_buffer.clone()),
-            Some(self.event_manager.sender()),
-            self.risk_manager.config.clone(),
-        )
+            closed_trades: self.state.order_manager.trade_tracker.closed_trades.clone(),
+            recent_trades: step_trades,
+            history_buffer: Some(self.history_buffer.clone()),
+            event_tx: Some(self.event_manager.sender()),
+            risk_config: self.risk_manager.config.clone(),
+        })
     }
 
     pub(crate) fn datetime_from_ns(timestamp: i64) -> DateTime<Utc> {
@@ -135,15 +135,15 @@ impl Engine {
                         let py_ctx = ctx.clone_ref(py);
                         {
                             let mut ctx_mut = py_ctx.borrow_mut(py);
-                            ctx_mut.update_state(
-                                self.state.portfolio.cash,
-                                self.state.portfolio.positions.clone(),
-                                self.state.portfolio.available_positions.clone(),
-                                self.clock.session,
-                                self.clock.timestamp().unwrap_or(0),
+                            ctx_mut.update_state(crate::context::ContextUpdate {
+                                cash: self.state.portfolio.cash,
+                                positions: self.state.portfolio.positions.clone(),
+                                available_positions: self.state.portfolio.available_positions.clone(),
+                                session: self.clock.session,
+                                current_time: self.clock.timestamp().unwrap_or(0),
                                 active_orders,
-                                step_trades,
-                            );
+                                recent_trades: step_trades,
+                            });
                         }
                         Ok::<_, PyErr>(py_ctx)
                     })?
@@ -196,15 +196,15 @@ impl Engine {
                         let py_ctx = ctx.clone_ref(py);
                         {
                             let mut ctx_mut = py_ctx.borrow_mut(py);
-                            ctx_mut.update_state(
-                                self.state.portfolio.cash,
-                                self.state.portfolio.positions.clone(),
-                                self.state.portfolio.available_positions.clone(),
-                                self.clock.session,
-                                self.clock.timestamp().unwrap_or(0),
+                            ctx_mut.update_state(crate::context::ContextUpdate {
+                                cash: self.state.portfolio.cash,
+                                positions: self.state.portfolio.positions.clone(),
+                                available_positions: self.state.portfolio.available_positions.clone(),
+                                session: self.clock.session,
+                                current_time: self.clock.timestamp().unwrap_or(0),
                                 active_orders,
-                                step_trades,
-                            );
+                                recent_trades: step_trades,
+                            });
                         }
                         Ok::<_, PyErr>(py_ctx)
                     })?
@@ -255,15 +255,15 @@ impl Engine {
                         let py_ctx = ctx.clone_ref(py);
                         {
                             let mut ctx_mut = py_ctx.borrow_mut(py);
-                            ctx_mut.update_state(
-                                self.state.portfolio.cash,
-                                self.state.portfolio.positions.clone(),
-                                self.state.portfolio.available_positions.clone(),
-                                self.clock.session,
-                                self.clock.timestamp().unwrap_or(0),
+                            ctx_mut.update_state(crate::context::ContextUpdate {
+                                cash: self.state.portfolio.cash,
+                                positions: self.state.portfolio.positions.clone(),
+                                available_positions: self.state.portfolio.available_positions.clone(),
+                                session: self.clock.session,
+                                current_time: self.clock.timestamp().unwrap_or(0),
                                 active_orders,
-                                step_trades,
-                            );
+                                recent_trades: step_trades,
+                            });
                         }
                         Ok::<_, PyErr>(py_ctx)
                     })?

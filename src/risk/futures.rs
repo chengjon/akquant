@@ -1,11 +1,7 @@
 use crate::error::AkQuantError;
-use crate::model::{Instrument, Order};
-use crate::portfolio::Portfolio;
-use rust_decimal::Decimal;
-use std::collections::HashMap;
+use crate::model::Order;
 
-use super::rule::RiskRule;
-use super::RiskConfig;
+use super::rule::{RiskRule, RiskCheckContext};
 
 /// Placeholder for specific futures margin rule
 /// Currently generic CashMarginRule covers basic margin checks.
@@ -20,12 +16,7 @@ impl RiskRule for FuturesMarginRule {
     fn check(
         &self,
         _order: &Order,
-        _portfolio: &Portfolio,
-        _instrument: &Instrument,
-        _instruments: &HashMap<String, Instrument>,
-        _active_orders: &[Order],
-        _current_prices: &HashMap<String, Decimal>,
-        _config: &RiskConfig,
+        _ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
         // TODO: Implement advanced futures margin logic (e.g. maintenance margin vs initial margin)
         Ok(())

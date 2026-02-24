@@ -20,11 +20,13 @@ impl MarketManager {
     /// 创建新的市场管理器
     pub fn new() -> Self {
         // 默认初始化所有市场配置，保持向后兼容
-        let mut config = ChinaMarketConfig::default();
-        config.stock = Some(stock::StockConfig::default());
-        config.futures = Some(futures::FuturesConfig::default());
-        config.fund = Some(fund::FundConfig::default());
-        config.option = Some(option::OptionConfig::default());
+        let config = ChinaMarketConfig {
+            stock: Some(stock::StockConfig::default()),
+            futures: Some(futures::FuturesConfig::default()),
+            fund: Some(fund::FundConfig::default()),
+            option: Some(option::OptionConfig::default()),
+            ..Default::default()
+        };
 
         let config = MarketConfig::China(config);
         Self {
@@ -37,19 +39,23 @@ impl MarketManager {
     ///
     /// :param commission_rate: 佣金率
     pub fn use_simple_market(&mut self, commission_rate: f64) {
-        let mut config = SimpleMarketConfig::default();
-        config.commission_rate = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
+        let config = SimpleMarketConfig {
+            commission_rate: Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO),
+            ..Default::default()
+        };
         self.config = MarketConfig::Simple(config);
         self.model = self.config.create_model();
     }
 
     /// 启用 ChinaMarket (支持 T+1/T+0, 印花税, 过户费, 交易时段等)
     pub fn use_china_market(&mut self) {
-        let mut config = ChinaMarketConfig::default();
-        config.stock = Some(stock::StockConfig::default());
-        config.futures = Some(futures::FuturesConfig::default());
-        config.fund = Some(fund::FundConfig::default());
-        config.option = Some(option::OptionConfig::default());
+        let config = ChinaMarketConfig {
+            stock: Some(stock::StockConfig::default()),
+            futures: Some(futures::FuturesConfig::default()),
+            fund: Some(fund::FundConfig::default()),
+            option: Some(option::OptionConfig::default()),
+            ..Default::default()
+        };
         self.config = MarketConfig::China(config);
         self.model = self.config.create_model();
     }
@@ -70,8 +76,10 @@ impl MarketManager {
     /// - 仅启用期货配置
     /// - 保持当前交易时段配置 (需手动设置 set_market_sessions 以匹配特定品种)
     pub fn use_china_futures_market(&mut self) {
-        let mut config = ChinaMarketConfig::default();
-        config.futures = Some(futures::FuturesConfig::default());
+        let config = ChinaMarketConfig {
+            futures: Some(futures::FuturesConfig::default()),
+            ..Default::default()
+        };
         self.config = MarketConfig::China(config);
         self.model = self.config.create_model();
     }

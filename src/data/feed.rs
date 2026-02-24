@@ -18,7 +18,7 @@ use super::client::{
 /// 负责管理历史数据和实时数据流。
 /// 支持 CSV 文件读取、数组批量加载和实时数据推送。
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct DataFeed {
     pub provider: Arc<Mutex<Box<dyn DataClient>>>,
@@ -221,8 +221,7 @@ impl DataFeed {
         if timeout > Duration::ZERO {
             let feed_clone = self.clone();
             // Release GIL and wait
-            #[allow(deprecated)]
-            py.allow_threads(move || feed_clone.wait_peek(timeout))
+            py.detach(move || feed_clone.wait_peek(timeout))
         } else {
             self.peek_timestamp()
         }
@@ -237,14 +236,14 @@ impl DataFeed {
              match (peek_ts, next_timer_ts) {
                  (Some(et), Some(tt)) => {
                      if tt <= et {
-                         return FeedAction::Timer(tt);
+                         FeedAction::Timer(tt)
                      } else {
-                         return FeedAction::Event(self.next().unwrap());
+                         FeedAction::Event(Box::new(self.next().unwrap()))
                      }
                  },
-                 (Some(_), None) => return FeedAction::Event(self.next().unwrap()),
-                 (None, Some(tt)) => return FeedAction::Timer(tt),
-                 (None, None) => return FeedAction::End,
+                 (Some(_), None) => FeedAction::Event(Box::new(self.next().unwrap())),
+                 (None, Some(tt)) => FeedAction::Timer(tt),
+                 (None, None) => FeedAction::End,
              }
         } else {
             // Live logic
@@ -266,9 +265,8 @@ impl DataFeed {
 
             let next_ts_opt = if timeout > Duration::ZERO {
                 let feed_clone = self.clone();
-                // Release GIL and wait
-                #[allow(deprecated)]
-                py.allow_threads(move || feed_clone.wait_peek(timeout))
+            // Release GIL and wait
+            py.detach(move || feed_clone.wait_peek(timeout))
             } else {
                 self.peek_timestamp()
             };
@@ -281,27 +279,26 @@ impl DataFeed {
                              // Timer is earlier than event (and we are here so timer might be due or close?)
                              // In Live, check if timer is actually DUE (<= now).
                              if tt <= now {
-                                 return FeedAction::Timer(tt);
+                                 FeedAction::Timer(tt)
                              } else {
                                  // Timer not due, but event is here.
-                                 return FeedAction::Event(self.next().unwrap());
+                                 FeedAction::Event(Box::new(self.next().unwrap()))
                              }
                         } else {
                              // Event is earlier than timer
-                             return FeedAction::Event(self.next().unwrap());
+                             FeedAction::Event(Box::new(self.next().unwrap()))
                         }
                     } else {
-                        return FeedAction::Event(self.next().unwrap());
+                        FeedAction::Event(Box::new(self.next().unwrap()))
                     }
                 },
                 None => {
                     // Timeout (No event)
-                    if let Some(tt) = next_timer_ts {
-                        if tt <= now {
+                    if let Some(tt) = next_timer_ts
+                        && tt <= now {
                             return FeedAction::Timer(tt);
                         }
-                    }
-                    return FeedAction::Wait;
+                    FeedAction::Wait
                 }
             }
         }

@@ -56,6 +56,12 @@ pub struct ChinaMarket {
     pub config: ChinaMarketConfig,
 }
 
+impl Default for ChinaMarket {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChinaMarket {
     #[allow(dead_code)]
     pub fn new() -> Self {

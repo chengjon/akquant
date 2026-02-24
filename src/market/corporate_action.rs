@@ -9,6 +9,12 @@ pub struct CorporateActionManager {
     actions: HashMap<NaiveDate, Vec<CorporateAction>>,
 }
 
+impl Default for CorporateActionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CorporateActionManager {
     pub fn new() -> Self {
         Self {
@@ -19,7 +25,7 @@ impl CorporateActionManager {
     pub fn add(&mut self, action: CorporateAction) {
         self.actions
             .entry(action.date)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(action);
     }
 
@@ -54,12 +60,11 @@ impl CorporateActionManager {
                     CorporateActionType::Dividend => {
                         // Dividend: value is cash per share
                         // Cash += Quantity * value
-                        if let Some(qty) = portfolio.positions.get(&action.symbol) {
-                            if !qty.is_zero() {
+                        if let Some(qty) = portfolio.positions.get(&action.symbol)
+                            && !qty.is_zero() {
                                 let dividend_amount = qty * action.value;
                                 portfolio.cash += dividend_amount;
                             }
-                        }
                     }
                 }
             }

@@ -1,7 +1,6 @@
 pub mod types;
 pub mod result;
 pub mod tracker;
-pub mod calculator;
 pub mod python;
 #[cfg(test)]
 pub mod tests;

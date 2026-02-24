@@ -9,6 +9,14 @@ use std::sync::Arc;
 use super::handler::SettlementHandler;
 use super::option::OptionSettlementHandler;
 
+/// Settlement Context
+pub struct SettlementContext<'a> {
+    pub date: NaiveDate,
+    pub instruments: &'a HashMap<String, Instrument>,
+    pub last_prices: &'a HashMap<String, Decimal>,
+    pub market_manager: &'a MarketManager,
+}
+
 /// Settlement Manager
 /// Centralizes daily settlement logic including T+1 settlement, option expiry, and order expiration.
 pub struct SettlementManager {
@@ -18,7 +26,7 @@ pub struct SettlementManager {
 impl SettlementManager {
     pub fn new() -> Self {
         Self {
-            option_handler: OptionSettlementHandler::default(),
+            option_handler: OptionSettlementHandler,
         }
     }
 
@@ -28,30 +36,27 @@ impl SettlementManager {
     /// 3. Order Expiration (Day orders)
     pub fn process_daily_settlement(
         &self,
-        date: NaiveDate,
         portfolio: &mut Portfolio,
-        instruments: &HashMap<String, Instrument>,
-        last_prices: &HashMap<String, Decimal>,
-        market_manager: &MarketManager,
         active_orders: &mut Vec<Order>,
         expired_orders_out: &mut Vec<Order>,
+        ctx: &SettlementContext,
     ) {
         // 1. Market Settlement (T+1 logic)
         // Note: MarketManager::on_day_close handles T+1 by moving positions from 'positions' to 'available_positions'
         // But wait, `portfolio.positions` is T+0/Total, `available_positions` is Sellable.
         // `on_day_close` updates `available_positions`.
-        market_manager.on_day_close(
+        ctx.market_manager.on_day_close(
             &portfolio.positions,
             Arc::make_mut(&mut portfolio.available_positions),
-            instruments,
+            ctx.instruments,
         );
 
         // 2. Option Expiry
         let tasks = self.option_handler.check_settlement(
-            date,
+            ctx.date,
             portfolio,
-            instruments,
-            last_prices,
+            ctx.instruments,
+            ctx.last_prices,
         );
 
         for task in tasks {

@@ -157,16 +157,16 @@ fn test_max_drawdown_logic() {
         (4, Decimal::from(110)),
     ];
 
-    let result = BacktestResult::calculate(
-        equity_curve,
-        vec![],
-        vec![],
-        empty_pnl.clone(),
-        vec![],
-        Decimal::from(100),
-        vec![],
-        vec![],
-    );
+    let result = BacktestResult::calculate(crate::analysis::CalculatorInput {
+        equity_curve_decimal: equity_curve,
+        cash_curve_decimal: vec![],
+        snapshots: vec![],
+        trade_pnl: empty_pnl.clone(),
+        trades: vec![],
+        initial_cash: Decimal::from(100),
+        orders: vec![],
+        executions: vec![],
+    });
     assert_eq!(result.metrics.max_drawdown, 0.25);
 
     // Case 2: No Drawdown (Monotonic Increase)
@@ -176,16 +176,16 @@ fn test_max_drawdown_logic() {
         (2, Decimal::from(110)),
         (3, Decimal::from(120)),
     ];
-    let result_2 = BacktestResult::calculate(
-        equity_curve_2,
-        vec![],
-        vec![],
-        empty_pnl.clone(),
-        vec![],
-        Decimal::from(100),
-        vec![],
-        vec![],
-    );
+    let result_2 = BacktestResult::calculate(crate::analysis::CalculatorInput {
+        equity_curve_decimal: equity_curve_2,
+        cash_curve_decimal: vec![],
+        snapshots: vec![],
+        trade_pnl: empty_pnl.clone(),
+        trades: vec![],
+        initial_cash: Decimal::from(100),
+        orders: vec![],
+        executions: vec![],
+    });
     assert_eq!(result_2.metrics.max_drawdown, 0.0);
 
     // Case 3: Immediate Drawdown
@@ -195,16 +195,16 @@ fn test_max_drawdown_logic() {
         (2, Decimal::from(80)),  // Drawdown: (100-80)/100 = 0.2
         (3, Decimal::from(90)),
     ];
-    let result_3 = BacktestResult::calculate(
-        equity_curve_3,
-        vec![],
-        vec![],
-        empty_pnl.clone(),
-        vec![],
-        Decimal::from(100),
-        vec![],
-        vec![],
-    );
+    let result_3 = BacktestResult::calculate(crate::analysis::CalculatorInput {
+        equity_curve_decimal: equity_curve_3,
+        cash_curve_decimal: vec![],
+        snapshots: vec![],
+        trade_pnl: empty_pnl.clone(),
+        trades: vec![],
+        initial_cash: Decimal::from(100),
+        orders: vec![],
+        executions: vec![],
+    });
     assert_eq!(result_3.metrics.max_drawdown, 0.2);
 
     // Case 4: Multiple Peaks
@@ -217,16 +217,16 @@ fn test_max_drawdown_logic() {
         (5, Decimal::from(55)),  // DD (110-55)/110 = 0.5
         (6, Decimal::from(110)),
     ];
-    let result_4 = BacktestResult::calculate(
-        equity_curve_4,
-        vec![],
-        vec![],
-        empty_pnl.clone(),
-        vec![],
-        Decimal::from(100),
-        vec![],
-        vec![],
-    );
+    let result_4 = BacktestResult::calculate(crate::analysis::CalculatorInput {
+        equity_curve_decimal: equity_curve_4,
+        cash_curve_decimal: vec![],
+        snapshots: vec![],
+        trade_pnl: empty_pnl.clone(),
+        trades: vec![],
+        initial_cash: Decimal::from(100),
+        orders: vec![],
+        executions: vec![],
+    });
     assert_eq!(result_4.metrics.max_drawdown, 0.5);
 }
 
@@ -249,16 +249,16 @@ fn test_ulcer_index_logic() {
         (5, Decimal::from(100)),
     ];
 
-    let result = BacktestResult::calculate(
-        equity_curve,
-        vec![],
-        vec![],
-        empty_pnl.clone(),
-        vec![],
-        Decimal::from(100),
-        vec![],
-        vec![],
-    );
+    let result = BacktestResult::calculate(crate::analysis::CalculatorInput {
+        equity_curve_decimal: equity_curve,
+        cash_curve_decimal: vec![],
+        snapshots: vec![],
+        trade_pnl: empty_pnl.clone(),
+        trades: vec![],
+        initial_cash: Decimal::from(100),
+        orders: vec![],
+        executions: vec![],
+    });
     let expected_ui = 0.004f64.sqrt();
     assert!((result.metrics.ulcer_index - expected_ui).abs() < 1e-9);
 }

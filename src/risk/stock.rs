@@ -1,11 +1,8 @@
 use crate::error::AkQuantError;
-use crate::model::{Instrument, Order, OrderSide};
-use crate::portfolio::Portfolio;
+use crate::model::{Order, OrderSide};
 use rust_decimal::Decimal;
-use std::collections::HashMap;
 
-use super::rule::RiskRule;
-use super::RiskConfig;
+use super::rule::{RiskRule, RiskCheckContext};
 
 /// Check available position for selling (T+1 rule usually implied by available_positions)
 #[derive(Debug, Clone)]
@@ -19,21 +16,16 @@ impl RiskRule for StockAvailablePositionRule {
     fn check(
         &self,
         order: &Order,
-        portfolio: &Portfolio,
-        _instrument: &Instrument,
-        _instruments: &HashMap<String, Instrument>,
-        active_orders: &[Order],
-        _current_prices: &HashMap<String, Decimal>,
-        _config: &RiskConfig,
+        ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
         if order.side == OrderSide::Sell {
-            let available = portfolio
+            let available = ctx.portfolio
                 .available_positions
                 .get(&order.symbol)
                 .cloned()
                 .unwrap_or(Decimal::ZERO);
 
-            let pending_sell: Decimal = active_orders
+            let pending_sell: Decimal = ctx.active_orders
                 .iter()
                 .filter(|o| o.symbol == order.symbol && o.side == OrderSide::Sell)
                 .map(|o| o.quantity - o.filled_quantity)

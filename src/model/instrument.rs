@@ -61,7 +61,7 @@ pub struct ForexInstrument {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// 交易标的
 ///

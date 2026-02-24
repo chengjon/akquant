@@ -5,7 +5,7 @@ use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Default)]
 /// 风控配置.
 pub struct RiskConfig {

@@ -17,7 +17,7 @@ use super::rule::RiskRule;
 use super::stock::StockAvailablePositionRule;
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct RiskManager {
     #[pyo3(get, set)]
@@ -130,8 +130,7 @@ impl RiskManager {
             // This logic was moved from OrderManager
             if (err_msg.contains("Insufficient cash") || err_msg.contains("Insufficient margin"))
                 && order.side == crate::model::OrderSide::Buy
-            {
-                if let Some(instr) = ctx.instruments.get(&order.symbol) {
+                && let Some(instr) = ctx.instruments.get(&order.symbol) {
                     // Get price (Limit or Last)
                     let price = if let Some(p) = order.price {
                         p
@@ -179,7 +178,6 @@ impl RiskManager {
                         }
                     }
                 }
-            }
             return Err(err);
         }
         Ok(())
@@ -198,31 +196,24 @@ impl RiskManager {
             AkQuantError::OrderError(format!("Instrument not found for {}", order.symbol))
         })?;
 
+        let risk_ctx = crate::risk::rule::RiskCheckContext {
+            portfolio: ctx.portfolio,
+            instrument,
+            instruments: ctx.instruments,
+            active_orders: ctx.active_orders,
+            current_prices: ctx.last_prices,
+            config: &self.config,
+        };
+
         // Check common rules
         for rule in &self.common_rules {
-            rule.check(
-                order,
-                ctx.portfolio,
-                instrument,
-                ctx.instruments,
-                ctx.active_orders,
-                ctx.last_prices,
-                &self.config,
-            )?;
+            rule.check(order, &risk_ctx)?;
         }
 
         // Check asset-specific rules
         if let Some(rules) = self.asset_rules.get(&instrument.asset_type) {
             for rule in rules {
-                rule.check(
-                    order,
-                    ctx.portfolio,
-                    instrument,
-                    ctx.instruments,
-                    ctx.active_orders,
-                    ctx.last_prices,
-                    &self.config,
-                )?;
+                rule.check(order, &risk_ctx)?;
             }
         }
 

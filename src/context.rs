@@ -32,23 +32,41 @@ pub struct EngineContext<'a> {
     pub active_orders: &'a [Order],
 }
 
+pub struct ContextInit {
+    pub cash: Decimal,
+    pub positions: Arc<HashMap<String, Decimal>>,
+    pub available_positions: Arc<HashMap<String, Decimal>>,
+    pub session: TradingSession,
+    pub current_time: i64,
+    pub active_orders: Arc<Vec<Order>>,
+    pub closed_trades: Arc<Vec<ClosedTrade>>,
+    pub recent_trades: Vec<Trade>,
+    pub history_buffer: Option<Arc<RwLock<HistoryBuffer>>>,
+    pub event_tx: Option<Sender<Event>>,
+    pub risk_config: RiskConfig,
+}
+
+pub struct ContextUpdate {
+    pub cash: Decimal,
+    pub positions: Arc<HashMap<String, Decimal>>,
+    pub available_positions: Arc<HashMap<String, Decimal>>,
+    pub session: TradingSession,
+    pub current_time: i64,
+    pub active_orders: Arc<Vec<Order>>,
+    pub recent_trades: Vec<Trade>,
+}
+
 impl StrategyContext {
     pub fn update_state(
         &mut self,
-        cash: Decimal,
-        positions: Arc<HashMap<String, Decimal>>,
-        available_positions: Arc<HashMap<String, Decimal>>,
-        session: TradingSession,
-        current_time: i64,
-        active_orders: Arc<Vec<Order>>,
-        recent_trades: Vec<Trade>,
+        update: ContextUpdate,
     ) {
-        self.cash = cash;
-        self.positions = positions;
-        self.available_positions = available_positions;
-        self.session = session;
-        self.current_time = current_time;
-        self.active_orders_arc = active_orders.clone();
+        self.cash = update.cash;
+        self.positions = update.positions;
+        self.available_positions = update.available_positions;
+        self.session = update.session;
+        self.current_time = update.current_time;
+        self.active_orders_arc = update.active_orders.clone();
 
         // Lazy update: clear the vector but don't fill it yet.
         // We will rely on a getter to populate it if accessed, or just update it here if needed.
@@ -59,16 +77,16 @@ impl StrategyContext {
         //
         // HOWEVER, for this "Zero-Copy" optimization step, let's just avoid the clone if the list is empty.
 
-        if active_orders.is_empty() {
+        if update.active_orders.is_empty() {
              self.active_orders.clear();
         } else {
              // Still copying for now to maintain API compatibility without breaking changes
              // Optimization: reuse capacity
              self.active_orders.clear();
-             self.active_orders.extend_from_slice(&active_orders);
+             self.active_orders.extend_from_slice(&update.active_orders);
         }
 
-        self.recent_trades = recent_trades;
+        self.recent_trades = update.recent_trades;
 
         // Reset accumulators
         self.orders.clear();
@@ -134,38 +152,26 @@ pub struct StrategyContext {
 }
 
 impl StrategyContext {
-    pub fn new(
-        cash: Decimal,
-        positions: Arc<HashMap<String, Decimal>>,
-        available_positions: Arc<HashMap<String, Decimal>>,
-        session: TradingSession,
-        current_time: i64,
-        active_orders: Arc<Vec<Order>>,
-        closed_trades: Arc<Vec<ClosedTrade>>,
-        recent_trades: Vec<Trade>,
-        history_buffer: Option<Arc<RwLock<HistoryBuffer>>>,
-        event_tx: Option<Sender<Event>>,
-        risk_config: RiskConfig,
-    ) -> Self {
+    pub fn new(init: ContextInit) -> Self {
         StrategyContext {
             orders: Vec::new(),
             canceled_order_ids: Vec::new(),
-            active_orders: active_orders.as_ref().clone(),
+            active_orders: init.active_orders.as_ref().clone(),
             timers: Vec::new(),
             orders_arc: Arc::new(RwLock::new(Vec::new())),
             canceled_order_ids_arc: Arc::new(RwLock::new(Vec::new())),
-            active_orders_arc: active_orders,
+            active_orders_arc: init.active_orders,
             timers_arc: Arc::new(RwLock::new(Vec::new())),
-            cash,
-            positions,
-            available_positions,
-            session,
-            current_time,
-            closed_trades,
-            recent_trades,
-            history_buffer,
-            event_tx,
-            risk_config,
+            cash: init.cash,
+            positions: init.positions,
+            available_positions: init.available_positions,
+            session: init.session,
+            current_time: init.current_time,
+            closed_trades: init.closed_trades,
+            recent_trades: init.recent_trades,
+            history_buffer: init.history_buffer,
+            event_tx: init.event_tx,
+            risk_config: init.risk_config,
         }
     }
 }
@@ -185,6 +191,7 @@ impl StrategyContext {
     /// :param recent_trades: 最近成交列表
     /// :param risk_config: 风控配置
     #[new]
+    #[allow(clippy::too_many_arguments)]
     pub fn py_new(
         cash: &Bound<'_, PyAny>,
         positions: HashMap<String, f64>,
@@ -223,7 +230,7 @@ impl StrategyContext {
             recent_trades: recent_trades.unwrap_or_default(),
             history_buffer: None,
             event_tx: None,
-            risk_config: risk_config.unwrap_or_else(RiskConfig::new),
+            risk_config: risk_config.unwrap_or_default(),
         })
     }
 
@@ -248,7 +255,7 @@ impl StrategyContext {
                     return Ok(None);
                 }
 
-                let start = if len > count { len - count } else { 0 };
+                let start = len.saturating_sub(count);
                 let py_array = match field.as_str() {
                     "open" => PyArray1::from_iter(py, history.opens.iter().skip(start).cloned()),
                     "high" => PyArray1::from_iter(py, history.highs.iter().skip(start).cloned()),
@@ -391,10 +398,8 @@ impl StrategyContext {
         };
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(Event::OrderRequest(order));
-        } else {
-            if let Ok(mut orders) = self.orders_arc.write() {
-                orders.push(order);
-            }
+        } else if let Ok(mut orders) = self.orders_arc.write() {
+            orders.push(order);
         }
         Ok(id)
     }
@@ -456,10 +461,8 @@ impl StrategyContext {
         };
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(Event::OrderRequest(order));
-        } else {
-            if let Ok(mut orders) = self.orders_arc.write() {
-                orders.push(order);
-            }
+        } else if let Ok(mut orders) = self.orders_arc.write() {
+            orders.push(order);
         }
         Ok(id)
     }

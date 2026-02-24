@@ -1,11 +1,7 @@
 use crate::error::AkQuantError;
-use crate::model::{Instrument, Order};
-use crate::portfolio::Portfolio;
-use rust_decimal::Decimal;
-use std::collections::HashMap;
+use crate::model::Order;
 
-use super::rule::RiskRule;
-use super::RiskConfig;
+use super::rule::{RiskRule, RiskCheckContext};
 
 /// Check option Greek risk (e.g., Delta, Gamma exposure)
 #[derive(Debug, Clone)]
@@ -19,12 +15,7 @@ impl RiskRule for OptionGreekRiskRule {
     fn check(
         &self,
         _order: &Order,
-        _portfolio: &Portfolio,
-        _instrument: &Instrument,
-        _instruments: &HashMap<String, Instrument>,
-        _active_orders: &[Order],
-        _current_prices: &HashMap<String, Decimal>,
-        _config: &RiskConfig,
+        _ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
         // Placeholder for Greek risk check logic
         // This would involve calculating Greeks for the portfolio and checking against limits

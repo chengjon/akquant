@@ -1,10 +1,8 @@
 use crate::event::Event;
-use crate::execution::matcher::ExecutionMatcher;
-use crate::execution::slippage::SlippageModel;
-use crate::model::{ExecutionMode, Instrument, Order, Trade};
+use crate::execution::matcher::{ExecutionMatcher, MatchContext};
+use crate::model::{Order, Trade};
 use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
-use rust_decimal::Decimal;
 
 /// Python 自定义撮合器包装器
 ///
@@ -25,13 +23,12 @@ impl ExecutionMatcher for PyExecutionMatcher {
     fn match_order(
         &self,
         order: &mut Order,
-        event: &Event,
-        instrument: &Instrument,
-        _execution_mode: ExecutionMode,
-        _slippage: &dyn SlippageModel,
-        _volume_limit_pct: Decimal,
-        bar_index: usize,
+        ctx: &MatchContext,
     ) -> Option<Event> {
+        let event = ctx.event;
+        let instrument = ctx.instrument;
+        let bar_index = ctx.bar_index;
+
         Python::attach(|py| {
             // 1. Convert arguments to Python objects
             // Use clone() to create a copy for Python
@@ -69,15 +66,15 @@ impl ExecutionMatcher for PyExecutionMatcher {
                         }
 
                         // 6. Return ExecutionReport
-                        return Some(Event::ExecutionReport(order.clone(), Some(trade)));
+                        Some(Event::ExecutionReport(order.clone(), Some(trade)))
                     } else {
                         // eprintln!("PyExecutionMatcher: Python match method returned something that is not a Trade or None");
-                        return None;
+                        None
                     }
                 }
                 Err(e) => {
                     e.print_and_set_sys_last_vars(py);
-                    return None;
+                    None
                 }
             }
         })

@@ -49,7 +49,7 @@ impl pyo3_stub_gen::PyStubType for TradingSession {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 结算方式
 pub enum SettlementType {
@@ -70,7 +70,7 @@ impl pyo3_stub_gen::PyStubType for SettlementType {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 资产类型
 pub enum AssetType {
@@ -89,7 +89,7 @@ impl AssetType {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 期权类型
 pub enum OptionType {
@@ -104,7 +104,7 @@ impl OptionType {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 订单类型
 pub enum OrderType {
@@ -121,7 +121,7 @@ impl OrderType {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 交易方向
 pub enum OrderSide {
@@ -136,7 +136,7 @@ impl OrderSide {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 订单状态
 pub enum OrderStatus {
@@ -155,7 +155,7 @@ impl OrderStatus {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 订单有效期
 #[allow(clippy::upper_case_acronyms)]
@@ -173,7 +173,7 @@ impl TimeInForce {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 撮合执行模式
 pub enum ExecutionMode {
@@ -190,7 +190,7 @@ impl ExecutionMode {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 /// 交易时段状态
 pub enum TradingSession {

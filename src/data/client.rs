@@ -284,7 +284,7 @@ impl DataClient for RealtimeDataClient {
 }
 
 pub enum FeedAction {
-    Event(Event),
+    Event(Box<Event>),
     Timer(i64),
     Wait,
     End,

@@ -1,5 +1,5 @@
 use crate::event::Event;
-use crate::execution::matcher::ExecutionMatcher;
+use crate::execution::matcher::{ExecutionMatcher, MatchContext};
 use crate::execution::slippage::{SlippageModel, ZeroSlippage};
 use crate::execution::{crypto, forex, futures, option, stock, ExecutionClient};
 use crate::model::{AssetType, Order, OrderStatus, TimeInForce, TradingSession};
@@ -74,11 +74,10 @@ impl ExecutionClient for SimulatedExecutionClient {
     }
 
     fn on_cancel(&mut self, order_id: &str) {
-        if let Some(order) = self.orders.get_mut(order_id) {
-            if order.status == OrderStatus::Submitted || order.status == OrderStatus::New {
+        if let Some(order) = self.orders.get_mut(order_id)
+            && (order.status == OrderStatus::Submitted || order.status == OrderStatus::New) {
                 order.status = OrderStatus::Cancelled;
             }
-        }
     }
 
     fn on_event(&mut self, event: &Event, ctx: &crate::context::EngineContext) -> Vec<Event> {
@@ -99,19 +98,16 @@ impl ExecutionClient for SimulatedExecutionClient {
                 };
 
                 for order_id in &self.order_queue {
-                    if let Some(order) = self.orders.get_mut(order_id) {
-                        if order.status != OrderStatus::Cancelled
+                    if let Some(order) = self.orders.get_mut(order_id)
+                        && order.status != OrderStatus::Cancelled
                             && order.status != OrderStatus::Filled
                             && order.status != OrderStatus::Rejected
                             && order.status != OrderStatus::Expired
-                        {
-                            if order.time_in_force == TimeInForce::Day {
+                            && order.time_in_force == TimeInForce::Day {
                                 order.status = OrderStatus::Expired;
                                 order.updated_at = timestamp;
                                 reports.push(Event::ExecutionReport(order.clone(), None));
                             }
-                        }
-                    }
                 }
             }
             return reports;
@@ -139,20 +135,23 @@ impl ExecutionClient for SimulatedExecutionClient {
                 if let Some(instrument) = ctx.instruments.get(&order.symbol) {
                     // Dispatch to specific matcher
                     if let Some(matcher) = matchers.get(&instrument.asset_type) {
-                        let report_opt = matcher.match_order(
-                            order,
+                        let match_ctx = MatchContext {
                             event,
                             instrument,
-                            ctx.execution_mode,
-                            self.slippage_model.as_ref(),
-                            self.volume_limit_pct,
-                            ctx.bar_index,
+                            execution_mode: ctx.execution_mode,
+                            slippage: self.slippage_model.as_ref(),
+                            volume_limit_pct: self.volume_limit_pct,
+                            bar_index: ctx.bar_index,
+                        };
+                        let report_opt = matcher.match_order(
+                            order,
+                            &match_ctx,
                         );
 
                         if let Some(mut report) = report_opt {
                             // Check for dynamic position sizing (margin check)
-                            if let Event::ExecutionReport(ref mut _r_order, Some(ref mut trade)) = report {
-                                if trade.side == crate::model::OrderSide::Buy {
+                            if let Event::ExecutionReport(ref mut _r_order, Some(ref mut trade)) = report
+                                && trade.side == crate::model::OrderSide::Buy {
                                     // Calculate estimated commission
                                     let commission = ctx.market_model.calculate_commission(
                                         instrument,
@@ -188,7 +187,7 @@ impl ExecutionClient for SimulatedExecutionClient {
                                                 log::warn!("Invalid safety factor calculation, defaulting to 0.9999");
                                                 Decimal::from_f64(0.9999).unwrap_or(Decimal::ZERO)
                                             });
-                                        max_qty = max_qty * safety_factor;
+                                        max_qty *= safety_factor;
 
                                         let lot_size = instrument.lot_size();
                                         let mut new_qty = max_qty.floor();
@@ -229,15 +228,13 @@ impl ExecutionClient for SimulatedExecutionClient {
                                         current_free_margin -= final_margin + final_comm;
                                     }
                                 }
-                            }
 
                             // Filter out zero quantity trades
                             let mut keep_report = true;
-                            if let Event::ExecutionReport(_, Some(ref trade)) = report {
-                                if trade.quantity <= Decimal::ZERO {
+                            if let Event::ExecutionReport(_, Some(ref trade)) = report
+                                && trade.quantity <= Decimal::ZERO {
                                     keep_report = false;
                                 }
-                            }
 
                             if keep_report {
                                 reports.push(report);
@@ -253,15 +250,14 @@ impl ExecutionClient for SimulatedExecutionClient {
 
         // Cleanup filled/cancelled/rejected orders from pending list
         for report in &reports {
-            if let Event::ExecutionReport(updated_order, _) = report {
-                if let Some(existing) = self.orders.get_mut(&updated_order.id) {
+            if let Event::ExecutionReport(updated_order, _) = report
+                && let Some(existing) = self.orders.get_mut(&updated_order.id) {
                     existing.status = updated_order.status;
                     existing.filled_quantity = updated_order.filled_quantity;
                     existing.average_filled_price = updated_order.average_filled_price;
                     existing.commission = updated_order.commission;
                     existing.updated_at = updated_order.updated_at;
                 }
-            }
         }
 
         // Clean up completed orders
@@ -390,8 +386,10 @@ mod tests {
         let last_prices = HashMap::new();
         let _risk_manager = crate::risk::RiskManager::new();
 
-        let mut china_config = crate::market::ChinaMarketConfig::default();
-        china_config.stock = Some(crate::market::stock::StockConfig::default());
+        let china_config = crate::market::ChinaMarketConfig {
+            stock: Some(crate::market::stock::StockConfig::default()),
+            ..Default::default()
+        };
         let market_config = crate::market::MarketConfig::China(china_config);
 
         let market_model = market_config.create_model();
@@ -432,7 +430,7 @@ mod tests {
                     None
                 }
             })
-            .last()
+            .next_back()
             .unwrap();
     }
 
@@ -467,8 +465,10 @@ mod tests {
         let last_prices = HashMap::new();
         let _risk_manager = crate::risk::RiskManager::new();
 
-        let mut china_config = crate::market::ChinaMarketConfig::default();
-        china_config.stock = Some(crate::market::stock::StockConfig::default());
+        let china_config = crate::market::ChinaMarketConfig {
+            stock: Some(crate::market::stock::StockConfig::default()),
+            ..Default::default()
+        };
         let market_config = crate::market::MarketConfig::China(china_config);
 
         let market_model = market_config.create_model();
@@ -523,8 +523,10 @@ mod tests {
         let last_prices = HashMap::new();
         let _risk_manager = crate::risk::RiskManager::new();
 
-        let mut china_config = crate::market::ChinaMarketConfig::default();
-        china_config.stock = Some(crate::market::stock::StockConfig::default());
+        let china_config = crate::market::ChinaMarketConfig {
+            stock: Some(crate::market::stock::StockConfig::default()),
+            ..Default::default()
+        };
         let market_config = crate::market::MarketConfig::China(china_config);
 
         let market_model = market_config.create_model();
@@ -579,8 +581,10 @@ mod tests {
         let last_prices = HashMap::new();
         let _risk_manager = crate::risk::RiskManager::new();
 
-        let mut china_config = crate::market::ChinaMarketConfig::default();
-        china_config.stock = Some(crate::market::stock::StockConfig::default());
+        let china_config = crate::market::ChinaMarketConfig {
+            stock: Some(crate::market::stock::StockConfig::default()),
+            ..Default::default()
+        };
         let market_config = crate::market::MarketConfig::China(china_config);
 
         let market_model = market_config.create_model();

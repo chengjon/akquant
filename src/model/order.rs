@@ -7,7 +7,7 @@ use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// 订单.
 ///
@@ -185,7 +185,7 @@ impl Order {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// 成交记录.
 ///

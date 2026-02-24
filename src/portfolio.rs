@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 /// 投资组合管理.
 ///
@@ -203,8 +203,8 @@ impl Portfolio {
     ) -> Decimal {
         let mut equity = self.cash;
         for (symbol, quantity) in self.positions.iter() {
-            if !quantity.is_zero() {
-                if let Some(price) = prices.get(symbol) {
+            if !quantity.is_zero()
+                && let Some(price) = prices.get(symbol) {
                     let multiplier = if let Some(instr) = instruments.get(symbol) {
                         instr.multiplier()
                     } else {
@@ -212,7 +212,6 @@ impl Portfolio {
                     };
                     equity += quantity * price * multiplier;
                 }
-            }
         }
         equity
     }
@@ -233,8 +232,8 @@ impl Portfolio {
         let option_calc = OptionMarginCalculator;
 
         for (symbol, quantity) in self.positions.iter() {
-            if !quantity.is_zero() {
-                if let Some(price) = prices.get(symbol) {
+            if !quantity.is_zero()
+                && let Some(price) = prices.get(symbol) {
                     if let Some(instr) = instruments.get(symbol) {
                         let margin = match instr.asset_type {
                             AssetType::Option => {
@@ -260,7 +259,6 @@ impl Portfolio {
                         used_margin += position_value;
                     }
                 }
-            }
         }
         used_margin
     }

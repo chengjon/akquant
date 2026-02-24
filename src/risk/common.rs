@@ -1,12 +1,9 @@
 use crate::error::AkQuantError;
-use crate::model::{Instrument, Order, OrderSide};
-use crate::portfolio::Portfolio;
+use crate::model::{Order, OrderSide};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
-use std::collections::HashMap;
 
-use super::rule::RiskRule;
-use super::RiskConfig;
+use super::rule::{RiskRule, RiskCheckContext};
 
 /// Check restricted list
 #[derive(Debug, Clone)]
@@ -20,14 +17,9 @@ impl RiskRule for RestrictedListRule {
     fn check(
         &self,
         order: &Order,
-        _portfolio: &Portfolio,
-        _instrument: &Instrument,
-        _instruments: &HashMap<String, Instrument>,
-        _active_orders: &[Order],
-        _current_prices: &HashMap<String, Decimal>,
-        config: &RiskConfig,
+        ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
-        if config.restricted_list.contains(&order.symbol) {
+        if ctx.config.restricted_list.contains(&order.symbol) {
             return Err(AkQuantError::OrderError(format!(
                 "Risk: Symbol {} is restricted",
                 order.symbol
@@ -53,21 +45,15 @@ impl RiskRule for MaxOrderSizeRule {
     fn check(
         &self,
         order: &Order,
-        _portfolio: &Portfolio,
-        _instrument: &Instrument,
-        _instruments: &HashMap<String, Instrument>,
-        _active_orders: &[Order],
-        _current_prices: &HashMap<String, Decimal>,
-        config: &RiskConfig,
+        ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
-        if let Some(max_size) = config.max_order_size {
-            if order.quantity > max_size {
+        if let Some(max_size) = ctx.config.max_order_size
+            && order.quantity > max_size {
                 return Err(AkQuantError::OrderError(format!(
                     "Risk: Order quantity {} exceeds limit {}",
                     order.quantity, max_size
                 )));
             }
-        }
         Ok(())
     }
 
@@ -88,18 +74,13 @@ impl RiskRule for MaxOrderValueRule {
     fn check(
         &self,
         order: &Order,
-        _portfolio: &Portfolio,
-        _instrument: &Instrument,
-        _instruments: &HashMap<String, Instrument>,
-        _active_orders: &[Order],
-        current_prices: &HashMap<String, Decimal>,
-        config: &RiskConfig,
+        ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
-        if let Some(max_value) = config.max_order_value {
+        if let Some(max_value) = ctx.config.max_order_value {
             let price = if let Some(p) = order.price {
                 Some(p)
             } else {
-                current_prices.get(&order.symbol).cloned()
+                ctx.current_prices.get(&order.symbol).cloned()
             };
 
             if let Some(p) = price {
@@ -132,15 +113,10 @@ impl RiskRule for MaxPositionSizeRule {
     fn check(
         &self,
         order: &Order,
-        portfolio: &Portfolio,
-        _instrument: &Instrument,
-        _instruments: &HashMap<String, Instrument>,
-        _active_orders: &[Order],
-        _current_prices: &HashMap<String, Decimal>,
-        config: &RiskConfig,
+        ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
-        if let Some(max_pos) = config.max_position_size {
-            let current_pos = portfolio
+        if let Some(max_pos) = ctx.config.max_position_size {
+            let current_pos = ctx.portfolio
                 .positions
                 .get(&order.symbol)
                 .cloned()
@@ -176,26 +152,21 @@ impl RiskRule for CashMarginRule {
     fn check(
         &self,
         order: &Order,
-        portfolio: &Portfolio,
-        instrument: &Instrument,
-        instruments: &HashMap<String, Instrument>,
-        active_orders: &[Order],
-        current_prices: &HashMap<String, Decimal>,
-        config: &RiskConfig,
+        ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError> {
-        if config.check_cash && order.side == OrderSide::Buy {
+        if ctx.config.check_cash && order.side == OrderSide::Buy {
             let mut required_margin = Decimal::ZERO;
             let mut price_found = false;
 
             // Get instrument info for multiplier and margin_ratio
-            let multiplier = instrument.multiplier();
-            let margin_ratio = instrument.margin_ratio();
+            let multiplier = ctx.instrument.multiplier();
+            let margin_ratio = ctx.instrument.margin_ratio();
 
             // Determine price for current order
             if let Some(p) = order.price {
                 required_margin = p * order.quantity * multiplier * margin_ratio;
                 price_found = true;
-            } else if let Some(p) = current_prices.get(&order.symbol) {
+            } else if let Some(p) = ctx.current_prices.get(&order.symbol) {
                 required_margin = *p * order.quantity * multiplier * margin_ratio;
                 price_found = true;
             }
@@ -203,9 +174,9 @@ impl RiskRule for CashMarginRule {
             if price_found {
                 // Check Active Buy Orders for committed margin
                 let mut committed_margin = Decimal::ZERO;
-                for o in active_orders {
+                for o in ctx.active_orders {
                     if o.side == OrderSide::Buy && o.status == crate::model::OrderStatus::New {
-                        let (o_mult, o_margin_ratio) = if let Some(instr) = instruments.get(&o.symbol) {
+                        let (o_mult, o_margin_ratio) = if let Some(instr) = ctx.instruments.get(&o.symbol) {
                             (instr.multiplier(), instr.margin_ratio())
                         } else {
                             (Decimal::ONE, Decimal::ONE)
@@ -213,17 +184,17 @@ impl RiskRule for CashMarginRule {
 
                         if let Some(p) = o.price {
                              committed_margin += p * o.quantity * o_mult * o_margin_ratio;
-                        } else if let Some(p) = current_prices.get(&o.symbol) {
+                        } else if let Some(p) = ctx.current_prices.get(&o.symbol) {
                              committed_margin += *p * o.quantity * o_mult * o_margin_ratio;
                         }
                     }
                 }
 
                 // Calculate Free Margin
-                let free_margin = portfolio.calculate_free_margin(current_prices, instruments);
+                let free_margin = ctx.portfolio.calculate_free_margin(ctx.current_prices, ctx.instruments);
 
                 // Apply Safety Margin (default 0.0001 or user config)
-                let safety_margin = config.safety_margin;
+                let safety_margin = ctx.config.safety_margin;
                 // Safety factor = 1.0 - margin (e.g., 0.9999)
                 let safety_factor = Decimal::from_f64(1.0 - safety_margin).unwrap_or(Decimal::from_f64(0.9999).unwrap());
 

@@ -7,18 +7,23 @@ use std::fmt::Debug;
 
 use super::RiskConfig;
 
+/// Context for risk checks
+pub struct RiskCheckContext<'a> {
+    pub portfolio: &'a Portfolio,
+    pub instrument: &'a Instrument,
+    pub instruments: &'a HashMap<String, Instrument>,
+    pub active_orders: &'a [Order],
+    pub current_prices: &'a HashMap<String, Decimal>,
+    pub config: &'a RiskConfig,
+}
+
 /// Trait for risk check rules
 pub trait RiskRule: Send + Sync + Debug {
     /// Check if the order passes the risk rule
     fn check(
         &self,
         order: &Order,
-        portfolio: &Portfolio,
-        instrument: &Instrument,
-        instruments: &HashMap<String, Instrument>,
-        active_orders: &[Order],
-        current_prices: &HashMap<String, Decimal>,
-        config: &RiskConfig,
+        ctx: &RiskCheckContext,
     ) -> Result<(), AkQuantError>;
 
     /// Get the name of the rule

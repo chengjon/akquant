@@ -1,6 +1,6 @@
 [package]
 name = "akquant"
-version = "0.1.47"
+version = "0.1.48"
 edition = "2024"
 description = "High-performance quantitative trading framework based on Rust and Python"
 license = "MIT"
@@ -13,8 +13,8 @@ name = "akquant"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pyo3 = { version = "0.27.2", features = ["abi3-py310", "chrono"] }
-numpy = "0.27"
+pyo3 = { version = "0.28.2", features = ["abi3-py310", "chrono", "auto-initialize"] }
+numpy = "0.28"
 pyo3-stub-gen = "0.6.0"
 serde = { version = "1.0", features = ["derive"] }
 polars = { version = "0.51.0", features = ["lazy", "parquet", "ipc", "csv"] }

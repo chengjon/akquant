@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CorporateActionType {
     Split,    // 拆股/合股
@@ -17,7 +17,7 @@ impl pyo3_stub_gen::PyStubType for CorporateActionType {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorporateAction {
     #[pyo3(get, set)]

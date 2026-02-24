@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 /// 简单移动平均线 (SMA).
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct SMA {
     period: usize,
@@ -35,11 +35,10 @@ impl SMA {
         self.buffer.push_back(value);
         self.sum += value;
 
-        if self.buffer.len() > self.period {
-            if let Some(removed) = self.buffer.pop_front() {
+        if self.buffer.len() > self.period
+            && let Some(removed) = self.buffer.pop_front() {
                 self.sum -= removed;
             }
-        }
 
         if self.buffer.len() == self.period {
             Some(self.sum / self.period as f64)
@@ -71,7 +70,7 @@ impl SMA {
 
 /// 指数移动平均线 (EMA).
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct EMA {
     period: usize,
@@ -129,7 +128,7 @@ impl EMA {
 
 /// 平滑异同移动平均线 (MACD).
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct MACD {
     fast_ema: EMA,
@@ -185,7 +184,7 @@ impl MACD {
 
 /// 相对强弱指数 (RSI).
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct RSI {
     period: usize,
@@ -219,32 +218,29 @@ impl RSI {
     /// :param value: 新数据点 (通常是收盘价)
     /// :return: 当前 RSI 值
     pub fn update(&mut self, value: f64) -> Option<f64> {
-        match self.prev_price {
-            Some(prev) => {
-                let change = value - prev;
-                let gain = if change > 0.0 { change } else { 0.0 };
-                let loss = if change < 0.0 { -change } else { 0.0 };
+        if let Some(prev) = self.prev_price {
+            let change = value - prev;
+            let gain = if change > 0.0 { change } else { 0.0 };
+            let loss = if change < 0.0 { -change } else { 0.0 };
 
-                if self.count < self.period {
-                    // Initial accumulation phase
-                    self.avg_gain += gain;
-                    self.avg_loss += loss;
-                    self.count += 1;
+            if self.count < self.period {
+                // Initial accumulation phase
+                self.avg_gain += gain;
+                self.avg_loss += loss;
+                self.count += 1;
 
-                    if self.count == self.period {
-                        // Calculate initial average
-                        self.avg_gain /= self.period as f64;
-                        self.avg_loss /= self.period as f64;
-                    }
-                } else {
-                    // Wilder's Smoothing
-                    self.avg_gain =
-                        (self.avg_gain * (self.period as f64 - 1.0) + gain) / self.period as f64;
-                    self.avg_loss =
-                        (self.avg_loss * (self.period as f64 - 1.0) + loss) / self.period as f64;
+                if self.count == self.period {
+                    // Calculate initial average
+                    self.avg_gain /= self.period as f64;
+                    self.avg_loss /= self.period as f64;
                 }
+            } else {
+                // Wilder's Smoothing
+                self.avg_gain =
+                    (self.avg_gain * (self.period as f64 - 1.0) + gain) / self.period as f64;
+                self.avg_loss =
+                    (self.avg_loss * (self.period as f64 - 1.0) + loss) / self.period as f64;
             }
-            None => {}
         }
 
         self.prev_price = Some(value);
@@ -272,7 +268,7 @@ impl RSI {
 
 /// 布林带 (Bollinger Bands).
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct BollingerBands {
     period: usize,
@@ -309,12 +305,11 @@ impl BollingerBands {
         self.sum += value;
         self.sum_sq += value * value;
 
-        if self.buffer.len() > self.period {
-            if let Some(removed) = self.buffer.pop_front() {
+        if self.buffer.len() > self.period
+            && let Some(removed) = self.buffer.pop_front() {
                 self.sum -= removed;
                 self.sum_sq -= removed * removed;
             }
-        }
 
         if self.buffer.len() == self.period {
             let mean = self.sum / self.period as f64;
@@ -354,7 +349,7 @@ impl BollingerBands {
 
 /// 平均真实波幅 (ATR).
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct ATR {
     period: usize,

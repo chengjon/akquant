@@ -1,9 +1,7 @@
 use crate::event::Event;
 use crate::execution::common::CommonMatcher;
-use crate::execution::matcher::ExecutionMatcher;
-use crate::execution::slippage::SlippageModel;
-use crate::model::{ExecutionMode, Instrument, Order};
-use rust_decimal::Decimal;
+use crate::execution::matcher::{ExecutionMatcher, MatchContext};
+use crate::model::Order;
 
 pub struct StockMatcher;
 
@@ -11,22 +9,12 @@ impl ExecutionMatcher for StockMatcher {
     fn match_order(
         &self,
         order: &mut Order,
-        event: &Event,
-        instrument: &Instrument,
-        execution_mode: ExecutionMode,
-        slippage: &dyn SlippageModel,
-        volume_limit_pct: Decimal,
-        bar_index: usize,
+        ctx: &MatchContext,
     ) -> Option<Event> {
         // Stock: Check Lot Size for Buy orders (e.g. A-Share 100 shares)
         CommonMatcher::match_order(
             order,
-            event,
-            instrument,
-            execution_mode,
-            slippage,
-            volume_limit_pct,
-            bar_index,
+            ctx,
             true, // check_lot_size = true for Stock
         )
     }
@@ -35,7 +23,8 @@ impl ExecutionMatcher for StockMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{InstrumentEnum, OrderSide, OrderType, OrderStatus, TimeInForce, StockInstrument};
+    use crate::model::{InstrumentEnum, OrderSide, OrderType, OrderStatus, TimeInForce, StockInstrument, Instrument, ExecutionMode};
+    use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
     fn create_order(side: OrderSide, type_: OrderType, price: Option<Decimal>, stop: Option<Decimal>) -> Order {
@@ -88,14 +77,17 @@ mod tests {
         };
 
         let event = Event::Bar(bar);
+        let ctx = MatchContext {
+            event: &event,
+            instrument: &instr,
+            execution_mode: ExecutionMode::NextOpen,
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 0,
+        };
         let res = matcher.match_order(
             &mut order,
-            &event,
-            &instr,
-            ExecutionMode::NextOpen,
-            &crate::execution::slippage::ZeroSlippage,
-            Decimal::ZERO,
-            0
+            &ctx,
         );
 
         assert!(res.is_some());
@@ -126,14 +118,17 @@ mod tests {
         };
 
         let event = Event::Bar(bar);
+        let ctx = MatchContext {
+            event: &event,
+            instrument: &instr,
+            execution_mode: ExecutionMode::NextOpen,
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 0,
+        };
         let res = matcher.match_order(
             &mut order,
-            &event,
-            &instr,
-            ExecutionMode::NextOpen,
-            &crate::execution::slippage::ZeroSlippage,
-            Decimal::ZERO,
-            0
+            &ctx,
         );
 
         assert!(res.is_none());

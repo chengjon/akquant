@@ -81,6 +81,12 @@ pub struct DataProcessor {
     seen_symbols: HashSet<String>,
 }
 
+impl Default for DataProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DataProcessor {
     pub fn new() -> Self {
         Self {
@@ -95,8 +101,8 @@ impl DataProcessor {
         }
         if let Ok(mut buffer) = engine.history_buffer.write() {
             for (symbol, _) in engine.instruments.iter() {
-                if !self.seen_symbols.contains(symbol) {
-                    if let Some(&last_price) = engine.last_prices.get(symbol) {
+                if !self.seen_symbols.contains(symbol)
+                    && let Some(&last_price) = engine.last_prices.get(symbol) {
                         // Create synthetic bar
                         let bar = Bar {
                             timestamp: self.last_timestamp,
@@ -110,7 +116,6 @@ impl DataProcessor {
                         };
                         buffer.update(&bar);
                     }
-                }
             }
         }
     }
@@ -140,6 +145,7 @@ impl Processor for DataProcessor {
                 Ok(ProcessorResult::Next)
             }
             FeedAction::Event(event) => {
+                let event = *event;
                 let timestamp = match &event {
                     Event::Bar(b) => b.timestamp,
                     Event::Tick(t) => t.timestamp,
@@ -190,14 +196,17 @@ impl Processor for DataProcessor {
 
                     // Settlement Manager (T+1, Option Expiry, Day Order Expiry)
                     let mut expired_orders = Vec::new();
+                    let settlement_ctx = crate::settlement::manager::SettlementContext {
+                        date: local_date,
+                        instruments: &engine.instruments,
+                        last_prices: &engine.last_prices,
+                        market_manager: &engine.market_manager,
+                    };
                     engine.settlement_manager.process_daily_settlement(
-                        local_date,
                         &mut engine.state.portfolio,
-                        &engine.instruments,
-                        &engine.last_prices,
-                        &engine.market_manager,
                         &mut engine.state.order_manager.active_orders,
                         &mut expired_orders,
+                        &settlement_ctx,
                     );
 
                     for o in expired_orders {
@@ -315,17 +324,11 @@ pub struct StatisticsProcessor;
 
 impl Processor for StatisticsProcessor {
     fn process(&mut self, engine: &mut Engine, _py: Python<'_>, _strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
-        if let Some(event) = engine.current_event.clone() {
-            match event {
-                 Event::Bar(_) | Event::Tick(_) => {
-                    if let Some(timestamp) = engine.clock.timestamp() {
-                         let equity = engine.state.portfolio.calculate_equity(&engine.last_prices, &engine.instruments);
-                         engine.statistics_manager.update(timestamp, equity, engine.state.portfolio.cash);
-                    }
-                 }
-                 _ => {}
+        if let Some(Event::Bar(_) | Event::Tick(_)) = engine.current_event.clone()
+            && let Some(timestamp) = engine.clock.timestamp() {
+                let equity = engine.state.portfolio.calculate_equity(&engine.last_prices, &engine.instruments);
+                engine.statistics_manager.update(timestamp, equity, engine.state.portfolio.cash);
             }
-        }
         Ok(ProcessorResult::Next)
     }
 }
@@ -351,9 +354,8 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_data_alignment_late_fill() {
-        pyo3::prepare_freethreaded_python();
+        // pyo3::prepare_freethreaded_python() is deprecated and not needed with auto-initialize feature
 
         let mut engine = Engine::new();
         engine.instruments.insert("A".to_string(), create_instrument("A"));
@@ -401,7 +403,8 @@ mod tests {
         engine.state.feed.add_bar(bar_t2_b).unwrap();
         engine.state.feed.add_bar(bar_t3_a).unwrap();
 
-        Python::with_gil(|py| {
+        // Use Python::attach as recommended by PyO3 0.28+
+        pyo3::Python::attach(|py| {
             let locals = py.import("builtins").unwrap();
             let strategy = locals.getattr("None").unwrap();
 
@@ -437,9 +440,8 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_corporate_action_processing() {
-        pyo3::prepare_freethreaded_python();
+        // pyo3::prepare_freethreaded_python();
 
         use crate::model::corporate_action::{CorporateAction, CorporateActionType};
         use chrono::NaiveDate;
@@ -481,7 +483,7 @@ mod tests {
 
         // T1: 2023-01-01 (Before Split)
         let bar_t1 = Bar {
-            timestamp: 1672531200_000_000_000, // 2023-01-01
+            timestamp: 1_672_531_200_000_000_000, // 2023-01-01
             symbol: symbol.clone(),
             open: dec!(100), high: dec!(100), low: dec!(100), close: dec!(100), volume: dec!(100),
             extra: HashMap::new(),
@@ -490,7 +492,7 @@ mod tests {
 
         // T2: 2023-01-02 (Split Day)
         let bar_t2 = Bar {
-            timestamp: 1672617600_000_000_000, // 2023-01-02
+            timestamp: 1_672_617_600_000_000_000, // 2023-01-02
             symbol: symbol.clone(),
             open: dec!(50), high: dec!(50), low: dec!(50), close: dec!(50), volume: dec!(100),
             extra: HashMap::new(),
@@ -499,14 +501,15 @@ mod tests {
 
         // T3: 2023-01-03 (Dividend Day)
         let bar_t3 = Bar {
-            timestamp: 1672704000_000_000_000, // 2023-01-03
+            timestamp: 1_672_704_000_000_000_000, // 2023-01-03
             symbol: symbol.clone(),
             open: dec!(50), high: dec!(50), low: dec!(50), close: dec!(50), volume: dec!(100),
             extra: HashMap::new(),
         };
         engine.state.feed.add_bar(bar_t3).unwrap();
 
-        Python::with_gil(|py| {
+        // Use Python::attach as recommended by PyO3 0.28+
+        pyo3::Python::attach(|py| {
             let locals = py.import("builtins").unwrap();
             let strategy = locals.getattr("None").unwrap();
 

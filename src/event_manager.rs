@@ -20,8 +20,8 @@ impl EventManager {
     }
 
     /// 发送事件
-    pub fn send(&self, event: Event) -> Result<(), crossbeam_channel::SendError<Event>> {
-        self.tx.send(event)
+    pub fn send(&self, event: Event) -> Result<(), Box<crossbeam_channel::SendError<Event>>> {
+        self.tx.send(event).map_err(Box::new)
     }
 
     /// 获取发送端 (用于克隆)
@@ -32,10 +32,7 @@ impl EventManager {
     /// 尝试接收事件 (非阻塞)
     pub fn try_recv(&self) -> Option<Event> {
         if let Some(rx) = &self.rx {
-             match rx.try_recv() {
-                Ok(event) => Some(event),
-                Err(_) => None,
-             }
+             rx.try_recv().ok()
         } else {
             None
         }
@@ -45,10 +42,7 @@ impl EventManager {
     #[allow(dead_code)]
     pub fn recv(&self) -> Option<Event> {
         if let Some(rx) = &self.rx {
-            match rx.recv() {
-                Ok(event) => Some(event),
-                Err(_) => None,
-            }
+            rx.recv().ok()
         } else {
             None
         }

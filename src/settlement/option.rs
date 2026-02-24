@@ -23,18 +23,18 @@ impl SettlementHandler for OptionSettlementHandler {
 
         // Convert NaiveDate to YYYYMMDD u32 for comparison
         let current_date_int = (date.year() as u32) * 10000
-            + (date.month() as u32) * 100
-            + (date.day() as u32);
+            + date.month() * 100
+            + date.day();
 
         for (symbol, qty) in portfolio.positions.iter() {
             if qty.is_zero() {
                 continue;
             }
 
-            if let Some(instr) = instruments.get(symbol) {
-                if instr.asset_type == AssetType::Option {
-                    if let Some(expiry_date_int) = instr.expiry_date() {
-                        if current_date_int >= expiry_date_int {
+            if let Some(instr) = instruments.get(symbol)
+                && instr.asset_type == AssetType::Option
+                    && let Some(expiry_date_int) = instr.expiry_date()
+                        && current_date_int >= expiry_date_int {
                             // Expired
                             // Calculate Payoff
                             let strike = instr.strike_price().unwrap_or(Decimal::ZERO);
@@ -73,9 +73,6 @@ impl SettlementHandler for OptionSettlementHandler {
                                 description: format!("Option Expiry for {}", symbol),
                             });
                         }
-                    }
-                }
-            }
         }
 
         tasks

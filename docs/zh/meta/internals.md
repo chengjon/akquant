@@ -96,7 +96,22 @@ akquant/
 *   **`instrument.rs`**: `Instrument` 包含 `multiplier` (合约乘数), `tick_size`, `margin_ratio` 等。
 *   **`market_data.rs`**: `Bar` (OHLCV) 和 `Tick` (最新价/量)。
 
-### 2.2 执行层 (`src/execution/`)
+### 2.3 市场数据处理与公司行为
+
+AKQuant 在数据处理阶段集成了高级的市场特性支持：
+
+*   **数据对齐 (Data Alignment)**:
+    *   在 `src/pipeline/stages.rs` 的 `DataProcessor` 中实现。
+    *   **Late Fill Strategy**: 当检测到某个标的数据缺失（如停牌）时，自动使用上一时刻的收盘价生成合成 K 线，成交量设为 0。
+    *   这保证了多标的回测时时间轴的严格对齐，方便进行矩阵运算。
+
+*   **公司行为 (Corporate Actions)**:
+    *   在 `src/market/corporate_action.rs` 的 `CorporateActionManager` 中实现。
+    *   支持 **Split (拆股)**: 自动调整持仓数量 (`quantity *= ratio`) 和可用持仓。
+    *   支持 **Dividend (分红)**: 自动增加账户现金 (`cash += quantity * dividend_per_share`)。
+    *   处理逻辑集成在每日数据更新流程中，确保在正确的除权除息日生效。
+
+### 2.4 执行层 (`src/execution/`)
 
 执行层负责处理订单的生命周期，包括验证、撮合和生成成交报告。
 

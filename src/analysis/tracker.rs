@@ -6,10 +6,21 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
+pub struct TradeEntry {
+    pub quantity: Decimal,
+    pub price: Decimal,
+    pub commission: Decimal,
+    pub bar_idx: usize,
+    pub timestamp: i64,
+    pub tag: String,
+    pub entry_portfolio_value: Decimal,
+}
+
+#[derive(Debug, Clone)]
 pub struct TradeTracker {
     // (qty, price, commission, bar_idx, timestamp, tag, entry_portfolio_value)
-    pub long_inventory: HashMap<String, VecDeque<(Decimal, Decimal, Decimal, usize, i64, String, Decimal)>>,
-    pub short_inventory: HashMap<String, VecDeque<(Decimal, Decimal, Decimal, usize, i64, String, Decimal)>>,
+    pub long_inventory: HashMap<String, VecDeque<TradeEntry>>,
+    pub short_inventory: HashMap<String, VecDeque<TradeEntry>>,
     pub closed_trades: Arc<Vec<ClosedTrade>>,
     pub closed_trades_stats: Vec<(Decimal, Decimal, Decimal, bool)>, // (pnl, return_pct, bars, is_win)
 
@@ -49,17 +60,17 @@ impl TradeTracker {
     pub fn on_split(&mut self, symbol: &str, ratio: Decimal) {
         // Adjust Long Inventory
         if let Some(queue) = self.long_inventory.get_mut(symbol) {
-            for (qty, price, _, _, _, _, _) in queue.iter_mut() {
-                *qty *= ratio;
-                *price /= ratio;
+            for entry in queue.iter_mut() {
+                entry.quantity *= ratio;
+                entry.price /= ratio;
             }
         }
 
         // Adjust Short Inventory
         if let Some(queue) = self.short_inventory.get_mut(symbol) {
-            for (qty, price, _, _, _, _, _) in queue.iter_mut() {
-                *qty *= ratio;
-                *price /= ratio;
+            for entry in queue.iter_mut() {
+                entry.quantity *= ratio;
+                entry.price /= ratio;
             }
         }
     }
@@ -74,15 +85,15 @@ impl TradeTracker {
 
         // Long positions: (Price - Entry) * Qty * Multiplier
         if let Some(queue) = self.long_inventory.get(symbol) {
-            for (qty, price, _, _, _, _, _) in queue {
-                pnl += (current_price - price) * qty * multiplier;
+            for entry in queue {
+                pnl += (current_price - entry.price) * entry.quantity * multiplier;
             }
         }
 
         // Short positions: (Entry - Price) * Qty * Multiplier
         if let Some(queue) = self.short_inventory.get(symbol) {
-            for (qty, price, _, _, _, _, _) in queue {
-                pnl += (price - current_price) * qty * multiplier;
+            for entry in queue {
+                pnl += (entry.price - current_price) * entry.quantity * multiplier;
             }
         }
 
@@ -114,30 +125,29 @@ impl TradeTracker {
                 // Try to cover shorts
                 if let Some(inventory) = self.short_inventory.get_mut(&symbol) {
                     while remaining_qty > Decimal::ZERO && !inventory.is_empty() {
-                        let (match_qty, match_price, match_comm, match_bar_idx, match_timestamp, match_tag, match_portfolio_value) =
-                            inventory.front_mut().unwrap();
-                        let covered_qty = remaining_qty.min(*match_qty);
+                        let match_entry = inventory.front_mut().unwrap();
+                        let covered_qty = remaining_qty.min(match_entry.quantity);
 
                         // Short PnL = (Entry Price - Exit Price) * Qty
-                        let pnl = (*match_price - price) * covered_qty;
+                        let pnl = (match_entry.price - price) * covered_qty;
                         self.total_pnl += pnl;
 
-                        let entry_val = *match_price * covered_qty;
+                        let entry_val = match_entry.price * covered_qty;
                         let ret_pct = if !entry_val.is_zero() {
                             pnl / entry_val
                         } else {
                             Decimal::ZERO
                         };
-                        let bars = if bar_idx >= *match_bar_idx {
-                            Decimal::from((bar_idx - *match_bar_idx) as i64)
+                        let bars = if bar_idx >= match_entry.bar_idx {
+                            Decimal::from((bar_idx - match_entry.bar_idx) as i64)
                         } else {
                             Decimal::ZERO
                         };
 
                         // Pro-rate commission for entry and exit
                         // Entry comm (partial)
-                        let entry_comm_part = if *match_qty > Decimal::ZERO {
-                            *match_comm * (covered_qty / *match_qty)
+                        let entry_comm_part = if match_entry.quantity > Decimal::ZERO {
+                            match_entry.commission * (covered_qty / match_entry.quantity)
                         } else {
                             Decimal::ZERO
                         };
@@ -160,7 +170,7 @@ impl TradeTracker {
                             // Short trade:
                             // MAE (Adverse) = Max High during trade
                             // MFE (Favorable) = Min Low during trade
-                            let start_ts = *match_timestamp;
+                            let start_ts = match_entry.timestamp;
                             let end_ts = timestamp;
 
                             // Find indices
@@ -174,7 +184,7 @@ impl TradeTracker {
                             };
 
                             // Iterate
-                            let entry_px_f64 = to_f64(*match_price);
+                            let entry_px_f64 = to_f64(match_entry.price);
                             let mut max_high = entry_px_f64;
                             let mut min_low = entry_px_f64;
 
@@ -246,9 +256,9 @@ impl TradeTracker {
 
                         Arc::make_mut(&mut self.closed_trades).push(ClosedTrade {
                             symbol: symbol.clone(),
-                            entry_time: *match_timestamp,
+                            entry_time: match_entry.timestamp,
                             exit_time: timestamp,
-                            entry_price: to_f64(*match_price),
+                            entry_price: to_f64(match_entry.price),
                             exit_price: to_f64(price),
                             quantity: to_f64(covered_qty),
                             side: "Short".to_string(),
@@ -257,12 +267,12 @@ impl TradeTracker {
                             return_pct: to_f64(ret_pct) * 100.0,
                             commission: to_f64(total_trade_comm),
                             duration_bars: bars.to_usize().unwrap_or(0),
-                            duration: ((timestamp as i128) - (*match_timestamp as i128)) as u64,
+                            duration: ((timestamp as i128) - (match_entry.timestamp as i128)) as u64,
                             mae,
                             mfe,
-                            entry_tag: match_tag.clone(),
+                            entry_tag: match_entry.tag.clone(),
                             exit_tag: tag.clone(),
-                            entry_portfolio_value: to_f64(*match_portfolio_value),
+                            entry_portfolio_value: to_f64(match_entry.entry_portfolio_value),
                             max_drawdown_pct: max_dd_pct,
                         });
 
@@ -289,11 +299,11 @@ impl TradeTracker {
                         }
 
                         remaining_qty -= covered_qty;
-                        *match_qty -= covered_qty;
+                        match_entry.quantity -= covered_qty;
                         // Reduce remaining commission in inventory proportionally
-                        *match_comm -= entry_comm_part;
+                        match_entry.commission -= entry_comm_part;
 
-                        if *match_qty <= Decimal::new(1, 6) {
+                        if match_entry.quantity <= Decimal::new(1, 6) {
                             inventory.pop_front();
                         }
                     }
@@ -309,36 +319,43 @@ impl TradeTracker {
                     self.long_inventory
                         .entry(symbol.clone())
                         .or_default()
-                        .push_back((remaining_qty, price, remaining_comm, bar_idx, timestamp, tag, portfolio_value));
+                        .push_back(TradeEntry {
+                            quantity: remaining_qty,
+                            price,
+                            commission: remaining_comm,
+                            bar_idx,
+                            timestamp,
+                            tag: tag.clone(),
+                            entry_portfolio_value: portfolio_value,
+                        });
                 }
             }
             OrderSide::Sell => {
                 // Try to close longs
                 if let Some(inventory) = self.long_inventory.get_mut(&symbol) {
                     while remaining_qty > Decimal::ZERO && !inventory.is_empty() {
-                        let (match_qty, match_price, match_comm, match_bar_idx, match_timestamp, match_tag, match_portfolio_value) =
-                            inventory.front_mut().unwrap();
-                        let covered_qty = remaining_qty.min(*match_qty);
+                        let match_entry = inventory.front_mut().unwrap();
+                        let covered_qty = remaining_qty.min(match_entry.quantity);
 
                         // Long PnL = (Exit Price - Entry Price) * Qty
-                        let pnl = (price - *match_price) * covered_qty;
+                        let pnl = (price - match_entry.price) * covered_qty;
                         self.total_pnl += pnl;
 
-                        let entry_val = *match_price * covered_qty;
+                        let entry_val = match_entry.price * covered_qty;
                         let ret_pct = if !entry_val.is_zero() {
                             pnl / entry_val
                         } else {
                             Decimal::ZERO
                         };
-                        let bars = if bar_idx >= *match_bar_idx {
-                            Decimal::from((bar_idx - *match_bar_idx) as i64)
+                        let bars = if bar_idx >= match_entry.bar_idx {
+                            Decimal::from((bar_idx - match_entry.bar_idx) as i64)
                         } else {
                             Decimal::ZERO
                         };
 
                         // Pro-rate commission
-                        let entry_comm_part = if *match_qty > Decimal::ZERO {
-                            *match_comm * (covered_qty / *match_qty)
+                        let entry_comm_part = if match_entry.quantity > Decimal::ZERO {
+                            match_entry.commission * (covered_qty / match_entry.quantity)
                         } else {
                             Decimal::ZERO
                         };
@@ -360,7 +377,7 @@ impl TradeTracker {
                             // Long trade:
                             // MAE (Adverse) = Min Low during trade
                             // MFE (Favorable) = Max High during trade
-                            let start_ts = *match_timestamp;
+                            let start_ts = match_entry.timestamp;
                             let end_ts = timestamp;
 
                             let start_idx = match hist.timestamps.binary_search(&start_ts) {
@@ -372,7 +389,7 @@ impl TradeTracker {
                                 Err(i) => i,
                             };
 
-                            let entry_px_f64 = to_f64(*match_price);
+                            let entry_px_f64 = to_f64(match_entry.price);
                             let mut max_high = entry_px_f64;
                             let mut min_low = entry_px_f64;
 
@@ -443,9 +460,9 @@ impl TradeTracker {
 
                         Arc::make_mut(&mut self.closed_trades).push(ClosedTrade {
                             symbol: symbol.clone(),
-                            entry_time: *match_timestamp,
+                            entry_time: match_entry.timestamp,
                             exit_time: timestamp,
-                            entry_price: to_f64(*match_price),
+                            entry_price: to_f64(match_entry.price),
                             exit_price: to_f64(price),
                             quantity: to_f64(covered_qty),
                             side: "Long".to_string(),
@@ -454,12 +471,12 @@ impl TradeTracker {
                             return_pct: to_f64(ret_pct) * 100.0,
                             commission: to_f64(total_trade_comm),
                             duration_bars: bars.to_usize().unwrap_or(0),
-                            duration: ((timestamp as i128) - (*match_timestamp as i128)) as u64,
+                            duration: ((timestamp as i128) - (match_entry.timestamp as i128)) as u64,
                             mae,
                             mfe,
-                            entry_tag: match_tag.clone(),
+                            entry_tag: match_entry.tag.clone(),
                             exit_tag: tag.clone(),
-                            entry_portfolio_value: to_f64(*match_portfolio_value),
+                            entry_portfolio_value: to_f64(match_entry.entry_portfolio_value),
                             max_drawdown_pct: max_dd_pct,
                         });
 
@@ -486,10 +503,10 @@ impl TradeTracker {
                         }
 
                         remaining_qty -= covered_qty;
-                        *match_qty -= covered_qty;
-                        *match_comm -= entry_comm_part;
+                        match_entry.quantity -= covered_qty;
+                        match_entry.commission -= entry_comm_part;
 
-                        if *match_qty <= Decimal::new(1, 6) {
+                        if match_entry.quantity <= Decimal::new(1, 6) {
                             inventory.pop_front();
                         }
                     }
@@ -504,22 +521,30 @@ impl TradeTracker {
                     self.short_inventory
                         .entry(symbol.clone())
                         .or_default()
-                        .push_back((remaining_qty, price, remaining_comm, bar_idx, timestamp, tag, portfolio_value));
+                        .push_back(TradeEntry {
+                            quantity: remaining_qty,
+                            price,
+                            commission: remaining_comm,
+                            bar_idx,
+                            timestamp,
+                            tag: tag.clone(),
+                            entry_portfolio_value: portfolio_value,
+                        });
                 }
             }
         }
     }
 
     pub fn get_average_price(&self, symbol: &str) -> Decimal {
-        let calc_avg = |inventory: &VecDeque<(Decimal, Decimal, Decimal, usize, i64, String, Decimal)>| {
+        let calc_avg = |inventory: &VecDeque<TradeEntry>| {
             if inventory.is_empty() {
                 return Decimal::ZERO;
             }
             let mut total_val = Decimal::ZERO;
             let mut total_qty = Decimal::ZERO;
-            for (qty, price, _, _, _, _, _) in inventory {
-                total_val += *qty * *price;
-                total_qty += *qty;
+            for entry in inventory {
+                total_val += entry.quantity * entry.price;
+                total_qty += entry.quantity;
             }
             if total_qty.is_zero() {
                 Decimal::ZERO
@@ -543,15 +568,15 @@ impl TradeTracker {
         if let Some(prices) = current_prices {
             for (symbol, inventory) in &self.long_inventory {
                 if let Some(price) = prices.get(symbol) {
-                    for (qty, entry_price, _, _, _, _, _) in inventory {
-                        unrealized_pnl += (*price - *entry_price) * *qty;
+                    for entry in inventory {
+                        unrealized_pnl += (*price - entry.price) * entry.quantity;
                     }
                 }
             }
             for (symbol, inventory) in &self.short_inventory {
                 if let Some(price) = prices.get(symbol) {
-                    for (qty, entry_price, _, _, _, _, _) in inventory {
-                        unrealized_pnl += (*entry_price - *price) * *qty;
+                    for entry in inventory {
+                        unrealized_pnl += (entry.price - *price) * entry.quantity;
                     }
                 }
             }

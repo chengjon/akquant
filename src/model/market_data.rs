@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// K线数据结构.
+/// K 线数据结构.
 ///
 /// :ivar timestamp: Unix 时间戳 (纳秒)
 /// :ivar open: 开盘价
@@ -48,6 +48,7 @@ impl Bar {
     /// :param extra: 自定义字段 (可选)
     #[new]
     #[pyo3(signature = (timestamp, open, high, low, close, volume, symbol, extra=None))]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         timestamp: &Bound<'_, PyAny>,
         open: &Bound<'_, PyAny>,
@@ -159,7 +160,7 @@ impl Bar {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Tick 数据结构.
 ///

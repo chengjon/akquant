@@ -21,6 +21,12 @@ pub struct StatisticsManager {
     pub snapshots: Vec<(i64, Vec<PositionSnapshot>)>,
 }
 
+impl Default for StatisticsManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StatisticsManager {
     /// 创建新的统计管理器
     pub fn new() -> Self {
@@ -156,16 +162,16 @@ impl StatisticsManager {
             }
         }
 
-        BacktestResult::calculate(
-            equity_curve,
-            cash_curve,
+        BacktestResult::calculate(crate::analysis::CalculatorInput {
+            equity_curve_decimal: equity_curve,
+            cash_curve_decimal: cash_curve,
             snapshots,
             trade_pnl,
-            order_manager.trade_tracker.closed_trades.to_vec(),
+            trades: order_manager.trade_tracker.closed_trades.to_vec(),
             initial_cash,
-            order_manager.get_all_orders(),
-            order_manager.trades.clone(),
-        )
+            orders: order_manager.get_all_orders(),
+            executions: order_manager.trades.clone(),
+        })
     }
 
     // Removed create_backtest_result as it is merged into generate_backtest_result

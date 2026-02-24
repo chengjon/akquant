@@ -1,9 +1,7 @@
 use crate::event::Event;
 use crate::execution::common::CommonMatcher;
-use crate::execution::matcher::ExecutionMatcher;
-use crate::execution::slippage::SlippageModel;
-use crate::model::{ExecutionMode, Instrument, Order};
-use rust_decimal::Decimal;
+use crate::execution::matcher::{ExecutionMatcher, MatchContext};
+use crate::model::Order;
 
 pub struct FuturesMatcher;
 
@@ -11,12 +9,7 @@ impl ExecutionMatcher for FuturesMatcher {
     fn match_order(
         &self,
         order: &mut Order,
-        event: &Event,
-        instrument: &Instrument,
-        execution_mode: ExecutionMode,
-        slippage: &dyn SlippageModel,
-        volume_limit_pct: Decimal,
-        bar_index: usize,
+        ctx: &MatchContext,
     ) -> Option<Event> {
         // Futures specific logic
         // Futures typically allow fractional lot sizes or just 1 contract.
@@ -30,12 +23,7 @@ impl ExecutionMatcher for FuturesMatcher {
 
         CommonMatcher::match_order(
             order,
-            event,
-            instrument,
-            execution_mode,
-            slippage,
-            volume_limit_pct,
-            bar_index,
+            ctx,
             false, // Don't enforce "Buy Only Lot Size" rule specific to A-shares. Futures can buy/sell any integer lot.
         )
     }

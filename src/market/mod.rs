@@ -50,8 +50,10 @@ mod tests {
     #[should_panic(expected = "Futures market configuration not found")]
     fn test_china_market_missing_config_panic() {
         // Create config with only Stock enabled
-        let mut config = ChinaMarketConfig::default();
-        config.stock = Some(stock::StockConfig::default());
+        let config = ChinaMarketConfig {
+            stock: Some(stock::StockConfig::default()),
+            ..Default::default()
+        };
         // futures is None by default
 
         let market = ChinaMarket::from_config(config);

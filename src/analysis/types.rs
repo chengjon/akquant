@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// 平仓交易记录.
 ///
@@ -76,7 +76,7 @@ impl ClosedTrade {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 /// 绩效指标.
 ///
@@ -205,7 +205,7 @@ impl PerformanceMetrics {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// 交易盈亏统计 (FIFO).
 ///
@@ -322,7 +322,7 @@ impl TradePnL {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// 每日持仓快照.
 ///

@@ -1,7 +1,7 @@
 use crate::event::Event;
-use crate::execution::slippage::SlippageModel;
+use crate::execution::matcher::MatchContext;
 use crate::model::{
-    ExecutionMode, Instrument, Order, OrderSide, OrderStatus, OrderType, TimeInForce, Trade,
+    ExecutionMode, Order, OrderSide, OrderStatus, OrderType, TimeInForce, Trade,
 };
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -13,27 +13,24 @@ impl CommonMatcher {
     /// 核心撮合逻辑 (支持穿透检查、Bar内止损、价格改善)
     ///
     /// :param order: 订单
-    /// :param event: 事件 (Bar/Tick)
-    /// :param instrument: 标的定义
-    /// :param execution_mode: 撮合模式
-    /// :param slippage: 滑点模型
-    /// :param volume_limit_pct: 成交量限制比例
-    /// :param bar_index: 当前 Bar 索引
+    /// :param ctx: 撮合上下文
     /// :param check_lot_size: 是否检查最小交易单位 (针对股票买入等场景)
     pub fn match_order(
         order: &mut Order,
-        event: &Event,
-        instrument: &Instrument,
-        execution_mode: ExecutionMode,
-        slippage: &dyn SlippageModel,
-        volume_limit_pct: Decimal,
-        bar_index: usize,
+        ctx: &MatchContext,
         check_lot_size: bool,
     ) -> Option<Event> {
+        let event = ctx.event;
+        let instrument = ctx.instrument;
+        let execution_mode = ctx.execution_mode;
+        let slippage = ctx.slippage;
+        let volume_limit_pct = ctx.volume_limit_pct;
+        let bar_index = ctx.bar_index;
+
         // 0. 检查最小交易单位 (Lot Size)
         // 仅针对买入订单，且必须存在标的定义
-        if check_lot_size && order.side == OrderSide::Buy {
-            if order.quantity % instrument.lot_size() != Decimal::ZERO {
+        if check_lot_size && order.side == OrderSide::Buy
+            && order.quantity % instrument.lot_size() != Decimal::ZERO {
                 order.status = OrderStatus::Rejected;
                 order.reject_reason = format!(
                     "Quantity {} is not a multiple of lot size {}",
@@ -47,7 +44,6 @@ impl CommonMatcher {
                 }
                 return Some(Event::ExecutionReport(order.clone(), None));
             }
-        }
 
         match event {
             Event::Bar(bar) => {
@@ -162,8 +158,8 @@ impl CommonMatcher {
                                 }
 
                                 // 3.3 Apply Stop-Limit Constraints (In-Bar Trigger)
-                                if is_triggered_now {
-                                    if let Some(tp) = trigger_price_val {
+                                if is_triggered_now
+                                    && let Some(tp) = trigger_price_val {
                                         let is_gap = match order.side {
                                             OrderSide::Buy => bar.open >= tp,
                                             OrderSide::Sell => bar.open <= tp,
@@ -191,7 +187,6 @@ impl CommonMatcher {
                                             }
                                         }
                                     }
-                                }
                                 execute_price = Some(final_fill_price);
                             }
                         }
@@ -283,7 +278,7 @@ impl CommonMatcher {
                                  OrderSide::Buy => if tick.price <= limit { execute_price = Some(limit) },
                                  OrderSide::Sell => if tick.price >= limit { execute_price = Some(limit) },
                              }
-                             if let Some(_) = execute_price {
+                             if execute_price.is_some() {
                                  execute_price = Some(tick.price);
                              }
                          }

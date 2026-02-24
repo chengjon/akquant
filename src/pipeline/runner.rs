@@ -6,6 +6,12 @@ pub struct PipelineRunner {
     processors: Vec<Box<dyn Processor>>,
 }
 
+impl Default for PipelineRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PipelineRunner {
     pub fn new() -> Self {
         Self {
