@@ -55,7 +55,6 @@ extra_javascript:
 
 plugins:
   - search
-  - sitemap
   - i18n:
       docs_structure: folder
       languages:
