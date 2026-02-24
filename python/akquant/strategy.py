@@ -1309,7 +1309,7 @@ class Strategy:
         :param kwargs: 其他下单参数
         """
         portfolio_value = self.get_portfolio_value()
-        target_value = portfolio_value * target_percent
+        target_value = portfolio_value * float(target_percent)
         self.order_target_value(target_value, symbol, price, **kwargs)
 
     def buy_all(self, symbol: Optional[str] = None) -> None:
