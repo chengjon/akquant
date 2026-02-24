@@ -204,16 +204,16 @@ def run_backtest():
 ```mermaid
 graph TD
     subgraph "Python Layer (Strategy & Data)"
-        UserStrategy[用户策略 Strategy]
-        PyData[Pandas DataFrame]
+        UserStrategy["用户策略 Strategy"]
+        PyData["Pandas DataFrame"]
     end
 
     subgraph "Rust Layer (High Performance Core)"
-        Engine[Engine (引擎核心)]
-        DataFeed[DataFeed (数据源)]
-        Portfolio[Portfolio (账户状态)]
-        OrderBook[OrderBook (订单簿)]
-        RiskManager[RiskManager (风控)]
+        Engine["Engine (引擎核心)"]
+        DataFeed["DataFeed (数据源)"]
+        Portfolio["Portfolio (账户状态)"]
+        OrderBook["OrderBook (订单簿)"]
+        RiskManager["RiskManager (风控)"]
     end
 
     PyData -->|转换 & 加载| DataFeed
