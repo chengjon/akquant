@@ -72,6 +72,27 @@ plugins:
             Architecture & Internals: 架构与原理
             Architecture: 系统架构
             Internals: 内部设计
+            Textbook: 量化教材
+            Introduction: 课程简介
+            Foundations: 第一部分：基础篇
+            The Engine: 第二部分：引擎篇
+            Strategies: 第三部分：策略篇
+            Advanced: 第四部分：高阶篇
+            Live Trading: 第五部分：实盘篇
+            01_Overview & Setup: 第1章：概述与环境
+            02_Programming Guide: 第2章：编程生存指南
+            03_Data Acquisition: 第3章：数据获取
+            04_Backtest Engine: 第4章：回测引擎
+            05_Strategy & Order: 第5章：构建策略
+            06_Stock A-Share: 第6章：A股实战
+            07_Futures: 第7章：期货策略
+            08_Options & Derivatives: 第8章：期权与衍生品
+            09_Funds & Asset Allocation: 第9章：基金与资产配置
+            10_Evaluation Metrics: 第10章：策略评价
+            11_Optimization: 第11章：参数优化
+            12_Machine Learning: 第12章：机器学习
+            13_Visualization: 第13章：可视化
+            14_Live Trading: 第14章：实盘交易
         - locale: en
           name: English
           build: true
@@ -99,9 +120,51 @@ plugins:
             Architecture & Internals: Architecture & Internals
             Architecture: Architecture
             Internals: Internals
+            Textbook: Textbook
+            Introduction: Introduction
+            Foundations: Part 1 - Foundations
+            The Engine: Part 2 - The Engine
+            Strategies: Part 3 - Strategies
+            Advanced: Part 4 - Advanced
+            Live Trading: Part 5 - Live Trading
+            01_Overview & Setup: Chap 1 - Overview & Setup
+            02_Programming Guide: Chap 2 - Programming Guide
+            03_Data Acquisition: Chap 3 - Data Acquisition
+            04_Backtest Engine: Chap 4 - Backtest Engine
+            05_Strategy & Order: Chap 5 - Strategy & Order
+            06_Stock A-Share: Chap 6 - Stock A-Share
+            07_Futures: Chap 7 - Futures
+            08_Options & Derivatives: Chap 8 - Options & Derivatives
+            09_Funds & Asset Allocation: Chap 9 - Funds & Asset Allocation
+            10_Evaluation Metrics: Chap 10 - Evaluation Metrics
+            11_Optimization: Chap 11 - Optimization
+            12_Machine Learning: Chap 12 - Machine Learning
+            13_Visualization: Chap 13 - Visualization
+            14_Live Trading: Chap 14 - Live Trading
 
 nav:
   - Home: index.md
+  - Textbook:
+      - Introduction: textbook/index.md
+      - Foundations:
+          - 01_Overview & Setup: textbook/01_foundations.md
+          - 02_Programming Guide: textbook/02_programming.md
+          - 03_Data Acquisition: textbook/03_data.md
+      - The Engine:
+          - 04_Backtest Engine: textbook/04_backtest_engine.md
+          - 05_Strategy & Order: textbook/05_strategy.md
+      - Strategies:
+          - 06_Stock A-Share: textbook/06_stock_a.md
+          - 07_Futures: textbook/07_futures.md
+          - 08_Options & Derivatives: textbook/08_options.md
+          - 09_Funds & Asset Allocation: textbook/09_funds.md
+      - Advanced:
+          - 10_Evaluation Metrics: textbook/10_analysis.md
+          - 11_Optimization: textbook/11_optimization.md
+          - 12_Machine Learning: textbook/12_ml.md
+          - 13_Visualization: textbook/13_visualization.md
+      - Live Trading:
+          - 14_Live Trading: textbook/14_live_trading.md
   - Getting Started:
       - Installation: start/installation.md
       - Environment Setup: start/setup_guide.md
@@ -137,7 +200,9 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path:
+        - "."
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
