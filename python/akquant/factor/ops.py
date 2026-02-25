@@ -198,3 +198,42 @@ OPS_MAP: Dict[str, Callable] = {
     "SignedPower": signed_power,
     "If": if_else,
 }
+
+# Define Operator Categories for Parser Optimization
+# TS: Time-Series (over symbol)
+# CS: Cross-Sectional (over date)
+# EL: Element-wise (neutral)
+OP_CATEGORY: Dict[str, str] = {
+    # TS
+    "Ts_Mean": "TS",
+    "Mean": "TS",
+    "Ts_Std": "TS",
+    "Std": "TS",
+    "Ts_Max": "TS",
+    "Max": "TS",
+    "Ts_Min": "TS",
+    "Min": "TS",
+    "Ts_Sum": "TS",
+    "Sum": "TS",
+    "Ts_Corr": "TS",
+    "Corr": "TS",
+    "Ts_Cov": "TS",
+    "Cov": "TS",
+    "Delay": "TS",
+    "Ref": "TS",
+    "Delta": "TS",
+    "Ts_ArgMax": "TS",
+    "ArgMax": "TS",
+    "Ts_ArgMin": "TS",
+    "ArgMin": "TS",
+    "Ts_Rank": "TS",
+    # CS
+    "Rank": "CS",
+    "Scale": "CS",
+    # EL
+    "Log": "EL",
+    "Abs": "EL",
+    "Sign": "EL",
+    "SignedPower": "EL",
+    "If": "EL",
+}

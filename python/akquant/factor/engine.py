@@ -80,17 +80,33 @@ class FactorEngine:
         :param end_date: Filter end date (inclusive).
         :return: DataFrame with [date, symbol, factor] columns.
         """
-        logger.info(f"Parsing expression: {expr_str}")
-        factor_expr = self.parser.parse(expr_str)
-
         lf = self.load_data()
-        lf = self._ensure_date_column(lf)
+        return self.run_on_data(lf, expr_str, start_date, end_date)
 
-        # Sort is crucial for rolling window functions
+    def run_on_data(
+        self,
+        data: pl.LazyFrame | pl.DataFrame,
+        expr_str: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> pl.DataFrame:
+        """
+        Execute a factor expression on provided data.
+
+        :param data: Polars DataFrame or LazyFrame containing input data.
+        :param expr_str: The factor expression string.
+        :param start_date: Filter start date (inclusive).
+        :param end_date: Filter end date (inclusive).
+        :return: DataFrame with [date, symbol, factor] columns.
+        """
+        if isinstance(data, pl.DataFrame):
+            lf = data.lazy()
+        else:
+            lf = data
+
+        lf = self._ensure_date_column(lf)
         lf = lf.sort(["symbol", "date"])
 
-        # Handle date filtering
-        # Convert string dates to datetime literals for comparison
         if start_date:
             lf = lf.filter(
                 pl.col("date") >= pl.lit(start_date).str.to_datetime(strict=False)
@@ -100,25 +116,61 @@ class FactorEngine:
                 pl.col("date") <= pl.lit(end_date).str.to_datetime(strict=False)
             )
 
-        # Select and Compute
-        result_lf = lf.select(
-            [pl.col("date"), pl.col("symbol"), factor_expr.alias("factor_value")]
-        )
+        # Plan execution
+        logger.info(f"Planning expression: {expr_str}")
+        steps = self.parser.plan(expr_str)
 
-        # Collect results
-        logger.info("Executing query plan...")
-        df = result_lf.collect()
-        return df
+        # Execute steps sequentially
+        current_lf = lf
+        for var_name, sub_expr_str in steps:
+            logger.info(f"Executing step: {var_name} = {sub_expr_str}")
+            sub_expr = self.parser.parse(sub_expr_str)
+
+            # If it's the final result, select it
+            if var_name == "result":
+                final_expr = sub_expr.alias("factor_value")
+                return current_lf.select(
+                    [pl.col("date"), pl.col("symbol"), final_expr]
+                ).collect()
+            else:
+                # Intermediate step: compute and materialize
+                # We use with_columns to add the intermediate result
+                # IMPORTANT: We MUST collect() to break the Lazy graph and force
+                # materialization to avoid the nested window function issue
+                # (Polars #25691). Polars treats nested `over()` as hierarchical,
+                # but TS/CS ops are orthogonal. Explicit materialization ensures
+                # the inner result is fully computed before the outer window
+                # function runs.
+
+                temp_df = current_lf.with_columns(sub_expr.alias(var_name)).collect()
+                current_lf = temp_df.lazy()
+
+        # Should not reach here
+        return pl.DataFrame()
 
     def run_batch(self, exprs: List[str]) -> pl.DataFrame:
         """Run multiple expressions at once."""
         lf = self.load_data()
         lf = self._ensure_date_column(lf)
-        lf = lf.sort(["symbol", "date"])
 
-        selections = [pl.col("date"), pl.col("symbol")]
+        # We need a base dataframe with all dates/symbols to join against
+        # This can be expensive if data is huge.
+        # Alternatively, we can use the first result as base, but outer join might be
+        # needed if filters differ (here filters are global).
+
+        # Optimization: Scan unique date/symbol only
+        base_df = (
+            lf.select(["date", "symbol"]).unique().collect().sort(["date", "symbol"])
+        )
+
         for i, expr_str in enumerate(exprs):
-            expr = self.parser.parse(expr_str)
-            selections.append(expr.alias(f"factor_{i}"))
+            # Run each expression.
+            # Note: run_on_data sorts internally, so order is consistent.
+            res = self.run_on_data(lf, expr_str)
+            res = res.rename({"factor_value": f"factor_{i}"})
 
-        return lf.select(selections).collect()
+            # Join back to base
+            # Use left join if base has all keys
+            base_df = base_df.join(res, on=["date", "symbol"], how="left")
+
+        return base_df

@@ -1,9 +1,9 @@
 import ast
-from typing import Any
+from typing import Any, List, Tuple
 
 import polars as pl
 
-from .ops import OPS_MAP
+from .ops import OP_CATEGORY, OPS_MAP
 
 
 class ExpressionParser:
@@ -25,6 +25,102 @@ class ExpressionParser:
             raise ValueError(f"Invalid expression syntax: {expr_str}") from e
 
         return self._visit(tree.body)
+
+    def plan(self, expr_str: str) -> List[Tuple[str, str]]:
+        """
+        Generate an execution plan to handle nested window functions.
+
+        This method detects conflicts between orthogonal partition types (e.g., TS over
+        symbol vs CS over date) and splits the execution into sequential steps.
+
+        Reference: Polars Issue #25691
+        (https://github.com/pola-rs/polars/issues/25691) Polars treats nested
+        `.over()` calls as hierarchical partitions (inner within outer). However,
+        in factor calculations, TS (Time-Series) and CS (Cross-Sectional)
+        operations are often orthogonal, not hierarchical. To correctly compute
+        `CS(TS(...))` or `TS(CS(...))`, we must materialize the inner result
+        first (e.g., via `with_columns()`).
+
+        Returns a list of (var_name, expr_str) tuples.
+        The last item's var_name is 'result'.
+        """
+        expr_str = expr_str.strip()
+        try:
+            tree = ast.parse(expr_str, mode="eval")
+        except SyntaxError as e:
+            raise ValueError(f"Invalid expression syntax: {expr_str}") from e
+
+        steps = []
+        counter = 0  # Use nonlocal or simple var
+
+        def _get_category(func_name: str) -> str:
+            return OP_CATEGORY.get(func_name, "EL")
+
+        # We need a custom transformer that populates 'steps'
+        class PlanTransformer(ast.NodeTransformer):
+            def visit_Call(self, node: ast.Call) -> ast.AST:
+                nonlocal counter
+                # First visit children to handle deepest nesting first
+                self.generic_visit(node)
+
+                if not isinstance(node.func, ast.Name):
+                    return node
+
+                func_name = node.func.id
+                cat = _get_category(func_name)
+
+                # Check arguments for mismatch
+                new_args: List[ast.expr] = []
+                for arg in node.args:
+                    # Only check calls (expressions)
+                    if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name):
+                        arg_cat = _get_category(arg.func.id)
+
+                        # Detect conflict: CS(TS) or TS(CS)
+                        conflict = False
+                        if cat == "CS" and arg_cat == "TS":
+                            conflict = True
+                        elif cat == "TS" and arg_cat == "CS":
+                            conflict = True
+
+                        if conflict:
+                            # Extract argument to a step
+                            # Use ast.unparse (Python 3.9+)
+                            try:
+                                arg_str = ast.unparse(arg)
+                            except AttributeError:
+                                raise RuntimeError(
+                                    "Python 3.9+ required for ast.unparse"
+                                )
+
+                            step_var = f"_auto_var_{counter}"
+                            counter += 1
+                            steps.append((step_var, arg_str))
+
+                            # Replace arg with Name(id=step_var)
+                            # Use ast.Name for replacement
+                            new_args.append(ast.Name(id=step_var, ctx=ast.Load()))
+                        else:
+                            new_args.append(arg)
+                    else:
+                        new_args.append(arg)  # type: ignore
+
+                node.args = new_args  # type: ignore
+                return node
+
+        # Transform the tree
+        transformer = PlanTransformer()
+        new_tree = transformer.visit(tree.body)  # Visit body directly
+
+        # Final expression
+        try:
+            final_expr = ast.unparse(new_tree)
+        except AttributeError:
+            raise RuntimeError("Python 3.9+ required for ast.unparse")
+
+        steps.append(("result", final_expr))
+
+        return steps
 
     def _visit(self, node: Any) -> Any:
         # Handle Function Calls
