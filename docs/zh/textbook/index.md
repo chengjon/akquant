@@ -71,14 +71,14 @@
 *   **[第 13 章：策略可视化与报表分析](13_visualization.md)**
     *   权益曲线与回撤图绘制
     *   案例：生成回测图表 ([examples/textbook/ch13_visualization.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch13_visualization.py))
-*   **[第 15 章：高性能因子挖掘与表达式引擎](15_factor.md)**
+*   **[第 14 章：高性能因子挖掘与表达式引擎](14_factor.md)**
     *   因子表达式的原理与优势
     *   Polars 高性能计算架构
     *   案例：Alpha101 因子实战 ([examples/19_factor_expression.py](https://github.com/akfamily/akquant/blob/main/examples/19_factor_expression.py))
 
 ### 第五部分：从回测到实盘 (Live Trading)
 
-*   **[第 14 章：实盘交易系统与运维](14_live_trading.md)**
+*   **[第 15 章：实盘交易系统与运维](15_live_trading.md)**
     *   实盘与回测的差异处理
     *   CTP 接口配置与实盘部署 ([examples/textbook/ch14_live.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch14_live.py))
     *   风控与熔断机制

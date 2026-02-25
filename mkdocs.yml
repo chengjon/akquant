@@ -74,7 +74,7 @@ plugins:
             Python Basics: Python 金融入门
             Quant Basics: 量化新手指南
             Data Guide: 数据指南
-            Factor Analysis: 因子分析
+            Factor Engine Guide: 因子引擎指南
             Visualization: 可视化与报告
             Result Analysis: 回测结果详解
             Optimization Guide: 参数优化
@@ -108,7 +108,8 @@ plugins:
             11_Optimization: 第11章：参数优化
             12_Machine Learning: 第12章：机器学习
             13_Visualization: 第13章：可视化
-            14_Live Trading: 第14章：实盘交易
+            14_Factor Expression: 第14章：因子表达式引擎
+            15_Live Trading: 第15章：实盘交易
         - locale: en
           name: English
           build: true
@@ -123,6 +124,7 @@ plugins:
             Strategy Manual: Strategy Manual
             Python Basics: Python Basics
             Data Guide: Data Guide
+            Factor Engine Guide: Factor Engine Guide
             Visualization: Visualization
             Result Analysis: Result Analysis
             Optimization Guide: Parameter Optimization
@@ -156,8 +158,8 @@ plugins:
             11_Optimization: Chap 11 - Optimization
             12_Machine Learning: Chap 12 - Machine Learning
             13_Visualization: Chap 13 - Visualization
-            15_Factor Expression: Chap 15 - Factor Expression
-            14_Live Trading: Chap 14 - Live Trading
+            15_Factor Expression: Chap 14 - Factor Expression
+            14_Live Trading: Chap 15 - Live Trading
 
 nav:
   - Home: index.md
@@ -180,9 +182,9 @@ nav:
           - 11_Optimization: textbook/11_optimization.md
           - 12_Machine Learning: textbook/12_ml.md
           - 13_Visualization: textbook/13_visualization.md
-          - 15_Factor Expression: textbook/15_factor.md
+          - 14_Factor Expression: textbook/14_factor.md
       - Live Trading:
-          - 14_Live Trading: textbook/14_live_trading.md
+          - 15_Live Trading: textbook/15_live_trading.md
   - Getting Started:
       - Installation: start/installation.md
       - Environment Setup: start/setup_guide.md
@@ -192,7 +194,7 @@ nav:
       - Python Basics: guide/python_basics.md
       - Quant Basics: guide/quant_basics.md
       - Data Guide: guide/data.md
-      - Factor Analysis: guide/factor.md
+      - Factor Engine Guide: guide/factor.md
       - Strategy Manual: guide/strategy.md
       - Result Analysis: guide/analysis.md
       - Visualization: guide/visualization.md
