@@ -80,6 +80,10 @@ def test_engine() -> None:
             # Cross Sectional Factors
             "Rank(Close)",  # Price Rank across stocks
             "Rank(Ts_Mean(Volume, 5))",  # Rank of 5-day Avg Volume
+            # Advanced Time Series Features (New in v0.3)
+            "Ts_ArgMax(High, 20)",  # Days since 20-day high
+            "Ts_ArgMin(Low, 20)",  # Days since 20-day low
+            "Ts_Rank(Close, 10)",  # Percentile rank of current price in 10-day window
             # Composite/Logic Factors
             "If(Close > Open, 1, -1)",  # Up/Down day indicator
             "Rank(Ts_Corr(Close, Volume, 10))",  # Rank of Price-Volume Correlation

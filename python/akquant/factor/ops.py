@@ -63,20 +63,55 @@ def delta(x: Union[pl.Expr, float], d: int) -> pl.Expr:
 
 
 def ts_argmax(x: Union[pl.Expr, float], d: int) -> pl.Expr:
-    """Calculate rolling index of max value."""
-    # arg_max not directly on rolling?
-    # rolling_map is an option but slow.
-    raise NotImplementedError("Ts_ArgMax not yet implemented in Polars DSL")
+    """
+    Calculate rolling index of max value (days ago).
+
+    0 = max was today, d-1 = max was d-1 days ago.
+    """
+    return (
+        _to_expr(x)
+        .cast(pl.Float64)
+        .rolling_map(lambda s: float(d - 1 - s.arg_max()), window_size=d)
+        .over("symbol")
+    )
 
 
 def ts_argmin(x: Union[pl.Expr, float], d: int) -> pl.Expr:
-    """Calculate rolling index of min value."""
-    raise NotImplementedError("Ts_ArgMin not yet implemented in Polars DSL")
+    """
+    Calculate rolling index of min value (days ago).
+
+    0 = min was today, d-1 = min was d-1 days ago.
+    """
+    return (
+        _to_expr(x)
+        .cast(pl.Float64)
+        .rolling_map(lambda s: float(d - 1 - s.arg_min()), window_size=d)
+        .over("symbol")
+    )
 
 
 def ts_rank(x: Union[pl.Expr, float], d: int) -> pl.Expr:
-    """Calculate rolling rank."""
-    raise NotImplementedError("Ts_Rank not yet implemented in Polars DSL")
+    """Calculate rolling rank of the current value within the window (0 to 1)."""
+
+    def _rank_last(s: pl.Series) -> float:
+        # Rank of the last element in the series
+        if len(s) <= 1:
+            return 0.0
+
+        # Ensure floating point ranks
+        r = s.rank(method="average")[-1]
+
+        # Debugging (remove later)
+        # print(f"Series: {s.to_list()}, Rank: {r}, Len: {len(s)}")
+
+        return float((r - 1) / (len(s) - 1))
+
+    return (
+        _to_expr(x)
+        .cast(pl.Float64)
+        .rolling_map(_rank_last, window_size=d)
+        .over("symbol")
+    )
 
 
 # --- Cross Sectional Operators ---
@@ -147,6 +182,12 @@ OPS_MAP: Dict[str, Callable] = {
     "Delay": delay,
     "Ref": delay,  # Common alias
     "Delta": delta,
+    # New Time Series
+    "Ts_ArgMax": ts_argmax,
+    "ArgMax": ts_argmax,
+    "Ts_ArgMin": ts_argmin,
+    "ArgMin": ts_argmin,
+    "Ts_Rank": ts_rank,
     # Cross Section
     "Rank": rank,
     "Scale": scale,

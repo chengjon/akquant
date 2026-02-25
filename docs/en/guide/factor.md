@@ -9,6 +9,17 @@ AKQuant includes a high-performance factor expression engine (`akquant.factor`) 
 *   **Future-Data Prevention**: Encapsulated time-series operators (like `Ts_Mean`) handle windows and shifts automatically, reducing the risk of look-ahead bias.
 *   **Automatic Alignment**: The engine automatically handles panel data alignment and grouping (Group By Symbol/Date).
 
+## Design Philosophy
+
+AKQuant's factor engine adopts the classic **DSL (Domain Specific Language)** design pattern, converting user business logic into an underlying computation graph via AST Parsing and Operator Mapping. This design is widely used in quantitative finance:
+
+1.  **WorldQuant BRAIN**: As the pioneer of Formulaic Alpha, its Alpha Compiler defined the industry standard for operator naming (e.g., `Ts_Mean`, `Rank`). AKQuant follows this convention to lower the learning curve for users.
+2.  **DolphinDB**: A high-performance time-series database that uses `streamEngineParser` to parse similar factor expressions and build unified stream/batch processing pipelines.
+3.  **Microsoft Qlib**: An AI-oriented quantitative platform with an Expression Engine supporting string syntax like `Ref($close, 1)`, leveraging caching and vectorized computation for efficiency.
+4.  **Zipline**: While primarily using Python objects, its Pipeline API's concept of building a dependency graph aligns with AKQuant's use of Polars Lazy Execution to construct computation graphs.
+
+By standing on the shoulders of giants and integrating the modern **Polars (Rust)** high-performance engine, AKQuant achieves factor calculation efficiency close to C++ within Python, while maintaining code simplicity and flexibility.
+
 ## Quick Start
 
 ### 1. Prepare Data
@@ -97,6 +108,9 @@ Calculated independently for each symbol over time.
 | `Ts_Max(X, d)` | Rolling max over past `d` days | `Ts_Max(High, 10)` |
 | `Ts_Min(X, d)` | Rolling min over past `d` days | `Ts_Min(Low, 10)` |
 | `Ts_Sum(X, d)` | Rolling sum over past `d` days | `Ts_Sum(Volume, 5)` |
+| `Ts_ArgMax(X, d)` | Days since max value over past `d` days (0=today) | `Ts_ArgMax(Close, 5)` |
+| `Ts_ArgMin(X, d)` | Days since min value over past `d` days (0=today) | `Ts_ArgMin(Close, 5)` |
+| `Ts_Rank(X, d)` | Rolling percentile rank (0 to 1) of current value | `Ts_Rank(Close, 5)` |
 | `Ts_Corr(X, Y, d)` | Rolling correlation of X and Y | `Ts_Corr(Close, Volume, 20)` |
 | `Ts_Cov(X, Y, d)` | Rolling covariance of X and Y | `Ts_Cov(Close, Open, 20)` |
 | `Delay(X, d)` | Lagged value by `d` days (Ref) | `Delay(Close, 1)` |
@@ -137,7 +151,17 @@ Example:
 The engine uses Polars `LazyFrame` for calculation. For time-series operations (e.g., `Ts_Mean`), Polars operates on data grouped by `symbol`.
 **Note**: If data is missing for certain dates (e.g., trading halts), `rolling` window calculations might be based on physical rows rather than time. To ensure precision, it is recommended to reindex/pad your data against a trading calendar before writing it to the catalog.
 
-### 2. Memory Optimization
+### 2. Smart Date Column Detection
+
+`FactorEngine` automatically detects the date/time column when loading data. If your data contains one of the following columns, it will be automatically renamed to `date` and used for alignment:
+*   `date`
+*   `index`
+*   `datetime`
+*   `__index_level_0__` (Pandas default index name)
+
+This means you can directly use Parquet files exported via Pandas `to_parquet` (which include the index) without manually resetting the index column.
+
+### 3. Memory Optimization
 
 `FactorEngine` uses Lazy Evaluation:
 1.  `engine.run()` does not load all data into memory immediately.

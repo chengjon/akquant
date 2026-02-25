@@ -38,6 +38,34 @@ class FactorEngine:
             logger.warning(f"Failed to scan parquet files: {e}")
             return pl.DataFrame().lazy()
 
+    def _ensure_date_column(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """Ensure 'date' column exists, renaming from common variants if needed."""
+        # Check schema to find date column
+        # Note: collect_schema() is preferred in newer Polars, .schema in older
+        try:
+            schema = lf.collect_schema()
+        except AttributeError:
+            schema = lf.schema  # type: ignore
+
+        cols = schema.names() if hasattr(schema, "names") else list(schema.keys())
+        logger.info(f"Detected columns: {cols}")
+
+        if "date" in cols:
+            return lf
+        elif "index" in cols:
+            return lf.rename({"index": "date"})
+        elif "datetime" in cols:
+            return lf.rename({"datetime": "date"})
+        elif "__index_level_0__" in cols:
+            return lf.rename({"__index_level_0__": "date"})
+        else:
+            # Fallback: assume user knows what they are doing or it will fail later
+            logger.warning(
+                f"Could not identify 'date' column from {cols}. "
+                "Expecting 'date', 'index', 'datetime', or '__index_level_0__'."
+            )
+            return lf
+
     def run(
         self,
         expr_str: str,
@@ -56,50 +84,21 @@ class FactorEngine:
         factor_expr = self.parser.parse(expr_str)
 
         lf = self.load_data()
-
-        # Filter by date if requested
-        # Note: We assume the date column is named "index" or "date".
-        # We need to standardize this.
-        # ParquetDataCatalog stores index (datetime) usually.
-        # When read by Polars, index is often a column if it was named,
-        # or "__index_level_0__".
-        # Let's inspect the schema or assume "date" or "index".
-        # Better: let's try to coalesce "date" and "index".
-
-        # Check columns available in lazy schema (hint)
-        # We can't easily check schema without peeking.
-        # But we can assume standard columns.
-
-        # Let's standardize on "date" for our logic.
-        # If "date" doesn't exist but "index" does, rename it.
-        # If neither, we have a problem.
-
-        # Robust approach:
-        # 1. Rename common time columns to 'date'
-        # 2. Sort by [symbol, date]
-        # 3. Compute
-
-        # But we can't do conditional rename easily in LazyFrame without schema.
-        # Let's assume the user/catalog ensures 'date' or index is valid.
-        # ParquetDataCatalog writes pandas DataFrame.
-        # If index is named "date", it's "date".
-        # If unnamed, it might be "__index_level_0__" or similar.
-        # Let's assume standard columns: open, high, low, close, volume, symbol.
-        # And time?
-
-        # Let's rely on the user to have "date" column or index named "date".
-        # If it's unnamed index, Polars reads it?
-        # Actually, pandas `to_parquet` preserves index.
-        # Polars `read_parquet` reads index as column ONLY if it has a name.
-        # My `ParquetDataCatalog` sets index name to "date" if it was "date" column.
+        lf = self._ensure_date_column(lf)
 
         # Sort is crucial for rolling window functions
         lf = lf.sort(["symbol", "date"])
 
+        # Handle date filtering
+        # Convert string dates to datetime literals for comparison
         if start_date:
-            lf = lf.filter(pl.col("date") >= pl.lit(start_date))
+            lf = lf.filter(
+                pl.col("date") >= pl.lit(start_date).str.to_datetime(strict=False)
+            )
         if end_date:
-            lf = lf.filter(pl.col("date") <= pl.lit(end_date))
+            lf = lf.filter(
+                pl.col("date") <= pl.lit(end_date).str.to_datetime(strict=False)
+            )
 
         # Select and Compute
         result_lf = lf.select(
@@ -113,7 +112,9 @@ class FactorEngine:
 
     def run_batch(self, exprs: List[str]) -> pl.DataFrame:
         """Run multiple expressions at once."""
-        lf = self.load_data().sort(["symbol", "date"])
+        lf = self.load_data()
+        lf = self._ensure_date_column(lf)
+        lf = lf.sort(["symbol", "date"])
 
         selections = [pl.col("date"), pl.col("symbol")]
         for i, expr_str in enumerate(exprs):

@@ -13,7 +13,17 @@
 
 AKQuant 内置的 `akquant.factor` 模块基于 Rust 实现的 **Polars** 库，提供了远超 Pandas 的计算性能。
 
-### 核心特性
+### 2.1 设计哲学与行业标准 (Design Philosophy)
+
+AKQuant 采用了 **DSL (领域特定语言)** 的设计模式，这在顶级量化机构和开源框架中是非常主流的实现方式：
+
+1.  **WorldQuant BRAIN**: 定义了行业标准的算子命名（如 `Ts_Mean`, `Rank`）。AKQuant 沿用了这一规范，让熟悉 WQ 的用户可以零成本迁移。
+2.  **DolphinDB**: 高频时序数据库，通过 `streamEngineParser` 解析类似的字符串表达式，构建高性能计算流水线。
+3.  **Microsoft Qlib**: 微软推出的 AI 量化平台，同样内置了表达式引擎（Expression Engine），支持如 `Ref($close, 1)` 的语法。
+
+这种设计的核心优势在于**解耦**：用户只需通过字符串描述“算什么”（What），而无需关心底层的“怎么算”（How）。底层的计算引擎可以从 Pandas 升级为 Polars，甚至将来升级为 GPU 计算，而用户的因子代码完全不需要修改。
+
+### 2.2 核心特性
 
 *   **极速计算**：利用 Polars 的 Lazy API 和多线程并行计算能力。
 *   **防止未来函数**：封装好的时序算子（如 `Ts_Mean`）强制执行窗口逻辑，避免用到未来数据。
@@ -78,6 +88,9 @@ df_batch = engine.run_batch(expressions)
 | `Ts_Max(X, d)` | `Max` | 移动最大值 | `Ts_Max(High, 10)` |
 | `Ts_Min(X, d)` | `Min` | 移动最小值 | `Ts_Min(Low, 10)` |
 | `Ts_Sum(X, d)` | `Sum` | 移动求和 | `Ts_Sum(Volume, 5)` |
+| `Ts_ArgMax(X, d)` | `ArgMax` | 过去 d 天最大值距离当前的天数 (0=当前) | `Ts_ArgMax(Close, 5)` |
+| `Ts_ArgMin(X, d)` | `ArgMin` | 过去 d 天最小值距离当前的天数 (0=当前) | `Ts_ArgMin(Close, 5)` |
+| `Ts_Rank(X, d)` | - | 当前值在过去 d 天窗口内的百分比排名 (0~1) | `Ts_Rank(Close, 5)` |
 | `Delta(X, d)` | - | 差分 (今日 - d日前) | `Delta(Close, 1)` |
 | `Delay(X, d)` | `Ref` | 滞后 (d日前的数值) | `Delay(Close, 1)` |
 | `Ts_Corr(X, Y, d)` | `Corr` | 滚动相关系数 | `Ts_Corr(Close, Volume, 20)` |
@@ -172,6 +185,28 @@ If(Close > Ts_Mean(Close, 5), 1, 0)
     ```python
     # 价格在近 20 天高位，但成交量不在高位
     If((Close == Ts_Max(Close, 20)) & (Volume < Ts_Mean(Volume, 20)), 1, 0)
+    ```
+
+### 5.5 高级时序特征 (Advanced Time-Series)
+
+利用 `Ts_ArgMax`, `Ts_ArgMin`, `Ts_Rank` 可以构建更精细的时序特征。
+
+*   **高点距离 (Days Since Max)**：距离过去 20 天最高价的天数。如果今天是最高价，则为 0。
+    ```python
+    Ts_ArgMax(High, 20)
+    ```
+*   **低点距离 (Days Since Min)**：距离过去 20 天最低价的天数。如果今天是最低价，则为 0。
+    ```python
+    Ts_ArgMin(Low, 20)
+    ```
+*   **价格分位数 (Price Rank)**：当前价格在过去 20 天内的百分比排名（0~1）。这类似于 **Stochastic Oscillator (KDJ 中的 K 值)** 的变体。
+    ```python
+    Ts_Rank(Close, 20)
+    ```
+*   **Alpha #13 (WorldQuant 简化版)**：成交量加权的收盘价排名的协方差。
+    ```python
+    # 原始逻辑较为复杂，这里展示利用 Ts_Rank 的组合
+    -1 * Rank(Ts_Cov(Rank(Close), Rank(Volume), 5))
     ```
 
 ## 6. 进阶：挖掘 Alpha 因子

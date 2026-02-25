@@ -72,7 +72,7 @@ Your task is to write trading strategies or backtest scripts based on user requi
 7.  **Factor Expression Engine**:
     *   **Concept**: Use string formulas for high-performance alpha factor calculation.
     *   **Engine**: `akquant.factor.FactorEngine`.
-    *   **Operators**: `Ts_Mean`, `Rank`, `Delay`, `Delta`, `If`, etc.
+    *   **Operators**: `Ts_Mean`, `Ts_Rank`, `Ts_ArgMax`, `Rank`, `Delay`, `Delta`, `If`, etc.
     *   **Example**:
         ```python
         from akquant.factor import FactorEngine
