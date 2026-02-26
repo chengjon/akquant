@@ -99,105 +99,7 @@ python examples/textbook/ch04_comparison.py
     *   **Indicator**: 技术指标计算。
     *   **Plotting**: 结果可视化。
 
-100→这两层通过 **PyO3** 进行零开销绑定。当你在 Python 中调用 `self.buy()` 时，实际上直接触发了 Rust 层的函数调用，没有任何中间序列化成本。
-
-## 4.3 撮合引擎揭秘 (Matching Engine Internals)
-
-回测引擎的核心在于**撮合 (Matching)**：如何根据历史行情判断你的订单是否成交，以及以什么价格成交。
-
-### 4.3.1 基于 Bar 的撮合逻辑
-
-在没有 Tick 数据的情况下，我们通常使用 OHLCV 数据进行近似撮合。假设当前 Bar 的数据为 $(O, H, L, C, V)$。
-
-1.  **市价单 (Market Order)**：
-    *   **买入**：以 $Open$ 价（或 $Close$ 价，取决于策略是在开盘还是收盘下单）成交。
-    *   **滑点**：通常在成交价基础上增加 $N$ 个跳 (Tick Size)。
-
-2.  **限价单 (Limit Order)**：假设买入限价为 $P_{limit}$。
-    *   **完全成交**：如果 $Low < P_{limit}$，说明盘中价格跌破了限价，订单必然成交。
-    *   **无法成交**：如果 $Low > P_{limit}$，说明盘中最低价都高于限价，订单无法成交。
-    *   **部分成交**：如果 $Low = P_{limit}$，情况比较复杂。通常保守起见，假设只有部分成交或不成交。
-
-3.  **止损单 (Stop Order)**：假设卖出止损价为 $P_{stop}$。
-    *   **触发**：如果 $Low < P_{stop}$，止损被触发，转为市价单卖出。
-    *   **成交价**：通常取 $P_{stop}$ 或 $Low$ 中的较差者（模拟跳空低开的情况）。
-
-### 4.3.2 涨跌停处理
-
-在 A 股市场，涨跌停板会锁死流动性。
-
-*   **涨停 (Limit Up)**：$High = LimitUp$。此时**买入**市价单无法成交，买入限价单也无法成交（除非排队在前）。
-*   **跌停 (Limit Down)**：$Low = LimitDown$。此时**卖出**订单无法成交。
-
-`akquant` 引擎在撮合时会严格检查涨跌停状态，避免在涨停板上买入或跌停板上卖出。
-
-## 4.4 滑点与冲击成本模型 (Slippage & Impact Models)
-
-真实交易中，你的买入行为会推高价格，卖出行为会压低价格。这种**冲击成本 (Market Impact)** 是大资金回测必须考虑的。
-
-### 4.4.1 线性滑点模型
-
-最简单的模型，假设滑点与交易量无关。
-
-$$ P_{fill} = P_{market} \pm \text{Slippage} $$
-
-其中 $\text{Slippage}$ 可以是固定值（如 0.01 元）或百分比（如 0.1%）。
-
-### 4.4.2 平方根法则 (Square Root Law)
-
-这是学术界和业界公认的冲击成本模型，由 Barra 提出。
-
-$$ \text{Cost} \propto \sigma \times \sqrt{\frac{Q}{V}} $$
-
-其中：
-
-- $\sigma$：资产的波动率。
-- $Q$：你的交易量。
-- $V$：市场的总成交量。
-
-这表明：**冲击成本与交易量的平方根成正比**。如果你想把交易量翻倍，冲击成本只会增加 $\sqrt{2} \approx 1.414$ 倍，而不是 2 倍。这为大资金拆单提供了理论依据。
-
-## 4.5 事件循环伪代码 (Event Loop Pseudo-code)
-
-为了更清晰地理解 `akquant` 的运行机制，我们可以用伪代码描述其主循环：
-
-```python
-def run_backtest():
-    # 1. 初始化
-    engine = Engine()
-    strategy = UserStrategy()
-    data_feed = DataFeed(start_date, end_date)
-
-    # 2. 事件循环 (Event Loop)
-    while not data_feed.is_finished():
-        # 2.1 获取下一个事件 (通常是 Bar)
-        event = data_feed.next()
-
-        # 2.2 更新时间
-        engine.current_time = event.datetime
-
-        # 2.3 撮合挂单 (Matching)
-        # 检查之前的限价单/止损单是否能在当前 Bar 成交
-        engine.match_orders(event)
-
-        # 2.4 策略逻辑 (Strategy)
-        # 调用用户的 on_bar 函数
-        strategy.on_bar(event)
-
-        # 2.5 结算 (Settlement)
-        # 如果是日终，进行每日结算 (Mark-to-Market)
-        if event.is_eod:
-            engine.settle()
-
-    # 3. 生成报告
-    engine.generate_report()
-```
-
-这个循环确保了**时间流逝的单向性**，杜绝了未来函数。
-
----
-
-**本章小结**：
+这两层通过 **PyO3** 进行零开销绑定。当你在 Python 中调用 `self.buy()` 时，实际上直接触发了 Rust 层的函数调用，没有任何中间序列化成本。
 
 ### 4.2.2 系统组件图
 
@@ -246,7 +148,205 @@ graph TD
 *   **数据共享**：`StrategyContext` 在 Rust 中持有对 Portfolio 和 Orders 的引用，并通过 PyO3 暴露给 Python。
 *   **零拷贝访问**：当你访问 `self.ctx.positions` 时，你实际上是直接读取 Rust 的内存，没有数据复制。
 
-## 4.3 订单生命周期与状态机 (Order Lifecycle)
+## 4.3 配置系统详解 (The Configuration System)
+
+`akquant` 拥有一个结构化的配置系统，旨在清晰地定义回测的“何时 (When)”、“何地 (Where)”、“何物 (What)”以及“如何 (How)”。
+
+### 4.3.1 四大配置支柱
+
+1.  **BacktestConfig (回测配置)**：定义**宏观场景**。
+    *   **When**: `start_time`, `end_time`
+    *   **What**: `instruments` (交易标的列表)
+    *   **How**: `strategy_config` (策略配置)
+
+2.  **InstrumentConfig (标的配置)**：定义**资产属性**。
+    *   **What**: `symbol`, `multiplier` (合约乘数), `margin_ratio` (保证金率)
+    *   **Cost**: `commission_rate`, `slippage` (标的特有滑点)
+
+3.  **StrategyConfig (策略配置)**：定义**账户与执行**。
+    *   **Capital**: `initial_cash`
+    *   **Execution**: `slippage` (全局滑点), `volume_limit_pct` (成交量限制)
+    *   **Risk**: `risk` (风控配置)
+
+4.  **RiskConfig (风控配置)**：定义**安全边界**。
+    *   **Constraints**: `max_position_pct`, `max_drawdown`
+
+### 4.3.2 配置示例
+
+```python
+from akquant.config import BacktestConfig, StrategyConfig, RiskConfig, InstrumentConfig
+
+# 1. 定义风控
+risk = RiskConfig(max_position_pct=0.1, stop_loss_threshold=0.8)
+
+# 2. 定义策略账户
+strategy_conf = StrategyConfig(
+    initial_cash=1_000_000,
+    slippage=0.0002,  # 万2滑点
+    risk=risk
+)
+
+# 3. 定义特殊标的 (如期货)
+rb_conf = InstrumentConfig(symbol="RB2305", multiplier=10, margin_ratio=0.1)
+
+# 4. 组装回测配置
+config = BacktestConfig(
+    start_time="2023-01-01",
+    end_time="2023-12-31",
+    strategy_config=strategy_conf,
+    instruments=["AAPL"],
+    instruments_config={"RB2305": rb_conf}
+)
+```
+
+
+
+## 4.4 撮合引擎揭秘 (Matching Engine Internals)
+
+回测引擎的核心在于**撮合 (Matching)**：如何根据历史行情判断你的订单是否成交，以及以什么价格成交。
+
+### 4.4.1 基于 Bar 的撮合逻辑
+
+在没有 Tick 数据的情况下，我们通常使用 OHLCV 数据进行近似撮合。假设当前 Bar 的数据为 $(O, H, L, C, V)$。
+
+1.  **市价单 (Market Order)**：
+    *   **买入**：以 $Open$ 价（或 $Close$ 价，取决于策略是在开盘还是收盘下单）成交。
+    *   **滑点**：通常在成交价基础上增加 $N$ 个跳 (Tick Size)。
+
+2.  **限价单 (Limit Order)**：假设买入限价为 $P_{limit}$。
+    *   **完全成交**：如果 $Low < P_{limit}$，说明盘中价格跌破了限价，订单必然成交。
+    *   **无法成交**：如果 $Low > P_{limit}$，说明盘中最低价都高于限价，订单无法成交。
+    *   **部分成交**：如果 $Low = P_{limit}$，情况比较复杂。通常保守起见，假设只有部分成交或不成交。
+
+3.  **止损单 (Stop Order)**：假设卖出止损价为 $P_{stop}$。
+    *   **触发**：如果 $Low < P_{stop}$，止损被触发，转为市价单卖出。
+    *   **成交价**：通常取 $P_{stop}$ 或 $Low$ 中的较差者（模拟跳空低开的情况）。
+
+### 4.4.2 涨跌停处理
+
+在 A 股市场，涨跌停板会锁死流动性。
+
+*   **涨停 (Limit Up)**：$High = LimitUp$。此时**买入**市价单无法成交，买入限价单也无法成交（除非排队在前）。
+*   **跌停 (Limit Down)**：$Low = LimitDown$。此时**卖出**订单无法成交。
+
+`akquant` 引擎在撮合时会严格检查涨跌停状态，避免在涨停板上买入或跌停板上卖出。
+
+## 4.5 滑点与冲击成本模型 (Slippage & Impact Models)
+
+真实交易中，你的买入行为会推高价格，卖出行为会压低价格。这种**冲击成本 (Market Impact)** 是大资金回测必须考虑的。
+
+### 4.5.1 线性滑点模型
+
+最简单的模型，假设滑点与交易量无关。
+
+$$ P_{fill} = P_{market} \pm \text{Slippage} $$
+
+其中 $\text{Slippage}$ 可以是固定值（如 0.01 元）或百分比（如 0.1%）。
+
+### 4.5.2 平方根法则 (Square Root Law)
+
+这是学术界和业界公认的冲击成本模型，由 Barra 提出。
+
+$$ \text{Cost} \propto \sigma \times \sqrt{\frac{Q}{V}} $$
+
+其中：
+
+- $\sigma$：资产的波动率。
+- $Q$：你的交易量。
+- $V$：市场的总成交量。
+
+这表明：**冲击成本与交易量的平方根成正比**。如果你想把交易量翻倍，冲击成本只会增加 $\sqrt{2} \approx 1.414$ 倍，而不是 2 倍。这为大资金拆单提供了理论依据。
+
+## 4.6 事件循环伪代码 (Event Loop Pseudo-code)
+
+为了更清晰地理解 `akquant` 的运行机制，我们可以用伪代码描述其主循环：
+
+```python
+def run_backtest():
+    # 1. 初始化
+    engine = Engine()
+    strategy = UserStrategy()
+    data_feed = DataFeed(start_date, end_date)
+
+    # 2. 事件循环 (Event Loop)
+    while not data_feed.is_finished():
+        # 2.1 获取下一个事件 (通常是 Bar)
+        event = data_feed.next()
+
+        # 2.2 更新时间
+        engine.current_time = event.datetime
+
+        # 2.3 撮合挂单 (Matching)
+        # 检查之前的限价单/止损单是否能在当前 Bar 成交
+        engine.match_orders(event)
+
+        # 2.4 策略逻辑 (Strategy)
+        # 调用用户的 on_bar 函数
+        strategy.on_bar(event)
+
+        # 2.5 结算 (Settlement)
+        # 如果是日终，进行每日结算 (Mark-to-Market)
+        if event.is_eod:
+            engine.settle()
+
+    # 3. 生成报告
+    engine.generate_report()
+```
+
+这个循环确保了**时间流逝的单向性**，杜绝了未来函数。
+
+## 4.7 风控引擎 (Risk Engine)
+
+在真实的交易系统中，**风控 (Risk Management)** 是最后一道防线。`akquant` 引擎内置了一个强大的预交易风控模块 (`RiskManager`)，它独立于策略逻辑之外，直接在引擎层面拦截不合规的订单。
+
+### 4.7.1 为什么要预交易风控？
+
+*   **胖手指 (Fat Finger)**：手抖多敲了一个零，导致下单数量巨大。
+*   **逻辑 Bug**：策略代码写错了，导致无限循环下单或满仓梭哈。
+*   **合规要求**：某些基金有严格的行业集中度或杠杆限制。
+
+### 4.7.2 内置风控规则
+
+`akquant` 提供了以下几种开箱即用的风控规则：
+
+1.  **单标的持仓上限 (MaxPositionPercentRule)**：防止在单只股票上押注过重。
+2.  **行业集中度限制 (SectorConcentrationRule)**：防止在某个行业（如科技、金融）上过度暴露。
+3.  **总杠杆率熔断 (MaxLeverageRule)**：防止总敞口过大，引发爆仓风险。
+
+### 4.7.3 配置示例
+
+风控规则通常在 `Engine` 初始化后进行配置：
+
+```python
+from akquant import Engine
+
+engine = Engine()
+
+# 获取风控管理器
+rm = engine.risk_manager
+
+# 1. 限制单只股票持仓不超过总权益的 10%
+rm.add_max_position_percent_rule(0.10)
+
+# 2. 限制科技板块总持仓不超过 20%
+# 需要提供 Symbol -> Sector 的映射
+sector_map = {"AAPL": "Tech", "MSFT": "Tech", "XOM": "Energy"}
+rm.add_sector_concentration_rule(0.20, sector_map)
+
+# 3. 限制总杠杆不超过 1.5 倍
+rm.add_max_leverage_rule(1.5)
+
+# 应用配置 (必须赋值回去，因为 Python 侧获取的是副本)
+engine.risk_manager = rm
+```
+
+当策略发出的订单违反上述规则时，`Engine` 会拒绝该订单，并返回 `Rejected` 状态和具体的错误信息（如 `Risk: Position value ratio 15.00% exceeds limit 10.00%`）。
+
+---
+
+**本章小结**：
+
+## 4.8 订单生命周期与状态机 (Order Lifecycle)
 
 在事件驱动系统中，理解订单的状态流转至关重要。一个订单从产生到最终成交，会经历严格的状态机变换。
 
@@ -268,7 +368,7 @@ stateDiagram-v2
     Rejected --> [*]
 ```
 
-### 4.3.1 关键状态解析
+### 4.8.1 关键状态解析
 
 1.  **New (新建)**:
     *   策略调用 `self.buy()` 后，订单对象被创建，但在风控检查通过前，状态为 `New`。
@@ -290,11 +390,11 @@ stateDiagram-v2
         *   **非法数量 (Invalid Quantity)**: 例如 A 股买入必须是 100 的整数倍。
         *   **废单**: 价格超过涨跌停板。
 
-## 4.4 撮合引擎机制 (Matching Engine Mechanics)
+## 4.9 撮合引擎机制 (Matching Engine Mechanics)
 
 `akquant` 的模拟撮合引擎 (`SimulatedExecutionClient`) 旨在尽可能逼真地模拟真实交易所的撮合逻辑。
 
-### 4.4.1 撮合逻辑 (Matching Logic)
+### 4.9.1 撮合逻辑 (Matching Logic)
 
 对于每一根新的 Bar (或 Tick)，引擎会遍历所有活跃订单进行撮合：
 
@@ -312,7 +412,7 @@ stateDiagram-v2
     *   当市场价格突破触发价 (`Trigger Price`) 时，止损单会转化为市价单或限价单。
     *   `akquant` 支持**穿透检查 (Gap Detection)**：例如，昨日收盘 100，今日跳空低开 90，如果你有 95 的止损卖单，引擎会正确地在 90 成交（而不是 95），真实模拟跳空风险。
 
-### 4.4.2 撮合模式 (Execution Mode)
+### 4.9.2 撮合模式 (Execution Mode)
 
 为了平衡回测的严谨性和灵活性，`akquant` 提供了多种撮合模式：
 
@@ -322,7 +422,7 @@ stateDiagram-v2
 | **CurrentClose** | 当前 Bar 的信号，在**当前 Bar 的收盘价**成交。 | 收盘竞价策略 | 需小心使用，容易引入前视偏差。 |
 | **NextAverage** | 在下一根 Bar 的均价成交。 | 大资金VWAP模拟 | 均价 = (O+H+L+C)/4 |
 
-### 4.4.3 滑点与冲击成本 (Slippage & Impact)
+### 4.9.3 滑点与冲击成本 (Slippage & Impact)
 
 回测中最容易高估收益的因素是忽略了交易成本。`akquant` 支持配置滑点模型：
 
@@ -333,9 +433,9 @@ $$ \text{Final Price} = \text{Execution Price} \times (1 \pm \text{Slippage Rate
 
 此外，你还可以设置 **Volume Limit**（例如 10%），限制策略在单根 Bar 上的成交量不超过市场总成交量的 10%，以模拟流动性限制。
 
-## 4.5 资金与风控管理 (Portfolio & Risk)
+## 4.10 资金与风控管理 (Portfolio & Risk)
 
-### 4.5.1 资金校验 (Pre-trade Check)
+### 4.10.1 资金校验 (Pre-trade Check)
 
 在订单提交前，Rust 层的 `RiskManager` 会进行严格的资金校验：
 
@@ -346,7 +446,7 @@ $$ \text{Final Price} = \text{Execution Price} \times (1 \pm \text{Slippage Rate
 3.  **比较**: `Total Cost > Free Cash` ?
     *   如果资金不足，订单会被**自动拒绝 (Rejected)**，或者根据配置**自动缩减数量 (Auto-resize)** 以适应剩余资金。
 
-### 4.5.2 T+1 制度模拟
+### 4.10.2 T+1 制度模拟
 
 对于 A 股市场，`akquant` 内置了 T+1 规则支持：
 
@@ -355,7 +455,7 @@ $$ \text{Final Price} = \text{Execution Price} \times (1 \pm \text{Slippage Rate
 
 这意味着如果你在 T 日买入，尝试在 T 日卖出，订单会被拒绝，错误信息提示 "Insufficient available position"。
 
-## 4.6 多标的与时间流 (Time Flow & Multi-Asset)
+## 4.11 多标的与时间流 (Time Flow & Multi-Asset)
 
 在回测多个标的（例如全市场选股）时，时间的同步至关重要。
 
@@ -370,11 +470,11 @@ $$ \text{Final Price} = \text{Execution Price} \times (1 \pm \text{Slippage Rate
 
 这意味着，即使 AAPL 和 MSFT 在同一分钟都有数据，引擎也会按顺序处理它们（虽然逻辑上是同一时刻），确保了多标的策略在任何时刻看到的都是“当时”的全局状态。
 
-## 4.7 盈亏计算原理 (PnL Mathematics)
+## 4.12 盈亏计算原理 (PnL Mathematics)
 
 理解 `akquant` 的盈亏计算逻辑，对于分析策略表现至关重要。
 
-### 4.7.1 浮动盈亏 (Unrealized PnL)
+### 4.12.1 浮动盈亏 (Unrealized PnL)
 
 浮动盈亏反映了当前持仓的未结收益。
 
@@ -382,7 +482,7 @@ $$ \text{Unrealized PnL} = (\text{Current Price} - \text{Entry Price}) \times \t
 
 *   **Entry Price (入场均价)**：采用加权平均法计算。
 
-### 4.7.2 平仓盈亏 (Realized PnL)
+### 4.12.2 平仓盈亏 (Realized PnL)
 
 当平仓发生时，浮动盈亏转化为平仓盈亏。`akquant` 采用 **FIFO (先进先出)** 原则进行结算。
 
@@ -399,13 +499,13 @@ $$ \text{Realized PnL} = (15 - 10) \times 100 = 500 $$
 
 剩余持仓：100 股 @ 12 元。
 
-### 4.7.3 总权益 (Total Equity)
+### 4.12.3 总权益 (Total Equity)
 
 $$ \text{Total Equity} = \text{Cash} + \sum (\text{Market Value of Positions}) $$
 
 其中市值计算包含保证金占用（对于期货/期权）。
 
-## 4.8 常见问题排查 (Troubleshooting)
+## 4.13 常见问题排查 (Troubleshooting)
 
 如果你的订单没有成交，请检查以下清单：
 
@@ -422,7 +522,7 @@ $$ \text{Total Equity} = \text{Cash} + \sum (\text{Market Value of Positions}) $
 5.  **时间窗口**：
     *   确保数据覆盖了订单产生的时间段。
 
-## 4.9 性能优化与内存管理
+## 4.14 性能优化与内存管理
 
 `akquant` 之所以快，除了 Rust 本身的高性能外，还做了大量内存优化：
 

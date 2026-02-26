@@ -116,7 +116,7 @@ class BacktestResult:
         # If we have multiple days, this works.
         daily_equity = equity.resample("D").last().ffill()
         returns = daily_equity.pct_change().fillna(0.0)
-        return returns
+        return cast(pd.Series, returns)
 
     @property
     def cash_curve(self) -> pd.Series:

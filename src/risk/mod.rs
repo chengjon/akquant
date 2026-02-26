@@ -3,6 +3,7 @@ pub mod config;
 pub mod futures;
 pub mod manager;
 pub mod option;
+pub mod portfolio;
 pub mod rule;
 pub mod stock;
 
@@ -73,8 +74,8 @@ mod tests {
 
         let portfolio = Portfolio {
             cash: Decimal::from(100000),
-            positions: HashMap::new().into(),
-            available_positions: HashMap::new().into(),
+            positions: std::sync::Arc::new(HashMap::new()),
+            available_positions: std::sync::Arc::new(HashMap::new()),
         };
         let mut instruments = HashMap::new();
         instruments.insert(

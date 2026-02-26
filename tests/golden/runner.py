@@ -14,7 +14,14 @@ from typing import Any, Dict, List
 import akquant as aq
 import numpy as np
 import pandas as pd
-from akquant import AssetType, ExecutionMode, InstrumentConfig, run_backtest
+from akquant import (
+    AssetType,
+    BacktestConfig,
+    ExecutionMode,
+    InstrumentConfig,
+    StrategyConfig,
+    run_backtest,
+)
 from akquant.backtest.result import BacktestResult
 
 sys.path.append(str(Path(__file__).parent / "strategies"))
@@ -229,6 +236,12 @@ def run_test(
     # Need to handle instruments_config properly
     instr_configs = config.get("instruments_config", [])
 
+    # Create BacktestConfig
+    bc_config = BacktestConfig(
+        strategy_config=StrategyConfig(initial_cash=initial_cash),
+        instruments_config=instr_configs,
+    )
+
     # Handle T+1 via kwarg if supported by run_backtest, or via market config
     t_plus_one = config.get("t_plus_one", False)
 
@@ -237,8 +250,7 @@ def run_test(
         result = run_backtest(
             data=df,
             strategy=strategy_cls,
-            initial_cash=initial_cash,
-            instruments_config=instr_configs,
+            config=bc_config,
             t_plus_one=t_plus_one,
             execution_mode=ExecutionMode.NextOpen,  # Consistent execution
             lot_size=config.get("lot_size", 1),

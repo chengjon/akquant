@@ -28,10 +28,47 @@
 * `on_order`: 订单状态变化时触发 (如提交、成交、取消)。
 * `on_trade`: 收到成交回报时触发。
 * `on_timer`: 定时器触发时调用 (需手动注册)。
-* `on_stop`: 策略停止时调用，适合进行资源清理或结果统计。
-* `on_train_signal`: 滚动训练触发信号 (仅在 ML 模式下触发)。
+*   `on_stop`: 策略停止时调用，适合进行资源清理或结果统计。
+*   `on_train_signal`: 滚动训练触发信号 (仅在 ML 模式下触发)。
 
-## 3. 常用工具 (Utilities)
+## 3. 风险管理 (Risk Management)
+
+AKQuant 内置了强大的预交易风控模块，支持在 Engine 层面拦截不合规的订单。
+
+你可以在回测脚本中（Engine 初始化后）配置这些规则：
+
+```python
+from akquant import Engine
+
+engine = Engine()
+# ... 添加数据 ...
+
+# 获取风控管理器 (注意：PyO3 返回的是副本，修改后需赋值回去)
+rm = engine.risk_manager
+
+# 1. 单标的持仓上限 (例如 10%)
+# 如果买入导致某标的持仓市值占总权益超过 10%，则拒绝订单
+rm.add_max_position_percent_rule(0.10)
+
+# 2. 行业集中度限制 (例如科技股不超过 20%)
+# 需要提供 Symbol -> Sector 的映射字典
+sector_map = {"AAPL": "Tech", "MSFT": "Tech", "XOM": "Energy"}
+rm.add_sector_concentration_rule(0.20, sector_map)
+
+# 3. 总杠杆率熔断 (例如 1.5倍)
+# 总敞口 / 总权益 > 1.5 时拒绝开仓
+# 对于高杠杆策略，建议关闭默认的现金检查 (check_cash=False)
+rm.config.check_cash = False
+rm.add_max_leverage_rule(1.5)
+
+# 应用配置
+engine.risk_manager = rm
+
+# 运行回测
+engine.run(strategy=MyStrategy)
+```
+
+## 4. 常用工具 (Utilities)
 
 AKQuant 提供了一系列便捷工具来简化策略开发。
 
@@ -94,7 +131,7 @@ def on_timer(self, payload):
         self.log("Running daily check...")
 ```
 
-## 4. 策略风格选择 {: #style-selection }
+## 5. 策略风格选择 {: #style-selection }
 
 AKQuant 提供了两种风格的策略开发接口：
 
@@ -105,11 +142,11 @@ AKQuant 提供了两种风格的策略开发接口：
 | **代码结构** | 面向对象，逻辑封装性好 | 脚本化，简单直观 |
 | **API 调用** | `self.buy()`, `self.ctx` | `ctx.buy()`, `ctx` 作为参数传递 |
 
-## 5. 编写类风格策略 (Class-based) {: #class-based }
+## 6. 编写类风格策略 (Class-based) {: #class-based }
 
 这是 AKQuant 推荐的策略编写方式，结构清晰，易于扩展。
 
-### 5.1 数据预热 (Warmup Period)
+### 6.1 数据预热 (Warmup Period)
 
 在计算技术指标（如 MA, RSI）时，需要一定长度的历史数据。AKQuant 提供了 `warmup_period` 机制来自动处理数据预加载。
 
@@ -117,12 +154,12 @@ AKQuant 提供了两种风格的策略开发接口：
 *   **动态设置**: 在 `__init__` 中设置 `self.warmup_period = N`。
 *   **自动推断**: 如果使用内置指标，框架会尝试自动计算所需长度（但显式设置更安全）。
 
-### 5.2 历史数据获取
+### 6.2 历史数据获取
 
 *   **`self.get_history(count, ...)`**: 返回 `numpy.ndarray`，性能最高，适合计算指标。
 *   **`self.get_history_df(count, ...)`**: 返回 `pandas.DataFrame`，包含 OHLCV，适合复杂分析。
 
-### 5.3 完整示例
+### 6.3 完整示例
 
 ```python
 from akquant import Strategy, Bar
@@ -164,9 +201,9 @@ class MyStrategy(Strategy):
             self.sell(symbol=bar.symbol, quantity=100)
 ```
 
-## 6. 订单与交易详解 (Orders & Execution)
+## 7. 订单与交易详解 (Orders & Execution)
 
-### 6.1 订单生命周期
+### 7.1 订单生命周期
 
 在 AKQuant 中，订单状态流转如下：
 
@@ -178,7 +215,7 @@ class MyStrategy(Strategy):
 5.  **Cancelled**: 订单已取消。
 6.  **Rejected**: 订单被风控或交易所拒绝 (如资金不足、超出涨跌停)。
 
-### 6.2 常用交易指令
+### 7.2 常用交易指令
 
 *   **市价单 (Market Order)**:
     *   `self.buy(symbol, quantity)`

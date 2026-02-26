@@ -18,6 +18,8 @@ def run_backtest(
     stamp_tax_rate: float = 0.0,
     transfer_fee_rate: float = 0.0,
     min_commission: float = 0.0,
+    slippage: Optional[float] = None,
+    volume_limit_pct: Optional[float] = None,
     execution_mode: Union[ExecutionMode, str] = ExecutionMode.NextOpen,
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
@@ -32,6 +34,7 @@ def run_backtest(
     config: Optional[BacktestConfig] = None,
     instruments_config: Optional[Union[List[InstrumentConfig], Dict[str, InstrumentConfig]]] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
+    risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
     **kwargs: Any,
 ) -> BacktestResult
 ```
@@ -46,11 +49,14 @@ def run_backtest(
     *   `ExecutionMode.NextOpen`: Match at next Bar Open (Default).
     *   `ExecutionMode.CurrentClose`: Match at current Bar Close.
 *   `t_plus_one`: Enable T+1 trading rule (Default False). If enabled, it forces usage of China Market Model.
+*   `slippage`: Global slippage (Default 0.0). E.g., 0.0001 means 1bp (0.01%) slippage, using percent model.
+*   `volume_limit_pct`: Volume limit percentage (Default 0.25). Limits single trade to not exceed this percentage of the bar's total volume.
 *   `warmup_period`: Strategy warmup period. Specifies the length of historical data (number of Bars) to preload for indicator calculation.
 *   `start_time` / `end_time`: Backtest start/end time.
 *   `config`: `BacktestConfig` object for centralized configuration.
 *   `instruments_config`: Instrument configuration. Used to set parameters for non-stock assets like futures/options (e.g., multiplier, margin ratio).
     *   Accepts `List[InstrumentConfig]` or `{symbol: InstrumentConfig}`.
+*   `risk_config`: Risk configuration. Supports dict (e.g., `{"max_position_pct": 0.1}`) or `RiskConfig` object. Overrides fields in `config.strategy_config.risk` if both are provided.
 
 ### `akquant.BacktestConfig`
 
@@ -68,6 +74,11 @@ class BacktestConfig:
     timezone: str = "Asia/Shanghai"
     show_progress: bool = True
     history_depth: int = 0
+
+    # Analysis & Bootstrap
+    bootstrap_samples: int = 1000
+    bootstrap_sample_size: Optional[int] = None
+    analysis_config: Optional[Dict[str, Any]] = None
 ```
 
 ### `akquant.StrategyConfig`
@@ -82,7 +93,18 @@ class StrategyConfig:
     stamp_tax_rate: float = 0.0
     transfer_fee_rate: float = 0.0
     min_commission: float = 0.0
+
+    # Execution
     enable_fractional_shares: bool = False
+    round_fill_price: bool = True
+    slippage: float = 0.0
+    volume_limit_pct: float = 0.25
+    exit_on_last_bar: bool = True
+
+    # Position Sizing
+    max_long_positions: Optional[int] = None
+    max_short_positions: Optional[int] = None
+
     risk: Optional[RiskConfig] = None
 ```
 
@@ -98,6 +120,90 @@ class InstrumentConfig:
     multiplier: float = 1.0    # Contract multiplier
     margin_ratio: float = 1.0  # Margin ratio (0.1 means 10% margin)
     tick_size: float = 0.01    # Minimum price variation
+    lot_size: int = 1          # Minimum trade unit
+
+    # Costs & Execution (Asset Specific)
+    commission_rate: Optional[float] = None
+    min_commission: Optional[float] = None
+    stamp_tax_rate: Optional[float] = None
+    transfer_fee_rate: Optional[float] = None
+    slippage: Optional[float] = None
+
+    # Option specific
+    option_type: Optional[str] = None  # "CALL" or "PUT"
+    strike_price: Optional[float] = None
+    expiry_date: Optional[str] = None
+    underlying_symbol: Optional[str] = None
+
+### Configuration System Explained
+
+AKQuant provides a flexible configuration system that allows users to set backtest parameters in multiple ways.
+
+#### 1. Hierarchy
+
+Configuration objects are organized in a tree structure, with `BacktestConfig` as the top-level entry point:
+
+```text
+BacktestConfig (Simulation Scenario)
+├── StrategyConfig (Strategy & Account)
+│   ├── initial_cash
+│   ├── commission_rate (Default)
+│   ├── slippage (Default)
+│   └── RiskConfig (Risk Rules)
+│       ├── safety_margin
+│       └── max_position_pct
+└── InstrumentConfig (Asset Properties)
+    ├── multiplier
+    └── commission_rate (Asset-specific override)
+```
+
+#### 2. Priority
+
+Parameter resolution in `run_backtest` follows this priority order (highest to lowest):
+
+1.  **Explicit Arguments**:
+    *   Parameters passed directly to `run_backtest` have the highest priority.
+    *   Example: `run_backtest(start_time="2022-01-01")` overrides `config.start_time`.
+2.  **Configuration Objects**:
+    *   If explicit arguments are `None`, values are read from `config` (`BacktestConfig`).
+3.  **Defaults**:
+    *   If neither provides a value, system defaults are used.
+
+#### 3. Risk Config Merging
+
+The `risk_config` parameter has special handling logic designed to support a "Baseline + Override" pattern:
+
+*   **Baseline**: First loads `config.strategy_config.risk` (if it exists).
+*   **Override**: If `risk_config` parameter (dict or object) is provided, it overrides fields in the baseline configuration.
+    *   This allows you to quickly adjust risk parameters for testing without modifying the main Config object, e.g., `run_backtest(..., risk_config={"max_position_pct": 0.5})`.
+
+#### 4. Best Practices
+
+*   **Simple Scripts**: Use flat parameters of `run_backtest` directly (e.g., `initial_cash`, `start_time`).
+*   **Production/Complex Strategies**: Build a complete `BacktestConfig` object for version control and reuse.
+*   **Parameter Tuning**: When using `run_grid_search`, modify the Config object or pass override parameters as needed.
+
+### `akquant.RiskConfig`
+
+Configuration for risk management.
+
+```python
+@dataclass
+class RiskConfig:
+    active: bool = True
+    safety_margin: float = 0.0001
+    max_order_size: Optional[float] = None
+    max_order_value: Optional[float] = None
+    max_position_size: Optional[float] = None
+    restricted_list: Optional[List[str]] = None
+    max_position_pct: Optional[float] = None
+    sector_concentration: Optional[Union[float, tuple]] = None
+
+    # Account Level Risk
+    max_account_drawdown: Optional[float] = None
+    max_daily_loss: Optional[float] = None
+    stop_loss_threshold: Optional[float] = None
+```
     lot_size: int = 1          # Minimum trading unit
     # Option specific
     option_type: Optional[str] = None  # "CALL" or "PUT"
@@ -213,7 +319,10 @@ Instrument(
     tick_size=0.01,
     option_type=None,
     strike_price=None,
-    expiry_date=None
+    expiry_date=None,
+    lot_size=1,
+    underlying_symbol=None,
+    settlement_type=None
 )
 ```
 
@@ -232,6 +341,13 @@ class RiskConfig:
     max_order_value: Optional[float] = None
     max_position_size: Optional[float] = None
     restricted_list: Optional[List[str]] = None
+    max_position_pct: Optional[float] = None
+    sector_concentration: Optional[Union[float, tuple]] = None
+
+    # Account Level Risk
+    max_account_drawdown: Optional[float] = None
+    max_daily_loss: Optional[float] = None
+    stop_loss_threshold: Optional[float] = None
 ```
 
 ## 6. Analysis

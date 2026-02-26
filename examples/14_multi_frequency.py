@@ -266,12 +266,19 @@ if __name__ == "__main__":
 
     # 3. Run Backtest
     print("\nStarting Multi-Frequency Backtest (A-share Simulated)...")
+
+    from akquant import BacktestConfig, StrategyConfig
+
+    config = BacktestConfig(
+        strategy_config=StrategyConfig(initial_cash=100_000.0),
+        instruments_config=[stock_1m_config],
+        show_progress=True,
+    )
+
     result = aq.run_backtest(
         data=data,
         strategy=MultiFreqStrategy,
-        instruments_config=[stock_1m_config],
-        initial_cash=100_000.0,
-        show_progress=True,
+        config=config,
     )
 
     print("\n" + "=" * 50)

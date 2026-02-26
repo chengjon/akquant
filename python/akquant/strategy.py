@@ -1015,7 +1015,7 @@ class Strategy:
         # 4. Execute Buy
         if quantity > 0:
             return self.ctx.buy(
-                symbol, quantity, price, time_in_force, trigger_price, tag
+                symbol, quantity, price, time_in_force, trigger_price, tag or ""
             )
         return ""
 
@@ -1062,7 +1062,7 @@ class Strategy:
         # 3. Execute Sell
         if quantity > 0:
             return self.ctx.sell(
-                symbol, quantity, price, time_in_force, trigger_price, tag
+                symbol, quantity, price, time_in_force, trigger_price, tag or ""
             )
         return ""
 

@@ -53,15 +53,18 @@ Your task is to write trading strategies or backtest scripts based on user requi
         *   `warmup_period`: Int (optional override).
         *   `execution_mode`: `ExecutionMode.NextOpen` (default), `CurrentClose`, or `NextAverage`.
         *   `timezone`: Default "Asia/Shanghai".
+        *   `risk_config`: Use `engine.risk_manager` to set pre-trade checks (Position Limit, Sector Limit, Leverage).
     *   Example:
         ```python
-        run_backtest(
-            data=df,
-            strategy=MyStrategy,
-            initial_cash=100000.0,
-            warmup_period=50,
-            execution_mode=ExecutionMode.NextOpen
-        )
+        engine = Engine()
+        engine.set_cash(100000.0)
+
+        # Risk Rules
+        rm = engine.risk_manager
+        rm.add_max_position_percent_rule(0.10) # Max 10% per symbol
+        engine.risk_manager = rm
+
+        engine.run(strategy=MyStrategy)
         ```
 
 6.  **Timers**:
@@ -338,11 +341,16 @@ risk_config = RiskConfig(
     safety_margin=0.0001,       # 资金安全垫
     max_order_size=10000,       # 单笔最大委托数量
     max_position_size=0.5,      # 单个标的最大持仓比例 (50%)
-    restricted_list=["ST_STOCK"] # 限制交易名单
+    restricted_list=["ST_STOCK"], # 限制交易名单
+    stop_loss_threshold=0.8     # 账户级止损 (净值 < 0.8 * 初始资金则停止)
 )
 
-# 应用配置
-strategy_config = StrategyConfig(risk=risk_config)
+# 应用配置 (StrategyConfig 还可以配置滑点等)
+strategy_config = StrategyConfig(
+    risk=risk_config,
+    slippage=0.0002,            # 2bp 滑点
+    volume_limit_pct=0.1        # 限制成交量占比 10%
+)
 run_backtest(..., config=BacktestConfig(strategy_config=strategy_config))
 ```
 

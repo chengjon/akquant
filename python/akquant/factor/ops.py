@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, Union, cast
 
 import polars as pl
 
@@ -9,7 +9,7 @@ def _to_expr(x: Any) -> pl.Expr:
         return x
     # Check if it has rolling methods (duck typing) or just wrap
     if hasattr(x, "rolling"):
-        return x
+        return cast(pl.Expr, x)
     return pl.lit(x)
 
 
@@ -71,7 +71,7 @@ def ts_argmax(x: Union[pl.Expr, float], d: int) -> pl.Expr:
     return (
         _to_expr(x)
         .cast(pl.Float64)
-        .rolling_map(lambda s: float(d - 1 - s.arg_max()), window_size=d)
+        .rolling_map(lambda s: float(d - 1 - (s.arg_max() or 0)), window_size=d)
         .over("symbol")
     )
 
@@ -85,7 +85,7 @@ def ts_argmin(x: Union[pl.Expr, float], d: int) -> pl.Expr:
     return (
         _to_expr(x)
         .cast(pl.Float64)
-        .rolling_map(lambda s: float(d - 1 - s.arg_min()), window_size=d)
+        .rolling_map(lambda s: float(d - 1 - (s.arg_min() or 0)), window_size=d)
         .over("symbol")
     )
 
@@ -129,6 +129,52 @@ def scale(x: Union[pl.Expr, float]) -> pl.Expr:
     """Scale x such that sum(abs(x)) = 1."""
     x_expr = _to_expr(x)
     return (x_expr / x_expr.abs().sum()).over("date")
+
+
+def cs_standardize(x: Union[pl.Expr, float]) -> pl.Expr:
+    """Z-Score Standardization: (x - mean) / std."""
+    x_expr = _to_expr(x)
+    return (x_expr - x_expr.mean().over("date")) / x_expr.std().over("date")
+
+
+def cs_neutralize(x: Union[pl.Expr, float], group: Union[pl.Expr, str]) -> pl.Expr:
+    """
+    Neutralize x against a categorical group (e.g. Industry).
+
+    Result = x - mean(x) within each group.
+    """
+    x_expr = _to_expr(x)
+    # If group is a string literal passed from parser, it might be just a string
+    # But parser converts Name to col. If user passed "industry", it's a string.
+    # We should ensure it's an expression.
+    if isinstance(group, str):
+        # If it's a raw string, treat as column
+        group_expr = pl.col(group)
+    else:
+        group_expr = _to_expr(group)
+
+    # Calculate group mean for each date and group
+    return x_expr - x_expr.mean().over(["date", group_expr])
+
+
+def cs_winsorize(x: Union[pl.Expr, float], limit: float) -> pl.Expr:
+    """Winsorize (Clip) at mean +/- limit * std."""
+    x_expr = _to_expr(x)
+    mean = x_expr.mean().over("date")
+    std = x_expr.std().over("date")
+    # Note: clip supports expressions in recent Polars versions
+    return x_expr.clip(mean - limit * std, mean + limit * std)
+
+
+def cs_winsorize_quantile(
+    x: Union[pl.Expr, float], lower: float, upper: float
+) -> pl.Expr:
+    """Winsorize (Clip) at quantiles (e.g. 0.01, 0.99)."""
+    x_expr = _to_expr(x)
+    # Polars quantile aggregation supports over
+    lo = x_expr.quantile(lower).over("date")
+    up = x_expr.quantile(upper).over("date")
+    return x_expr.clip(lo, up)
 
 
 # --- Math/Logical Operators ---
@@ -191,6 +237,12 @@ OPS_MAP: Dict[str, Callable] = {
     # Cross Section
     "Rank": rank,
     "Scale": scale,
+    "Standardize": cs_standardize,
+    "ZScore": cs_standardize,  # Alias
+    "Winsorize": cs_winsorize,
+    "WinsorizeQuantile": cs_winsorize_quantile,
+    "Neutralize": cs_neutralize,
+    "IndNeutralize": cs_neutralize,  # Alias
     # Math
     "Log": log,
     "Abs": abs_val,
@@ -230,6 +282,12 @@ OP_CATEGORY: Dict[str, str] = {
     # CS
     "Rank": "CS",
     "Scale": "CS",
+    "Standardize": "CS",
+    "ZScore": "CS",
+    "Winsorize": "CS",
+    "WinsorizeQuantile": "CS",
+    "Neutralize": "CS",
+    "IndNeutralize": "CS",
     # EL
     "Log": "EL",
     "Abs": "EL",

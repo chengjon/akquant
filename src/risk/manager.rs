@@ -13,6 +13,7 @@ use super::common::{
 use super::config::RiskConfig;
 use super::futures::FuturesMarginRule;
 use super::option::OptionGreekRiskRule;
+use super::portfolio::{MaxLeverageRule, MaxPositionPercentRule, SectorConcentrationRule};
 use super::rule::RiskRule;
 use super::stock::StockAvailablePositionRule;
 
@@ -27,6 +28,7 @@ pub struct RiskManager {
     // No #[pyo3(skip)] needed as fields are private by default in #[pyclass]
     common_rules: Vec<Box<dyn RiskRule>>,
     asset_rules: HashMap<AssetType, Vec<Box<dyn RiskRule>>>,
+    dynamic_rules: Vec<Box<dyn RiskRule>>,
 }
 
 impl Default for RiskManager {
@@ -35,6 +37,7 @@ impl Default for RiskManager {
             config: RiskConfig::new(),
             common_rules: Vec::new(),
             asset_rules: HashMap::new(),
+            dynamic_rules: Vec::new(),
         };
         manager.init_rules();
         manager
@@ -83,6 +86,28 @@ impl RiskManager {
             Ok(_) => None,
             Err(e) => Some(e.to_string()),
         }
+    }
+
+    /// Add max position percentage rule (0.1 = 10%)
+    pub fn add_max_position_percent_rule(&mut self, max_pct: f64) {
+        self.dynamic_rules.push(Box::new(MaxPositionPercentRule {
+            max_pct: Decimal::from_f64(max_pct).unwrap_or(Decimal::ZERO),
+        }));
+    }
+
+    /// Add max leverage rule (e.g. 1.5 = 150%)
+    pub fn add_max_leverage_rule(&mut self, max_leverage: f64) {
+        self.dynamic_rules.push(Box::new(MaxLeverageRule {
+            max_leverage: Decimal::from_f64(max_leverage).unwrap_or(Decimal::ZERO),
+        }));
+    }
+
+    /// Add sector concentration rule
+    pub fn add_sector_concentration_rule(&mut self, max_pct: f64, sector_map: HashMap<String, String>) {
+        self.dynamic_rules.push(Box::new(SectorConcentrationRule {
+            max_pct: Decimal::from_f64(max_pct).unwrap_or(Decimal::ZERO),
+            sector_map,
+        }));
     }
 }
 
@@ -215,6 +240,11 @@ impl RiskManager {
             for rule in rules {
                 rule.check(order, &risk_ctx)?;
             }
+        }
+
+        // Check dynamic rules
+        for rule in &self.dynamic_rules {
+            rule.check(order, &risk_ctx)?;
         }
 
         Ok(())

@@ -1,6 +1,8 @@
 import typing
 from importlib import metadata
 
+import pandas as pd
+
 try:
     __version__ = metadata.version("akquant")
 except metadata.PackageNotFoundError:
@@ -19,13 +21,14 @@ from .optimize import OptimizationResult, run_grid_search, run_walk_forward
 from .plot import plot_result
 from .sizer import AllInSizer, FixedSize, PercentSizer, Sizer
 from .strategy import Strategy
-from .utils import load_bar_from_df, prepare_dataframe
+from .utils import fetch_akshare_symbol, load_bar_from_df, prepare_dataframe
 
 __doc__ = _akquant.__doc__
 if hasattr(_akquant, "__all__"):  # noqa: F405
     __all__ = _akquant.__all__ + [  # noqa: F405
         "load_bar_from_df",
         "prepare_dataframe",
+        "fetch_akshare_symbol",
         "Sizer",
         "FixedSize",
         "PercentSizer",
@@ -51,6 +54,7 @@ else:
     __all__ = [
         "load_bar_from_df",
         "prepare_dataframe",
+        "fetch_akshare_symbol",
         "Sizer",
         "FixedSize",
         "PercentSizer",
@@ -118,3 +122,72 @@ def _engine_set_timezone_name(self: Engine, tz_name: str) -> None:  # noqa: F405
 
 # Patch Engine class
 Engine.set_timezone_name = _engine_set_timezone_name  # type: ignore # noqa: F405
+
+
+def _engine_get_orders_dataframe(self: Engine) -> "pd.DataFrame":  # noqa: F405
+    """
+    Get all orders as a pandas DataFrame.
+
+    :return: pd.DataFrame with order details.
+    """
+    import pandas as pd
+
+    orders = self.orders
+    if not orders:
+        return pd.DataFrame()
+
+    data = []
+    for o in orders:
+        # Convert nanosecond timestamp to datetime
+        created_at_dt = pd.Timestamp(o.created_at, unit="ns", tz="UTC")
+        updated_at_dt = pd.Timestamp(o.updated_at, unit="ns", tz="UTC")
+
+        data.append(
+            {
+                "order_id": str(o.id),  # UUID usually
+                "symbol": o.symbol,
+                "side": str(o.side),
+                "status": str(o.status),
+                "price": o.price,
+                "quantity": o.quantity,
+                "filled": o.filled_quantity,
+                "avg_price": o.average_filled_price,
+                "created_at": created_at_dt,
+                "updated_at": updated_at_dt,
+                "reject_reason": o.reject_reason or "",
+            }
+        )
+    return pd.DataFrame(data)
+
+
+def _engine_configure_risk(
+    self: Engine,  # noqa: F405
+    max_position_pct: typing.Optional[float] = None,
+    sector_concentration: typing.Optional[
+        typing.Tuple[float, typing.Dict[str, str]]
+    ] = None,
+) -> None:
+    """
+    Configure risk management rules (Shortcut).
+
+    :param max_position_pct: Max position size as a percentage of total equity
+                             (e.g. 0.10 for 10%)
+    :param sector_concentration: Tuple of (limit, sector_map) e.g.
+                                 (0.15, {"600519": "Consumer"})
+    """
+    # Get current risk manager (might be a copy)
+    rm = self.risk_manager
+
+    if max_position_pct is not None:
+        rm.add_max_position_percent_rule(max_position_pct)
+
+    if sector_concentration is not None:
+        limit, sector_map = sector_concentration
+        rm.add_sector_concentration_rule(limit, sector_map)
+
+    # Set it back
+    self.risk_manager = rm
+
+
+Engine.get_orders_dataframe = _engine_get_orders_dataframe  # type: ignore # noqa: F405
+Engine.configure_risk = _engine_configure_risk  # type: ignore # noqa: F405

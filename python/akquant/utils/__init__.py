@@ -113,9 +113,91 @@ def load_bar_from_df(
         symbol_val = "UNKNOWN"
 
     # Call Rust extension
-    return from_arrays(
+    bars = from_arrays(
         timestamps, opens, highs, lows, closes, volumes, symbol_val, symbols_list, None
     )
+
+    # Auto-fix timestamps if they appear to be in seconds (small magnitude)
+    # 10_000_000_000 seconds is year 2286.
+    # Valid nanosecond timestamps for 2023 are around 1.6e18.
+    if bars and bars[0].timestamp < 10_000_000_000:
+        for bar in bars:
+            bar.timestamp = bar.timestamp * 1_000_000_000
+
+    return bars
+
+
+def fetch_akshare_symbol(
+    symbol: str, start_date: str, end_date: str, adjust: str = "qfq"
+) -> pd.DataFrame:
+    """
+    Fetch daily data from AKShare for a given symbol.
+
+    Automatically handles market prefixes.
+
+    :param symbol: Stock symbol (e.g., "600519", "000858")
+    :param start_date: Start date string (e.g., "20231001")
+    :param end_date: End date string (e.g., "20231101")
+    :param adjust: Adjustment type ("qfq", "hfq", ""). Default "qfq".
+    :return: DataFrame with standardized columns compatible with AKQuant.
+    """
+    try:
+        import akshare as ak
+    except ImportError:
+        raise ImportError(
+            "AKShare is not installed. Please install it via 'pip install akshare'."
+        )
+
+    # Determine market prefix
+    ak_symbol = symbol
+    if symbol.isdigit():
+        if symbol.startswith("6"):
+            ak_symbol = f"sh{symbol}"
+        elif symbol.startswith("0") or symbol.startswith("3"):
+            ak_symbol = f"sz{symbol}"
+        elif symbol.startswith("4") or symbol.startswith("8"):
+            ak_symbol = f"bj{symbol}"
+
+    # print(f"Fetching {ak_symbol} from AKShare...")
+    try:
+        df = ak.stock_zh_a_daily(
+            symbol=ak_symbol, start_date=start_date, end_date=end_date, adjust=adjust
+        )
+    except Exception:
+        # Fallback or retry
+        df = pd.DataFrame()
+
+    if df.empty:
+        # Try without prefix if failed (just in case akshare changes behavior)
+        try:
+            df = ak.stock_zh_a_daily(
+                symbol=symbol, start_date=start_date, end_date=end_date, adjust=adjust
+            )
+        except Exception:
+            pass
+
+    if df.empty:
+        raise ValueError(
+            f"No data found for {symbol} ({ak_symbol}) between {start_date} and "
+            f"{end_date}"
+        )
+
+    # Standardize columns
+    rename_map = {
+        "日期": "date",
+        "开盘": "open",
+        "最高": "high",
+        "最低": "low",
+        "收盘": "close",
+        "成交量": "volume",
+    }
+    df = df.rename(columns=rename_map)
+
+    # Ensure date is datetime
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+
+    return cast(pd.DataFrame, df)
 
 
 def parse_duration_to_bars(duration: Union[str, int], frequency: str = "1d") -> int:

@@ -76,18 +76,20 @@ if __name__ == "__main__":
 
     # Note: STOCK_A will use default settings (Stock, Multiplier 1.0, Margin 1.0)
 
+    from akquant import BacktestConfig, StrategyConfig
+
     # 3. Run Backtest
     print("Running mixed asset backtest...")
+    config = BacktestConfig(
+        strategy_config=StrategyConfig(initial_cash=1_000_000.0),
+        instruments_config=[future_config],
+        show_progress=True,
+    )
+
     result = aq.run_backtest(
         data=data,
         strategy=TestStrategy,
-        instruments_config=[future_config],  # Pass the config list here
-        # Note: Since SimpleMarket (T+0) requires full cash coverage by default
-        # in this version, we need enough cash to cover the full value of the
-        # Future contract (3500 * 300 = 1,050,000).
-        # Although margin_ratio is 0.1, the cash check might be strict.
-        initial_cash=1_000_000.0,
-        show_progress=True,
+        config=config,
     )
 
     print("-" * 50)

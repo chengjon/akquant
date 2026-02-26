@@ -18,6 +18,8 @@ def run_backtest(
     stamp_tax_rate: float = 0.0,
     transfer_fee_rate: float = 0.0,
     min_commission: float = 0.0,
+    slippage: Optional[float] = None,
+    volume_limit_pct: Optional[float] = None,
     execution_mode: Union[ExecutionMode, str] = ExecutionMode.NextOpen,
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
@@ -32,6 +34,7 @@ def run_backtest(
     config: Optional[BacktestConfig] = None,
     instruments_config: Optional[Union[List[InstrumentConfig], Dict[str, InstrumentConfig]]] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
+    risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
     **kwargs: Any,
 ) -> BacktestResult
 ```
@@ -46,12 +49,15 @@ def run_backtest(
     *   `ExecutionMode.NextOpen`: 下一 Bar 开盘价成交 (默认)。
     *   `ExecutionMode.CurrentClose`: 当前 Bar 收盘价成交。
 *   `t_plus_one`: 是否启用 T+1 交易规则 (默认 False)。如果启用，将强制使用中国市场模型。
+*   `slippage`: 全局滑点 (默认 0.0)。例如 0.0001 代表 1bp (0.01%) 的滑点，采用百分比模型。
+*   `volume_limit_pct`: 成交量限制比例 (默认 0.25)。限制单笔成交不超过该 Bar 总成交量的百分比。
 *   `warmup_period`: 策略预热期。指定需要预加载的历史数据长度（Bar 数量），用于计算指标。
 *   `start_time` / `end_time`: 回测开始/结束时间。
 *   `config`: `BacktestConfig` 配置对象，用于集中管理配置。
 *   `instruments_config`: 标的配置。用于设置期货/期权等非股票资产的参数（如乘数、保证金）。
 *   `lot_size`: 最小交易单位。如果是 `int`，应用于所有标的；如果是字典，按标的匹配。
 *   `custom_matchers`: 自定义撮合器字典。
+*   `risk_config`: 风控配置。支持字典 (e.g., `{"max_position_pct": 0.1}`) 或 `RiskConfig` 对象。如果同时提供了 `config.strategy_config.risk`，此参数将覆盖其中的同名字段。
 
 ### `akquant.BacktestConfig`
 
@@ -69,6 +75,12 @@ class BacktestConfig:
     timezone: str = "Asia/Shanghai"
     show_progress: bool = True
     history_depth: int = 0
+
+    # Analysis & Bootstrap
+    bootstrap_samples: int = 1000
+    bootstrap_sample_size: Optional[int] = None
+    analysis_config: Optional[Dict[str, Any]] = None
+
 ```
 
 ### `akquant.StrategyConfig`
@@ -89,14 +101,13 @@ class StrategyConfig:
     # 执行
     enable_fractional_shares: bool = False
     round_fill_price: bool = True       # 是否对成交价进行最小变动价位取整
+    slippage: float = 0.0               # 全局滑点 (e.g. 0.0002 for 2 bps)
+    volume_limit_pct: float = 0.25      # 成交量限制 (e.g. 0.25 for 25% of bar volume)
     exit_on_last_bar: bool = True       # 是否在回测结束时自动平仓
 
     # 持仓限制
     max_long_positions: Optional[int] = None
     max_short_positions: Optional[int] = None
-
-    # 统计
-    bootstrap_samples: int = 1000       # Bootstrap 采样次数
 
     # 风控
     risk: Optional[RiskConfig] = None
@@ -115,11 +126,68 @@ class InstrumentConfig:
     margin_ratio: float = 1.0  # 保证金率 (0.1 表示 10% 保证金)
     tick_size: float = 0.01    # 最小变动价位
     lot_size: int = 1          # 最小交易单位
+
+    # 费率与执行 (资产专用)
+    commission_rate: Optional[float] = None
+    min_commission: Optional[float] = None
+    stamp_tax_rate: Optional[float] = None
+    transfer_fee_rate: Optional[float] = None
+    slippage: Optional[float] = None
+
     # 期权相关
     option_type: Optional[str] = None  # "CALL" 或 "PUT"
     strike_price: Optional[float] = None
     expiry_date: Optional[str] = None  # YYYY-MM-DD
+    underlying_symbol: Optional[str] = None
 ```
+
+### 配置系统详解 (Configuration System)
+
+AKQuant 提供了灵活的配置系统，允许用户通过多种方式设置回测参数。
+
+#### 1. 配置层级 (Hierarchy)
+
+配置对象采用树状结构组织，`BacktestConfig` 是顶层入口：
+
+```text
+BacktestConfig (回测场景)
+├── StrategyConfig (策略与账户)
+│   ├── initial_cash (初始资金)
+│   ├── commission_rate (默认佣金)
+│   ├── slippage (默认滑点)
+│   └── RiskConfig (风控规则)
+│       ├── safety_margin (安全垫)
+│       └── max_position_pct (持仓限制)
+└── InstrumentConfig (资产属性)
+    ├── multiplier (合约乘数)
+    └── commission_rate (资产专用佣金，覆盖 StrategyConfig)
+```
+
+#### 2. 参数优先级 (Priority)
+
+`run_backtest` 函数的参数解析遵循以下优先级（由高到低）：
+
+1.  **显式参数 (Explicit Arguments)**:
+    *   直接传递给 `run_backtest` 的参数优先级最高。
+    *   例如：`run_backtest(start_time="2022-01-01")` 会覆盖 `config.start_time`。
+2.  **配置对象 (Config Objects)**:
+    *   如果显式参数为 `None`，则从 `config` (`BacktestConfig`) 中读取。
+3.  **默认值 (Defaults)**:
+    *   如果上述两者都未提供，则使用系统默认值。
+
+#### 3. 风控配置合并 (Risk Config Merging)
+
+`risk_config` 参数的处理逻辑比较特殊，旨在支持“基准配置 + 快速覆盖”的模式：
+
+*   **基准**: 首先加载 `config.strategy_config.risk`（如果存在）。
+*   **覆盖**: 如果提供了 `risk_config` 参数（字典或对象），它将覆盖基准配置中的同名字段。
+    *   这允许你在不修改 Config 对象的情况下，通过 `run_backtest(..., risk_config={"max_position_pct": 0.5})` 快速调整风控参数进行测试。
+
+#### 4. 最佳实践 (Best Practices)
+
+*   **简单脚本**: 直接使用 `run_backtest` 的扁平参数（如 `initial_cash`, `start_time`）。
+*   **生产/复杂策略**: 构建完整的 `BacktestConfig` 对象，以便于版本管理和复用。
+*   **参数调优**: 使用 `run_grid_search` 时，通常通过修改 Config 对象或传入 override 参数来实现。
 
 ## 2. 策略开发 (Strategy)
 
@@ -285,6 +353,13 @@ class RiskConfig:
     max_order_value: Optional[float] = None
     max_position_size: Optional[float] = None
     restricted_list: Optional[List[str]] = None
+    max_position_pct: Optional[float] = None
+    sector_concentration: Optional[Union[float, tuple]] = None
+
+    # 账户级风控
+    max_account_drawdown: Optional[float] = None
+    max_daily_loss: Optional[float] = None
+    stop_loss_threshold: Optional[float] = None
 ```
 
 ## 6. 结果分析 (Analysis)

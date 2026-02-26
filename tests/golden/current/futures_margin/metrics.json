@@ -6,5 +6,5 @@
   "net_pnl": -103.5,
   "end_market_value": 244896.5,
   "engine_rule_version": "1.0.0",
-  "akquant_version": "0.1.44"
+  "akquant_version": "0.1.51"
 }

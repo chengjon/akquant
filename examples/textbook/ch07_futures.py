@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
     # 1. 定义期货合约属性 (关键步骤)
     # 螺纹钢：乘数 10，保证金 10%
-    from akquant import InstrumentConfig
+    from akquant import BacktestConfig, InstrumentConfig, StrategyConfig
 
     rb_config = InstrumentConfig(
         symbol="RB2310",
@@ -125,12 +125,17 @@ if __name__ == "__main__":
         margin_ratio=0.1,  # 保证金比率 (10%)
     )
 
+    # 2. 运行回测
+    # 使用 BacktestConfig 配置合约和资金参数
+    config = BacktestConfig(
+        strategy_config=StrategyConfig(initial_cash=500_000, commission_rate=0.0001),
+        instruments_config=[rb_config],
+    )
+
     result = aq.run_backtest(
         strategy=FuturesTrendStrategy,
         data=df,
-        initial_cash=500_000,
-        commission_rate=0.0001,  # 万分之一
-        instruments_config=[rb_config],  # 传入合约配置
+        config=config,
     )
 
     print("\n" + "=" * 40)
@@ -139,7 +144,7 @@ if __name__ == "__main__":
 
     # 打印最后几天的权益变动
     # 注意：期货有 leverage，portfolio_value 可能波动较大
-    equity = result.equity_df.tail()
+    equity = result.equity_curve.tail()
     print(equity)
 
     print("\n保证金占用情况 (示例):")

@@ -1,5 +1,5 @@
 import ast
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, cast
 
 import polars as pl
 
@@ -24,7 +24,14 @@ class ExpressionParser:
         except SyntaxError as e:
             raise ValueError(f"Invalid expression syntax: {expr_str}") from e
 
-        return self._visit(tree.body)
+        result = self._visit(tree.body)
+
+        if isinstance(result, pl.Expr):
+            return result
+        if hasattr(result, "rolling"):
+            return cast(pl.Expr, result)
+
+        return pl.lit(result)
 
     def plan(self, expr_str: str) -> List[Tuple[str, str]]:
         """

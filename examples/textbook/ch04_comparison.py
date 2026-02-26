@@ -168,9 +168,10 @@ def run_akquant_backtest(df: pd.DataFrame) -> None:
         val = metrics.loc["end_market_value", "value"]
         end_value = float(str(val))
     else:
-        # 尝试从 result.equity_df 获取
-        if not result.equity_df.empty:
-            val = result.equity_df["equity"].iloc[-1]
+        # 尝试从 result.equity_curve 获取
+        equity = result.equity_curve
+        if not equity.empty:
+            val = equity.iloc[-1]
             end_value = float(str(val))
 
     print(f"[AKQuant] 耗时: {time.time() - start_time:.4f}s")

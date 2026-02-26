@@ -13,7 +13,7 @@ from ..akquant import (
     ExecutionMode,
     Instrument,
 )
-from ..config import BacktestConfig, InstrumentConfig
+from ..config import BacktestConfig, RiskConfig
 from ..data import ParquetDataCatalog
 from ..log import get_logger, register_logger
 from ..risk import apply_risk_config
@@ -54,7 +54,9 @@ class FunctionalStrategy(Strategy):
 
 
 def run_backtest(
-    data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]]] = None,
+    data: Optional[
+        Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed]
+    ] = None,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
     symbol: Union[str, List[str]] = "BENCHMARK",
     initial_cash: Optional[float] = None,
@@ -62,6 +64,8 @@ def run_backtest(
     stamp_tax_rate: float = 0.0,
     transfer_fee_rate: float = 0.0,
     min_commission: float = 0.0,
+    slippage: Optional[float] = None,
+    volume_limit_pct: Optional[float] = None,
     execution_mode: Union[ExecutionMode, str] = ExecutionMode.NextOpen,
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
@@ -74,10 +78,8 @@ def run_backtest(
     start_time: Optional[Union[str, Any]] = None,
     end_time: Optional[Union[str, Any]] = None,
     config: Optional[BacktestConfig] = None,
-    instruments_config: Optional[
-        Union[List[InstrumentConfig], Dict[str, InstrumentConfig]]
-    ] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
+    risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
     **kwargs: Any,
 ) -> BacktestResult:
     """
@@ -85,7 +87,14 @@ def run_backtest(
 
     :param data: 回测数据，可以是 Pandas DataFrame 或 Bar 列表.
     :param custom_matchers: 自定义撮合器字典 {AssetType: MatcherInstance}
-                 可选(如果配置了config或策略订阅).
+                 用于覆盖特定资产类型的默认撮合逻辑。
+                 例如：传入一个实现了自定义成交规则的 Rust 撮合器实例，
+                 或者用于测试目的的 Mock 撮合器。
+                 默认情况下，引擎会根据 AssetType 自动选择内置的撮合器
+                 (如 StockMatcher, FuturesMatcher 等)。
+    :param risk_config: 风控配置，支持字典 (e.g., {"max_position_pct": 0.1})
+                        或 RiskConfig 对象。如果同时提供了 config.strategy_config.risk，
+                        此参数将覆盖其中的同名字段。
     :param strategy: 策略类、策略实例或 on_bar 回调函数
     :param symbol: 标的代码
     :param initial_cash: 初始资金 (默认 1,000,000.0)
@@ -93,6 +102,8 @@ def run_backtest(
     :param stamp_tax_rate: 印花税率 (仅卖出, 默认 0.0)
     :param transfer_fee_rate: 过户费率 (默认 0.0)
     :param min_commission: 最低佣金 (默认 0.0)
+    :param slippage: 滑点 (默认 0.0)
+    :param volume_limit_pct: 成交量限制比例 (默认 0.25)
     :param execution_mode: 执行模式 (ExecutionMode.NextOpen 或 "next_open")
     :param timezone: 时区名称 (默认 "Asia/Shanghai")
     :param t_plus_one: 是否启用 T+1 交易规则 (默认 False)
@@ -160,6 +171,19 @@ def run_backtest(
             transfer_fee_rate = config.strategy_config.transfer_fee_rate
         if min_commission == 0.0:
             min_commission = config.strategy_config.min_commission
+
+    # Resolve Slippage & Volume Limit
+    if slippage is None:
+        if config and config.strategy_config:
+            slippage = config.strategy_config.slippage
+        else:
+            slippage = 0.0
+
+    if volume_limit_pct is None:
+        if config and config.strategy_config:
+            volume_limit_pct = config.strategy_config.volume_limit_pct
+        else:
+            volume_limit_pct = 0.25
 
     # Resolve Timezone
     if timezone is None:
@@ -327,32 +351,39 @@ def run_backtest(
 
     # Determine Data Loading Strategy
     if data is not None:
-        # Use provided data
-        if isinstance(data, pd.DataFrame):
+        if isinstance(data, DataFeed):
+            # Use provided DataFeed
+            feed = data
+            # We don't know symbols in feed easily without iteration,
+            # but usually feed contains all needed data.
+            # We might need to update 'symbols' if they were not provided explicitly?
+            # For now, assume user provided symbols or feed covers them.
+        elif isinstance(data, pd.DataFrame):
+            df_input = data
             # Ensure index is datetime
-            if not isinstance(data.index, pd.DatetimeIndex):
+            if not isinstance(df_input.index, pd.DatetimeIndex):
                 # Try to find a date column if index is not date
                 # Common candidates: "date", "timestamp", "datetime"
                 found_date = False
                 for col in ["date", "timestamp", "datetime", "Date", "Timestamp"]:
-                    if col in data.columns:
-                        data = data.set_index(col)
+                    if col in df_input.columns:
+                        df_input = df_input.set_index(col)
                         found_date = True
                         break
 
                 if not found_date:
                     # try convert index
                     try:
-                        data.index = pd.to_datetime(data.index)
+                        df_input.index = pd.to_datetime(df_input.index)
                     except Exception:
                         pass
 
             # Ensure index is pd.Timestamp compatible
             # (convert datetime.date to Timestamp)
             # This is handled by pd.to_datetime but let's be safe for object index
-            if data.index.dtype == "object":
+            if df_input.index.dtype == "object":
                 try:
-                    data.index = pd.to_datetime(data.index)
+                    df_input.index = pd.to_datetime(df_input.index)
                 except Exception:
                     pass
 
@@ -362,28 +393,30 @@ def run_backtest(
                 ts_start = pd.Timestamp(start_time)
                 # If index is date objects, compare with date()
                 if (
-                    len(data) > 0
-                    and isinstance(data.index[0], (dt_module.date))
-                    and not isinstance(data.index[0], dt_module.datetime)
+                    len(df_input) > 0
+                    and isinstance(df_input.index[0], (dt_module.date))
+                    and not isinstance(df_input.index[0], dt_module.datetime)
                 ):
-                    data = data[data.index >= ts_start.date()]
+                    df_input = df_input[df_input.index >= ts_start.date()]
                 else:
-                    data = data[data.index >= ts_start]
+                    df_input = df_input[df_input.index >= ts_start]
 
             if end_time:
                 ts_end = pd.Timestamp(end_time)
                 if (
-                    len(data) > 0
-                    and isinstance(data.index[0], (dt_module.date))
-                    and not isinstance(data.index[0], dt_module.datetime)
+                    len(df_input) > 0
+                    and isinstance(df_input.index[0], (dt_module.date))
+                    and not isinstance(df_input.index[0], dt_module.datetime)
                 ):
-                    data = data[data.index <= ts_end.date()]
+                    df_input = df_input[df_input.index <= ts_end.date()]
                 else:
-                    data = data[data.index <= ts_end]
+                    df_input = df_input[df_input.index <= ts_end]
 
             # Try to infer symbol from DataFrame if not explicitly provided or default
-            if (not symbols or symbols == ["BENCHMARK"]) and "symbol" in data.columns:
-                unique_symbols = data["symbol"].unique()
+            if (
+                not symbols or symbols == ["BENCHMARK"]
+            ) and "symbol" in df_input.columns:
+                unique_symbols = df_input["symbol"].unique()
                 if len(unique_symbols) == 1:
                     inferred = unique_symbols[0]
                     if symbols == ["BENCHMARK"]:
@@ -393,7 +426,7 @@ def run_backtest(
                             symbols.append(inferred)
 
             target_symbol = symbols[0] if symbols else "BENCHMARK"
-            df = prepare_dataframe(data)
+            df = prepare_dataframe(df_input)
             data_map_for_indicators[target_symbol] = df
             arrays = df_to_arrays(df, symbol=target_symbol)
             feed.add_arrays(*arrays)  # type: ignore
@@ -565,6 +598,22 @@ def run_backtest(
         commission_rate, stamp_tax_rate, transfer_fee_rate, min_commission
     )
 
+    # Configure Execution parameters
+    if slippage > 0:
+        if hasattr(engine, "set_slippage"):
+            # Assume "percent" model for the simple float config
+            engine.set_slippage("percent", slippage)
+        else:
+            logger.warning(f"Slippage {slippage} set but not supported by Engine.")
+
+    if volume_limit_pct != 0.25:
+        if hasattr(engine, "set_volume_limit"):
+            engine.set_volume_limit(volume_limit_pct)
+        else:
+            logger.warning(
+                f"Volume limit {volume_limit_pct} set but not supported by Engine."
+            )
+
     # Configure other asset fees if provided
     if "fund_commission" in kwargs:
         engine.set_fund_fee_rules(
@@ -577,8 +626,43 @@ def run_backtest(
         engine.set_option_fee_rules(kwargs["option_commission"])
 
     # Apply Risk Config
-    if config and config.strategy_config:
-        apply_risk_config(engine, config.strategy_config.risk)
+
+    # 1. Start with config from BacktestConfig
+    current_risk_config: Optional[RiskConfig] = None
+    if config and config.strategy_config and config.strategy_config.risk:
+        current_risk_config = config.strategy_config.risk
+
+    # 2. If risk_config (dict or object) is provided, merge/override
+    if risk_config:
+        if current_risk_config is None:
+            current_risk_config = RiskConfig()
+
+        if isinstance(risk_config, RiskConfig):
+            # If explicit RiskConfig object provided, it takes precedence over
+            # partial fields?
+            # Or should we merge?
+            # Strategy: If it's a full object, use it as base, but this might discard
+            # config.risk
+            # Better strategy: Copy attributes from override to current
+            for field in risk_config.__dataclass_fields__:
+                val = getattr(risk_config, field)
+                if val is not None:
+                    setattr(current_risk_config, field, val)
+        elif isinstance(risk_config, dict):
+            # Update fields from dict
+            for k, v in risk_config.items():
+                if hasattr(current_risk_config, k):
+                    setattr(current_risk_config, k, v)
+                else:
+                    logger.warning(f"Unknown risk config key: {k}")
+
+    # 3. Apply if exists
+    if current_risk_config:
+        apply_risk_config(engine, current_risk_config)
+
+    # Get current manager
+    rm = engine.risk_manager
+    engine.risk_manager = rm
 
     # 5. 添加标的
     # 解析 Instrument Config
@@ -593,14 +677,6 @@ def run_backtest(
                 prebuilt_instruments[o.symbol] = o
         elif isinstance(obs, dict):
             prebuilt_instruments.update(obs)
-
-    # From arguments
-    if instruments_config:
-        if isinstance(instruments_config, list):
-            for c in instruments_config:
-                inst_conf_map[c.symbol] = c
-        elif isinstance(instruments_config, dict):
-            inst_conf_map.update(instruments_config)
 
     # From BacktestConfig
     if config and config.instruments_config:

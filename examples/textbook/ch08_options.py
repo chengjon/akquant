@@ -125,11 +125,17 @@ if __name__ == "__main__":
         margin_ratio=0.0,  # 期权买方不收保证金，卖方收 (引擎会自动计算卖方保证金)
     )
 
+    from akquant import BacktestConfig, StrategyConfig
+
+    config = BacktestConfig(
+        strategy_config=StrategyConfig(initial_cash=500_000),
+        instruments_config=[rb_fut_config, rb_opt_config],
+    )
+
     result = aq.run_backtest(
         strategy=CoveredCallStrategy,
         data=df,
-        initial_cash=500_000,
-        instruments_config=[rb_fut_config, rb_opt_config],
+        config=config,
     )
 
     # 打印最终结果
