@@ -72,16 +72,17 @@ plugins:
             User Guide: 核心指南
             Strategy Manual: 策略开发手册
             Python Basics: Python 金融入门
-            Quant Basics: 量化新手指南
+            Quant Basics: 量化交易新手指南
             Data Guide: 数据指南
-            Factor Engine Guide: 因子引擎指南
+            Factor Engine Guide: 因子表达式引擎指南
             Visualization: 可视化与报告
-            Result Analysis: 回测结果详解
-            Optimization Guide: 参数优化
+            Result Analysis: 回测结果与指标详解
+            Optimization Guide: 参数优化指南
             Examples: 示例集合
             Advanced Topics: 进阶专题
             ML Guide: 机器学习
             LLM Guide: LLM 辅助
+            Warm Start Guide: 热启动指南
             Timezone Handling: 时区处理
             Testing Guide: 测试指南
             API Reference: API 参考
@@ -158,8 +159,8 @@ plugins:
             11_Optimization: Chap 11 - Optimization
             12_Machine Learning: Chap 12 - Machine Learning
             13_Visualization: Chap 13 - Visualization
-            15_Factor Expression: Chap 14 - Factor Expression
-            14_Live Trading: Chap 15 - Live Trading
+            14_Factor Expression: Chap 14 - Factor Expression
+            15_Live Trading: Chap 15 - Live Trading
 
 nav:
   - Home: index.md
