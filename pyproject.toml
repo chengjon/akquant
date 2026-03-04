@@ -97,5 +97,6 @@ disallow_untyped_defs = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["torch.*", "sklearn.*", "matplotlib.*", "akshare.*"]
+module = ["torch.*", "sklearn.*", "matplotlib.*", "akshare.*", "pyarrow", "pyarrow.*"]
 ignore_missing_imports = true
+disable_error_code = ["import-untyped"]

@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import datetime as dt
+from typing import Any, Union
+
+import pandas as pd
+
+
+def schedule(
+    strategy: Any, trigger_time: Union[str, dt.datetime, pd.Timestamp], payload: str
+) -> None:
+    """注册单次定时任务."""
+    if strategy.ctx is None:
+        raise RuntimeError("Context not ready")
+
+    ts_ns = 0
+    if isinstance(trigger_time, str):
+        try:
+            dt_obj = pd.to_datetime(trigger_time)
+            if dt_obj.tz is None:
+                dt_obj = dt_obj.tz_localize(strategy.timezone)
+            ts_ns = int(dt_obj.value)
+        except Exception:
+            ts_ns = 0
+    elif isinstance(trigger_time, (dt.datetime, pd.Timestamp)):
+        if trigger_time.tzinfo is None:
+            trigger_time = pd.Timestamp(trigger_time).tz_localize(strategy.timezone)
+        if hasattr(trigger_time, "value"):
+            ts_ns = int(trigger_time.value)
+        elif isinstance(trigger_time, dt.datetime):
+            ts_ns = int(pd.Timestamp(trigger_time).value)
+        else:
+            ts_ns = 0
+
+    if ts_ns > 0:
+        strategy.ctx.schedule(ts_ns, payload)
+
+
+def add_daily_timer(strategy: Any, time_str: str, payload: str) -> None:
+    """注册每日定时任务."""
+    wrapped_payload = f"__daily__|{time_str}|{payload}"
+
+    if not strategy._trading_days:
+        try:
+            t = pd.to_datetime(time_str).time()
+        except Exception:
+            print(f"Error parsing time: {time_str}")
+            return
+
+        now = pd.Timestamp.now(tz=strategy.timezone)
+        target = pd.Timestamp.combine(now.date(), t).tz_localize(strategy.timezone)
+        if target <= now:
+            target += pd.Timedelta(days=1)
+
+        schedule(strategy, target, wrapped_payload)
+        return
+
+    try:
+        t = pd.to_datetime(time_str).time()
+    except Exception:
+        print(f"Error parsing time: {time_str}")
+        return
+
+    for day in strategy._trading_days:
+        naive_dt = pd.Timestamp.combine(day.date(), t)
+        dt_obj = naive_dt.tz_localize(strategy.timezone)
+        schedule(strategy, dt_obj, wrapped_payload)

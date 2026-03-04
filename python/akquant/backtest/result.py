@@ -258,9 +258,10 @@ class BacktestResult:
         # 1. Try IPC
         if hasattr(self._raw, "get_positions_ipc"):
             try:
+                import importlib
                 import io
 
-                import pyarrow as pa
+                pa = importlib.import_module("pyarrow")
 
                 ipc_bytes = self._raw.get_positions_ipc()
                 if ipc_bytes and len(ipc_bytes) > 0:
@@ -507,9 +508,10 @@ class BacktestResult:
         # 1. Try IPC (Zero-Copy-ish via Arrow)
         if hasattr(self._raw, "get_trades_ipc"):
             try:
+                import importlib
                 import io
 
-                import pyarrow as pa
+                pa = importlib.import_module("pyarrow")
 
                 ipc_bytes = self._raw.get_trades_ipc()
                 if ipc_bytes and len(ipc_bytes) > 0:

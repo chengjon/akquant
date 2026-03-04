@@ -1,8 +1,12 @@
 import logging
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
+from akquant import run_backtest, run_warm_start, save_snapshot
 from akquant.akquant import Bar, StrategyContext, Tick
 from akquant.strategy import Strategy
 
@@ -85,3 +89,816 @@ def test_strategy_properties() -> None:
     assert strategy.open == 0.0
     assert strategy.high == 0.0
     assert strategy.low == 0.0
+
+
+class StartCounterStrategy(Strategy):
+    """Strategy for lifecycle callback counting."""
+
+    def __init__(self) -> None:
+        """Initialize counters."""
+        self.start_calls = 0
+        self.resume_calls = 0
+
+    def on_start(self) -> None:
+        """Count start callbacks."""
+        self.start_calls += 1
+
+    def on_resume(self) -> None:
+        """Count resume callbacks."""
+        self.resume_calls += 1
+
+
+class WarmStartSequenceStrategy(Strategy):
+    """Strategy for warm start callback ordering tests."""
+
+    def __init__(self) -> None:
+        """Initialize callback sequence container."""
+        self.events: list[str] = []
+
+    def on_resume(self) -> None:
+        """Record resume callback."""
+        self.events.append("on_resume")
+
+    def on_start(self) -> None:
+        """Record start callback."""
+        self.events.append("on_start")
+
+
+def test_on_start_internal_idempotent() -> None:
+    """Start callback should run once when internal start is called repeatedly."""
+    strategy = StartCounterStrategy()
+    strategy._on_start_internal()
+    strategy._on_start_internal()
+    assert strategy.start_calls == 1
+    assert strategy.resume_calls == 0
+
+
+def test_on_resume_runs_once_before_on_start() -> None:
+    """Resume callback should run once before start in restored mode."""
+    strategy = StartCounterStrategy()
+    strategy._is_restored = True
+    strategy._on_start_internal()
+    strategy._on_start_internal()
+    assert strategy.resume_calls == 1
+    assert strategy.start_calls == 1
+
+
+def test_warm_start_callback_sequence() -> None:
+    """Warm start should call on_resume before on_start once."""
+    strategy = WarmStartSequenceStrategy()
+    strategy._is_restored = True
+    strategy._on_start_internal()
+    strategy._on_start_internal()
+    assert strategy.events == ["on_resume", "on_start"]
+
+
+class EventCounterStrategy(Strategy):
+    """Strategy for event callback counting."""
+
+    def __init__(self) -> None:
+        """Initialize counters."""
+        self.trade_count = 0
+        self.tick_count = 0
+        self.timer_count = 0
+
+    def on_bar(self, bar: Bar) -> None:
+        """Ignore bar events."""
+        return
+
+    def on_tick(self, tick: Tick) -> None:
+        """Count tick callbacks."""
+        self.tick_count += 1
+
+    def on_timer(self, payload: str) -> None:
+        """Count timer callbacks."""
+        self.timer_count += 1
+
+    def on_trade(self, trade: Any) -> None:
+        """Count trade callbacks."""
+        self.trade_count += 1
+
+
+class TradeDedupeLimitStrategy(Strategy):
+    """Strategy for trade de-duplication cache limit tests."""
+
+    trade_dedupe_cache_size = 2
+
+    def __init__(self) -> None:
+        """Initialize trade callbacks counter."""
+        self.trade_count = 0
+
+    def on_trade(self, trade: Any) -> None:
+        """Count trade callbacks."""
+        self.trade_count += 1
+
+
+def test_trade_callback_not_duplicated_on_bar() -> None:
+    """Trade callback should be triggered once per bar event."""
+    strategy = EventCounterStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = [SimpleNamespace(order_id="o1")]
+
+    ts = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+    bar = Bar(
+        timestamp=ts,
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.5,
+        volume=1000.0,
+        symbol="AAPL",
+    )
+    strategy._on_bar_event(bar, ctx)
+    assert strategy.trade_count == 1
+
+
+def test_tick_and_timer_process_order_events() -> None:
+    """Tick and timer events should process trade callbacks."""
+    strategy = EventCounterStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = [SimpleNamespace(order_id="o1")]
+
+    ts_tick = pd.Timestamp("2023-01-01 09:30:01", tz="Asia/Shanghai").value
+    tick = Tick(timestamp=ts_tick, price=103.0, volume=500.0, symbol="GOOG")
+    strategy._on_tick_event(tick, ctx)
+
+    assert strategy.tick_count == 1
+    assert strategy.trade_count == 1
+
+    ctx.recent_trades = [SimpleNamespace(order_id="o2")]
+    strategy._on_timer_event("rebalance", ctx)
+    assert strategy.timer_count == 1
+    assert strategy.trade_count == 2
+
+
+def test_trade_callback_not_replayed_across_events() -> None:
+    """Repeated recent_trades entries should not replay on_trade callback."""
+    strategy = EventCounterStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = [SimpleNamespace(order_id="o1")]
+
+    ts_tick = pd.Timestamp("2023-01-01 09:30:01", tz="Asia/Shanghai").value
+    tick = Tick(timestamp=ts_tick, price=103.0, volume=500.0, symbol="GOOG")
+    strategy._on_tick_event(tick, ctx)
+    assert strategy.trade_count == 1
+
+    strategy._on_timer_event("rebalance", ctx)
+    assert strategy.trade_count == 1
+    assert strategy.timer_count == 1
+
+
+def test_trade_dedupe_cache_limit_eviction_allows_replay() -> None:
+    """Dedupe cache should evict old keys once limit reached."""
+    strategy = TradeDedupeLimitStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+
+    ctx.recent_trades = [SimpleNamespace(order_id="o1")]
+    ts_tick = pd.Timestamp("2023-01-01 09:30:01", tz="Asia/Shanghai").value
+    tick = Tick(timestamp=ts_tick, price=103.0, volume=500.0, symbol="GOOG")
+    strategy._on_tick_event(tick, ctx)
+    assert strategy.trade_count == 1
+
+    ctx.recent_trades = [SimpleNamespace(order_id="o2")]
+    strategy._on_timer_event("t2", ctx)
+    assert strategy.trade_count == 2
+
+    ctx.recent_trades = [SimpleNamespace(order_id="o3")]
+    strategy._on_timer_event("t3", ctx)
+    assert strategy.trade_count == 3
+
+    ctx.recent_trades = [SimpleNamespace(order_id="o1")]
+    strategy._on_timer_event("t4", ctx)
+    assert strategy.trade_count == 4
+
+
+class SequenceStrategy(Strategy):
+    """Strategy for callback sequence assertions."""
+
+    def __init__(self) -> None:
+        """Initialize callback record list."""
+        self.events: list[str] = []
+
+    def on_bar(self, bar: Bar) -> None:
+        """Record bar callback."""
+        self.events.append("on_bar")
+
+    def on_tick(self, tick: Tick) -> None:
+        """Record tick callback."""
+        self.events.append("on_tick")
+
+    def on_timer(self, payload: str) -> None:
+        """Record timer callback."""
+        self.events.append(f"on_timer:{payload}")
+
+    def on_order(self, order: Any) -> None:
+        """Record order callback."""
+        self.events.append(f"on_order:{order.id}")
+
+    def on_trade(self, trade: Any) -> None:
+        """Record trade callback."""
+        self.events.append(f"on_trade:{trade.order_id}")
+
+
+def _build_ctx_with_order_and_trade(order_id: str = "o1") -> MagicMock:
+    """Build a mocked strategy context with one active order and one trade."""
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = [
+        SimpleNamespace(id=order_id, status="Submitted", filled_quantity=0.0)
+    ]
+    ctx.recent_trades = [SimpleNamespace(order_id=order_id)]
+    return ctx
+
+
+def test_callback_sequence_on_bar() -> None:
+    """Order/trade callbacks should run before bar callback."""
+    strategy = SequenceStrategy()
+    ctx = _build_ctx_with_order_and_trade("bar_order")
+    ts = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+    bar = Bar(
+        timestamp=ts,
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.5,
+        volume=1000.0,
+        symbol="AAPL",
+    )
+
+    strategy._on_bar_event(bar, ctx)
+    assert strategy.events == ["on_order:bar_order", "on_trade:bar_order", "on_bar"]
+
+
+def test_callback_sequence_on_tick() -> None:
+    """Order/trade callbacks should run before tick callback."""
+    strategy = SequenceStrategy()
+    ctx = _build_ctx_with_order_and_trade("tick_order")
+    ts_tick = pd.Timestamp("2023-01-01 09:30:01", tz="Asia/Shanghai").value
+    tick = Tick(timestamp=ts_tick, price=103.0, volume=500.0, symbol="GOOG")
+
+    strategy._on_tick_event(tick, ctx)
+    assert strategy.events == ["on_order:tick_order", "on_trade:tick_order", "on_tick"]
+
+
+def test_callback_sequence_on_timer() -> None:
+    """Order/trade callbacks should run before timer callback."""
+    strategy = SequenceStrategy()
+    ctx = _build_ctx_with_order_and_trade("timer_order")
+
+    strategy._on_timer_event("rebalance", ctx)
+    assert strategy.events == [
+        "on_order:timer_order",
+        "on_trade:timer_order",
+        "on_timer:rebalance",
+    ]
+
+
+class WarmStartE2EStrategy(Strategy):
+    """Strategy for warm start end-to-end test."""
+
+    def __init__(self) -> None:
+        """Initialize strategy state."""
+        self.events: list[str] = []
+        self.bar_seen = 0
+
+    def on_resume(self) -> None:
+        """Record resume callback."""
+        self.events.append("on_resume")
+
+    def on_start(self) -> None:
+        """Record start callback."""
+        self.events.append("on_start")
+
+    def on_bar(self, bar: Bar) -> None:
+        """Record bar callback and mutate state."""
+        self.bar_seen += 1
+        self.events.append(f"on_bar:{self.bar_seen}")
+
+
+def _make_bars(
+    start: str,
+    periods: int,
+    symbol: str = "TEST",
+    start_price: float = 100.0,
+) -> list[Bar]:
+    """Create deterministic bar list."""
+    bars: list[Bar] = []
+    idx = pd.date_range(start=start, periods=periods, freq="D")
+    for i, ts in enumerate(idx):
+        price = start_price + float(i)
+        bars.append(
+            Bar(
+                timestamp=ts.value,
+                open=price,
+                high=price + 1.0,
+                low=price - 1.0,
+                close=price + 0.5,
+                volume=1000.0 + i,
+                symbol=symbol,
+            )
+        )
+    return bars
+
+
+def test_run_warm_start_end_to_end_lifecycle(tmp_path: Path) -> None:
+    """Warm start should preserve state and callback lifecycle ordering."""
+    checkpoint = tmp_path / "snapshot.pkl"
+    phase1 = _make_bars("2023-01-01", 4)
+    phase2 = _make_bars("2023-01-05", 3, start_price=104.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbol="TEST",
+        initial_cash=100000.0,
+        show_progress=False,
+    )
+
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="TEST",
+        show_progress=False,
+    )
+
+    strategy = result2.strategy
+    assert strategy is not None
+    assert strategy.bar_seen == 7
+    assert strategy.events[0] == "on_start"
+    assert "on_resume" in strategy.events
+    resume_idx = strategy.events.index("on_resume")
+    assert strategy.events[resume_idx + 1] == "on_start"
+    assert strategy.events[-1] == "on_bar:7"
+    assert result2.metrics.initial_market_value == result1.metrics.end_market_value
+
+
+class WarmStartMultiSymbolStrategy(Strategy):
+    """Strategy for multi-symbol warm start continuity test."""
+
+    def __init__(self) -> None:
+        """Initialize per-symbol counters."""
+        self.total_bars = 0
+        self.by_symbol: dict[str, int] = {}
+        self.events: list[str] = []
+
+    def on_resume(self) -> None:
+        """Record resume callback."""
+        self.events.append("on_resume")
+
+    def on_start(self) -> None:
+        """Record start callback."""
+        self.events.append("on_start")
+
+    def on_bar(self, bar: Bar) -> None:
+        """Track processed bars by symbol."""
+        self.total_bars += 1
+        self.by_symbol[bar.symbol] = self.by_symbol.get(bar.symbol, 0) + 1
+
+
+def _make_symbol_df(
+    symbol: str,
+    start: str,
+    periods: int,
+    start_price: float,
+) -> pd.DataFrame:
+    """Create deterministic OHLCV dataframe for a symbol."""
+    ts = pd.date_range(start=start, periods=periods, freq="D", tz="UTC")
+    prices = [start_price + float(i) for i in range(periods)]
+    return pd.DataFrame(
+        {
+            "timestamp": ts,
+            "open": prices,
+            "high": [p + 1.0 for p in prices],
+            "low": [p - 1.0 for p in prices],
+            "close": [p + 0.5 for p in prices],
+            "volume": [1000.0 + float(i) for i in range(periods)],
+            "symbol": [symbol] * periods,
+        }
+    )
+
+
+def test_run_warm_start_multi_symbol_continuity(tmp_path: Path) -> None:
+    """Warm start should preserve multi-symbol state continuity."""
+    checkpoint = tmp_path / "snapshot_multi.pkl"
+    phase1 = {
+        "AAA": _make_symbol_df("AAA", "2023-01-01", 3, 100.0),
+        "BBB": _make_symbol_df("BBB", "2023-01-01", 3, 200.0),
+    }
+    phase2 = {
+        "AAA": _make_symbol_df("AAA", "2023-01-04", 2, 103.0),
+        "BBB": _make_symbol_df("BBB", "2023-01-04", 2, 203.0),
+    }
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartMultiSymbolStrategy,
+        symbol="BENCHMARK",
+        initial_cash=100000.0,
+        show_progress=False,
+    )
+
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="BENCHMARK",
+        show_progress=False,
+    )
+
+    strategy = result2.strategy
+    assert strategy is not None
+    assert strategy.total_bars == 10
+    assert strategy.by_symbol == {"AAA": 5, "BBB": 5}
+    assert "on_resume" in strategy.events
+    resume_idx = strategy.events.index("on_resume")
+    assert strategy.events[resume_idx + 1] == "on_start"
+    assert result2.metrics.initial_market_value == result1.metrics.end_market_value
+
+
+class WarmStartEventIdempotencyStrategy(Strategy):
+    """Strategy for warm-start event idempotency checks."""
+
+    def __init__(self) -> None:
+        """Initialize state and duplicate trackers."""
+        self.bar_seen_by_symbol: dict[str, int] = {}
+        self.trade_callback_total = 0
+        self.trade_duplicate_count = 0
+        self.order_callback_total = 0
+        self.order_duplicate_count = 0
+        self.trade_keys: set[tuple[str, int, str, str, float, float]] = set()
+        self.order_keys: set[tuple[str, str, float]] = set()
+        self.events: list[str] = []
+
+    def on_resume(self) -> None:
+        """Record resume callback."""
+        self.events.append("on_resume")
+
+    def on_start(self) -> None:
+        """Record start callback."""
+        self.events.append("on_start")
+
+    def on_bar(self, bar: Bar) -> None:
+        """Submit deterministic round-trip orders across two phases."""
+        count = self.bar_seen_by_symbol.get(bar.symbol, 0) + 1
+        self.bar_seen_by_symbol[bar.symbol] = count
+        if count in (1, 3):
+            self.buy(bar.symbol, 1)
+        elif count in (2, 4):
+            self.sell(bar.symbol, 1)
+
+    def on_order(self, order: Any) -> None:
+        """Track duplicate order callbacks for identical state transitions."""
+        self.order_callback_total += 1
+        key = (order.id, str(order.status), float(order.filled_quantity))
+        if key in self.order_keys:
+            self.order_duplicate_count += 1
+        else:
+            self.order_keys.add(key)
+
+    def on_trade(self, trade: Any) -> None:
+        """Track duplicate trade callbacks."""
+        self.trade_callback_total += 1
+        key = (
+            trade.order_id,
+            int(trade.timestamp),
+            trade.symbol,
+            str(trade.side),
+            float(trade.quantity),
+            float(trade.price),
+        )
+        if key in self.trade_keys:
+            self.trade_duplicate_count += 1
+        else:
+            self.trade_keys.add(key)
+
+
+def test_run_warm_start_multi_symbol_event_idempotency(tmp_path: Path) -> None:
+    """Warm start should not duplicate order/trade callbacks."""
+    checkpoint = tmp_path / "snapshot_event_idempotency.pkl"
+    phase1 = {
+        "AAA": _make_symbol_df("AAA", "2023-01-01", 2, 100.0),
+        "BBB": _make_symbol_df("BBB", "2023-01-01", 2, 200.0),
+    }
+    phase2 = {
+        "AAA": _make_symbol_df("AAA", "2023-01-03", 2, 102.0),
+        "BBB": _make_symbol_df("BBB", "2023-01-03", 2, 202.0),
+    }
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartEventIdempotencyStrategy,
+        symbol="BENCHMARK",
+        initial_cash=100000.0,
+        execution_mode="current_close",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="BENCHMARK",
+        show_progress=False,
+    )
+
+    strategy = result2.strategy
+    assert strategy is not None
+    assert strategy.bar_seen_by_symbol == {"AAA": 4, "BBB": 4}
+    assert strategy.trade_callback_total > 0
+    assert strategy.order_callback_total > 0
+    assert strategy.trade_duplicate_count == 0
+    assert strategy.order_duplicate_count == 0
+    assert "on_resume" in strategy.events
+
+
+class TimerIdempotencyStrategy(Strategy):
+    """Strategy for timer registration idempotency tests."""
+
+    def __init__(self) -> None:
+        """Initialize counters."""
+        self.timer_count = 0
+        self.events: list[str] = []
+
+    def on_resume(self) -> None:
+        """Record resume callback."""
+        self.events.append("on_resume")
+
+    def on_start(self) -> None:
+        """Register timers once."""
+        self.events.append("on_start")
+        self.schedule("2023-01-01 10:00:00", "manual_timer")
+        self.add_daily_timer("14:55:00", "daily_timer")
+
+    def on_timer(self, payload: str) -> None:
+        """Count timer callbacks."""
+        self.timer_count += 1
+        self.events.append(f"on_timer:{payload}")
+
+
+def test_timer_registration_not_duplicated_in_warm_start() -> None:
+    """Internal start should not double-register timers when called repeatedly."""
+    strategy = TimerIdempotencyStrategy()
+    strategy._is_restored = True
+    ctx = MagicMock(spec=StrategyContext)
+    strategy.ctx = ctx
+    strategy._trading_days = [
+        pd.Timestamp("2023-01-01").tz_localize("Asia/Shanghai"),
+        pd.Timestamp("2023-01-02").tz_localize("Asia/Shanghai"),
+    ]
+
+    strategy._on_start_internal()
+    strategy._on_start_internal()
+
+    calls = strategy.ctx.schedule.call_args_list
+    assert len(calls) == 3
+    payloads = [c.args[1] for c in calls]
+    assert payloads.count("manual_timer") == 1
+    assert payloads.count("__daily__|14:55:00|daily_timer") == 2
+
+
+def test_daily_timer_payload_processed_once_per_event() -> None:
+    """Daily wrapped payload should trigger one timer callback per event."""
+    strategy = TimerIdempotencyStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    strategy.ctx = ctx
+    strategy._trading_days = [
+        pd.Timestamp("2023-01-01").tz_localize("Asia/Shanghai"),
+    ]
+
+    strategy._on_timer_event("__daily__|14:55:00|daily_timer", ctx)
+    assert strategy.timer_count == 1
+    assert strategy.events[-1] == "on_timer:daily_timer"
+
+
+def test_live_mode_timer_registration_not_duplicated() -> None:
+    """Live mode timer registration should run once in internal start."""
+    strategy = TimerIdempotencyStrategy()
+    strategy._is_restored = True
+    ctx = MagicMock(spec=StrategyContext)
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_start_internal()
+    strategy._on_start_internal()
+
+    calls = strategy.ctx.schedule.call_args_list
+    assert len(calls) == 2
+    payloads = [c.args[1] for c in calls]
+    assert payloads.count("manual_timer") == 1
+    assert payloads.count("__daily__|14:55:00|daily_timer") == 1
+
+
+def test_live_mode_daily_timer_reschedules_once_per_trigger() -> None:
+    """Live mode daily timer should reschedule once per single trigger."""
+    strategy = TimerIdempotencyStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_timer_event("__daily__|14:55:00|daily_timer", ctx)
+
+    assert strategy.timer_count == 1
+    assert strategy.events[-1] == "on_timer:daily_timer"
+    assert strategy.ctx.schedule.call_count == 1
+    schedule_call = strategy.ctx.schedule.call_args
+    assert schedule_call is not None
+    assert isinstance(schedule_call.args[0], int)
+    assert schedule_call.args[1] == "__daily__|14:55:00|daily_timer"
+
+
+class TimerOrderTradeMixedStrategy(Strategy):
+    """Strategy for mixed timer/order/trade event ordering tests."""
+
+    def __init__(self) -> None:
+        """Initialize counters."""
+        self.order_count = 0
+        self.trade_count = 0
+        self.timer_count = 0
+        self.events: list[str] = []
+
+    def on_order(self, order: Any) -> None:
+        """Record order callback."""
+        self.order_count += 1
+        self.events.append(f"on_order:{order.id}")
+
+    def on_trade(self, trade: Any) -> None:
+        """Record trade callback."""
+        self.trade_count += 1
+        self.events.append(f"on_trade:{trade.order_id}")
+
+    def on_timer(self, payload: str) -> None:
+        """Record timer callback."""
+        self.timer_count += 1
+        self.events.append(f"on_timer:{payload}")
+
+
+def test_mixed_events_order_on_daily_timer_in_live_mode() -> None:
+    """Daily timer should process order/trade first, then timer, and reschedule once."""
+    strategy = TimerOrderTradeMixedStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = [
+        SimpleNamespace(id="o1", status="Submitted", filled_quantity=0.0)
+    ]
+    ctx.recent_trades = [SimpleNamespace(order_id="o1")]
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_timer_event("__daily__|14:55:00|mixed_timer", ctx)
+
+    assert strategy.order_count == 1
+    assert strategy.trade_count == 1
+    assert strategy.timer_count == 1
+    assert strategy.events == ["on_order:o1", "on_trade:o1", "on_timer:mixed_timer"]
+    assert strategy.ctx.schedule.call_count == 1
+    schedule_call = strategy.ctx.schedule.call_args
+    assert schedule_call is not None
+    assert schedule_call.args[1] == "__daily__|14:55:00|mixed_timer"
+
+
+def test_mixed_events_partial_fill_then_cancel_sequence() -> None:
+    """Partial fill and cancel should emit deterministic callbacks."""
+    strategy = TimerOrderTradeMixedStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = [
+        SimpleNamespace(id="o2", status="Submitted", filled_quantity=0.0)
+    ]
+    ctx.recent_trades = []
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_timer_event("__daily__|14:55:00|mixed_timer2", ctx)
+
+    ctx.canceled_order_ids = []
+    ctx.active_orders = [
+        SimpleNamespace(id="o2", status="Submitted", filled_quantity=1.0)
+    ]
+    ctx.recent_trades = [SimpleNamespace(order_id="o2")]
+    strategy._on_timer_event("__daily__|14:55:00|mixed_timer2", ctx)
+
+    ctx.canceled_order_ids = ["o2"]
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    strategy._on_timer_event("__daily__|14:55:00|mixed_timer2", ctx)
+
+    assert strategy.order_count == 3
+    assert strategy.trade_count == 1
+    assert strategy.timer_count == 3
+    assert strategy.events == [
+        "on_order:o2",
+        "on_timer:mixed_timer2",
+        "on_order:o2",
+        "on_trade:o2",
+        "on_timer:mixed_timer2",
+        "on_order:o2",
+        "on_timer:mixed_timer2",
+    ]
+    assert strategy.ctx.schedule.call_count == 3
+
+
+def test_daily_timer_malformed_payload_falls_back_to_raw_timer() -> None:
+    """Malformed daily payload should fallback to raw timer callback."""
+    strategy = TimerOrderTradeMixedStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_timer_event("__daily__|bad_payload", ctx)
+
+    assert strategy.order_count == 0
+    assert strategy.trade_count == 0
+    assert strategy.timer_count == 1
+    assert strategy.events == ["on_timer:__daily__|bad_payload"]
+    assert strategy.ctx.schedule.call_count == 0
+
+
+def test_daily_timer_invalid_time_fires_once_without_raw_fallback() -> None:
+    """Invalid daily time should not duplicate timer callback."""
+    strategy = TimerOrderTradeMixedStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_timer_event("__daily__|not_a_time|mixed_timer3", ctx)
+
+    assert strategy.order_count == 0
+    assert strategy.trade_count == 0
+    assert strategy.timer_count == 1
+    assert strategy.events == ["on_timer:mixed_timer3"]
+    assert strategy.ctx.schedule.call_count == 0
+
+
+def test_unknown_canceled_order_does_not_emit_order_callback() -> None:
+    """Unknown canceled order id should not trigger on_order callback."""
+    strategy = TimerOrderTradeMixedStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = ["ghost_order"]
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_timer_event("plain_timer", ctx)
+
+    assert strategy.order_count == 0
+    assert strategy.trade_count == 0
+    assert strategy.timer_count == 1
+    assert strategy.events == ["on_timer:plain_timer"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_event", "expected_schedule_calls"),
+    [
+        ("__daily__|14:55:00|daily_ok", "on_timer:daily_ok", 1),
+        ("__daily__|bad_payload", "on_timer:__daily__|bad_payload", 0),
+        ("__daily__|not_a_time|daily_bad_time", "on_timer:daily_bad_time", 0),
+    ],
+)
+def test_daily_timer_paths_parameterized(
+    payload: str, expected_event: str, expected_schedule_calls: int
+) -> None:
+    """Daily timer paths should produce stable callback and reschedule behavior."""
+    strategy = TimerOrderTradeMixedStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    strategy.ctx = ctx
+    strategy._trading_days = []
+
+    strategy._on_timer_event(payload, ctx)
+
+    assert strategy.order_count == 0
+    assert strategy.trade_count == 0
+    assert strategy.timer_count == 1
+    assert strategy.events == [expected_event]
+    assert strategy.ctx.schedule.call_count == expected_schedule_calls
