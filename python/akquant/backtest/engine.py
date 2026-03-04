@@ -1,7 +1,7 @@
 import datetime as dt_module
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import pandas as pd
 
@@ -546,13 +546,29 @@ def run_backtest(
     # Inject trading days to strategy (for add_daily_timer)
     if hasattr(strategy_instance, "_trading_days") and data_map_for_indicators:
         all_dates: set[pd.Timestamp] = set()
+        day_bounds: Dict[str, Tuple[int, int]] = {}
         for df in data_map_for_indicators.values():
             if not df.empty and isinstance(df.index, pd.DatetimeIndex):
                 dates = df.index.normalize().unique()
                 all_dates.update(dates)
+                grouped = df.groupby(df.index.normalize())
+                for day_ts, day_df in grouped:
+                    day_key = pd.Timestamp(day_ts).date().isoformat()
+                    start_ns = int(day_df.index.min().value)
+                    end_ns = int(day_df.index.max().value)
+                    if day_key in day_bounds:
+                        prev_start, prev_end = day_bounds[day_key]
+                        day_bounds[day_key] = (
+                            min(prev_start, start_ns),
+                            max(prev_end, end_ns),
+                        )
+                    else:
+                        day_bounds[day_key] = (start_ns, end_ns)
 
         if all_dates:
             strategy_instance._trading_days = sorted(list(all_dates))
+        if hasattr(strategy_instance, "_trading_day_bounds"):
+            strategy_instance._trading_day_bounds = day_bounds
 
     # 3.5 Pre-calculate indicators
     # Inject data into indicators so they can be accessed in on_bar via get_value()
@@ -881,7 +897,12 @@ def run_backtest(
         logger.error(f"Backtest failed: {e}")
         raise e
     finally:
-        if hasattr(strategy_instance, "on_stop"):
+        if hasattr(strategy_instance, "_on_stop_internal"):
+            try:
+                strategy_instance._on_stop_internal()
+            except Exception as e:
+                logger.error(f"Error in on_stop: {e}")
+        elif hasattr(strategy_instance, "on_stop"):
             try:
                 strategy_instance.on_stop()
             except Exception as e:
@@ -989,6 +1010,32 @@ def run_warm_start(
     logger.info(f"Resuming from checkpoint: {checkpoint_path}")
     engine, strategy_instance = warm_start(checkpoint_path, feed)
 
+    if hasattr(strategy_instance, "_trading_days") and data_map_for_indicators:
+        all_dates: set[pd.Timestamp] = set()
+        day_bounds: Dict[str, Tuple[int, int]] = {}
+        for df in data_map_for_indicators.values():
+            if not df.empty and isinstance(df.index, pd.DatetimeIndex):
+                dates = df.index.normalize().unique()
+                all_dates.update(dates)
+                grouped = df.groupby(df.index.normalize())
+                for day_ts, day_df in grouped:
+                    day_key = pd.Timestamp(day_ts).date().isoformat()
+                    start_ns = int(day_df.index.min().value)
+                    end_ns = int(day_df.index.max().value)
+                    if day_key in day_bounds:
+                        prev_start, prev_end = day_bounds[day_key]
+                        day_bounds[day_key] = (
+                            min(prev_start, start_ns),
+                            max(prev_end, end_ns),
+                        )
+                    else:
+                        day_bounds[day_key] = (start_ns, end_ns)
+
+        if all_dates:
+            strategy_instance._trading_days = sorted(list(all_dates))
+        if hasattr(strategy_instance, "_trading_day_bounds"):
+            strategy_instance._trading_day_bounds = day_bounds
+
     # Capture restored cash BEFORE running (for correct initial_market_value in result)
     restored_cash = engine.portfolio.cash
     logger.info(f"Restored engine cash: {restored_cash}")
@@ -1071,6 +1118,14 @@ def run_warm_start(
         except Exception as e:
             logger.error(f"Failed to update indicators for warm start: {e}")
 
+    if hasattr(strategy_instance, "_on_start_internal"):
+        strategy_instance._on_start_internal()
+    elif hasattr(strategy_instance, "on_start"):
+        if hasattr(strategy_instance, "is_restored") and strategy_instance.is_restored:
+            if hasattr(strategy_instance, "on_resume"):
+                strategy_instance.on_resume()
+        strategy_instance.on_start()
+
     # 4. 运行
     try:
         engine.run(strategy_instance, show_progress)
@@ -1078,7 +1133,12 @@ def run_warm_start(
         logger.error(f"Warm start backtest failed: {e}")
         raise e
     finally:
-        if hasattr(strategy_instance, "on_stop"):
+        if hasattr(strategy_instance, "_on_stop_internal"):
+            try:
+                strategy_instance._on_stop_internal()
+            except Exception as e:
+                logger.error(f"Error in on_stop: {e}")
+        elif hasattr(strategy_instance, "on_stop"):
             try:
                 strategy_instance.on_stop()
             except Exception as e:

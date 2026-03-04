@@ -222,6 +222,15 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `on_start()`: Triggered when the strategy starts. Used for subscription (`subscribe`) and indicator registration.
 *   `on_bar(bar: Bar)`: Triggered when a Bar closes.
 *   `on_tick(tick: Tick)`: Triggered when a Tick arrives.
+*   `on_order(order)`: Triggered when order state changes.
+*   `on_trade(trade)`: Triggered when trade report arrives.
+*   `on_reject(order)`: Triggered once when an order becomes `Rejected`.
+*   `on_session_start(session, timestamp)`: Triggered on session transition start.
+*   `on_session_end(session, timestamp)`: Triggered on session transition end.
+*   `before_trading(trading_date, timestamp)`: Triggered once when entering Normal session each local day.
+*   `after_trading(trading_date, timestamp)`: Triggered when leaving Normal session, or replayed on next event after day rollover.
+*   `on_portfolio_update(snapshot)`: Triggered when cash/equity/position snapshot changes.
+*   `on_error(error, source, payload=None)`: Triggered when user callback raises, then exception is re-raised by default.
 *   `on_timer(payload: str)`: Triggered by timer.
 *   `on_stop()`: Triggered when the strategy stops.
 *   `on_train_signal(context)`: Triggered by rolling training signal (ML mode).
@@ -232,6 +241,8 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `self.close`, `self.open`, `self.high`, `self.low`, `self.volume`: Current Bar/Tick price and volume.
 *   `self.position`: Position object for current symbol, with `size` and `available` properties.
 *   `self.now`: Current backtest time (`pd.Timestamp`).
+*   `self.enable_precise_day_boundary_hooks`: Enable boundary timer based precise day hooks (default `False`).
+*   `self.re_raise_on_error`: Whether to re-raise user callback exception after `on_error` (default `True`).
 
 **Trading Methods:**
 

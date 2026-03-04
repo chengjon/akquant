@@ -33,6 +33,15 @@ from .strategy_events import (
 from .strategy_events import (
     on_timer_event as _on_timer_event_impl,
 )
+from .strategy_framework_hooks import (
+    call_user_callback as _call_user_callback_impl,
+)
+from .strategy_framework_hooks import (
+    dispatch_shutdown_hooks as _dispatch_shutdown_hooks_impl,
+)
+from .strategy_framework_hooks import (
+    ensure_framework_state as _ensure_framework_state_impl,
+)
 from .strategy_history import get_history as _get_history_impl
 from .strategy_history import get_history_df as _get_history_df_impl
 from .strategy_history import get_rolling_data as _get_rolling_data_impl
@@ -169,9 +178,20 @@ class Strategy:
     _seen_trade_key_order: Deque[Tuple[Any, ...]]
     timezone: str = "Asia/Shanghai"
     warmup_period: int = 0
+    enable_precise_day_boundary_hooks: bool = False
+    re_raise_on_error: bool = True
     _last_event_type: str = ""  # "bar" or "tick"
     _hold_bars: "defaultdict[str, int]"
     _last_position_signs: "defaultdict[str, float]"
+    _framework_last_session: Any
+    _framework_last_local_date: Optional[dt.date]
+    _framework_before_trading_done_date: Optional[dt.date]
+    _framework_after_trading_done_date: Optional[dt.date]
+    _framework_last_portfolio_state: Any
+    _framework_rejected_order_ids: set[str]
+    _framework_stop_flushed: bool
+    _framework_boundary_timers_registered: bool
+    _trading_day_bounds: Dict[str, Tuple[int, int]]
 
     _trading_days: List[pd.Timestamp]
 
@@ -201,6 +221,10 @@ class Strategy:
         instance._hold_bars = defaultdict(int)
         instance._last_position_signs = defaultdict(float)
         instance.timezone = getattr(instance, "timezone", "Asia/Shanghai")
+        instance.enable_precise_day_boundary_hooks = getattr(
+            instance, "enable_precise_day_boundary_hooks", False
+        )
+        instance.re_raise_on_error = getattr(instance, "re_raise_on_error", True)
         instance._last_event_type = ""
         instance._trading_days = []
 
@@ -226,6 +250,15 @@ class Strategy:
         # lot_size 可以是 int (全局统一) 或 Dict[str, int] (按标的设置)
         # 默认 1，这是最通用的设置（适用于美股、加密货币等）。A股回测请务必设置为 100。
         instance.lot_size = 1
+        instance._framework_last_session = None
+        instance._framework_last_local_date = None
+        instance._framework_before_trading_done_date = None
+        instance._framework_after_trading_done_date = None
+        instance._framework_last_portfolio_state = None
+        instance._framework_rejected_order_ids = set()
+        instance._framework_stop_flushed = False
+        instance._framework_boundary_timers_registered = False
+        instance._trading_day_bounds = {}
 
         return instance
 
@@ -246,6 +279,22 @@ class Strategy:
             del state["current_bar"]
         if "current_tick" in state:
             del state["current_tick"]
+        if "_framework_last_session" in state:
+            del state["_framework_last_session"]
+        if "_framework_last_local_date" in state:
+            del state["_framework_last_local_date"]
+        if "_framework_before_trading_done_date" in state:
+            del state["_framework_before_trading_done_date"]
+        if "_framework_after_trading_done_date" in state:
+            del state["_framework_after_trading_done_date"]
+        if "_framework_last_portfolio_state" in state:
+            del state["_framework_last_portfolio_state"]
+        if "_framework_rejected_order_ids" in state:
+            del state["_framework_rejected_order_ids"]
+        if "_framework_stop_flushed" in state:
+            del state["_framework_stop_flushed"]
+        if "_framework_boundary_timers_registered" in state:
+            del state["_framework_boundary_timers_registered"]
         return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
@@ -260,6 +309,7 @@ class Strategy:
             self._seen_trade_keys = set()
         if not hasattr(self, "_seen_trade_key_order"):
             self._seen_trade_key_order = deque()
+        _ensure_framework_state_impl(self)
 
     @property
     def is_restored(self) -> bool:
@@ -317,6 +367,12 @@ class Strategy:
         在此处进行资源清理或结果统计.
         """
         pass
+
+    def _on_stop_internal(self) -> None:
+        """内部停止回调，用于补发框架级结束钩子."""
+        _ensure_framework_state_impl(self)
+        _dispatch_shutdown_hooks_impl(self)
+        _call_user_callback_impl(self, "on_stop")
 
     def log(self, msg: str, level: int = logging.INFO) -> None:
         """
@@ -552,6 +608,34 @@ class Strategy:
         Args:
             trade: 成交对象
         """
+        pass
+
+    def on_session_start(self, session: Any, timestamp: int) -> None:
+        """会话开始回调."""
+        pass
+
+    def on_session_end(self, session: Any, timestamp: int) -> None:
+        """会话结束回调."""
+        pass
+
+    def before_trading(self, trading_date: dt.date, timestamp: int) -> None:
+        """交易日开始前回调."""
+        pass
+
+    def after_trading(self, trading_date: dt.date, timestamp: int) -> None:
+        """交易日结束后回调."""
+        pass
+
+    def on_reject(self, order: Any) -> None:
+        """拒单回调."""
+        pass
+
+    def on_portfolio_update(self, snapshot: Dict[str, Any]) -> None:
+        """账户变化回调."""
+        pass
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """错误回调."""
         pass
 
     def _check_order_events(self) -> None:
@@ -988,18 +1072,7 @@ class VectorizedStrategy(Strategy):
 
     def _on_bar_event(self, bar: Bar, ctx: StrategyContext) -> None:
         """Wrap the user on_bar handler internally."""
-        # 1. Call standard setup (ctx, current_bar, history)
-        # Note: We copy logic from Strategy._on_bar_event to avoid double calling on_bar
-        # if we just called super()._on_bar_event(bar, ctx).
-        # Actually Strategy._on_bar_event calls self.on_bar(bar).
-
-        self.ctx = ctx
-        self.current_bar = bar
-
-        # 2. Call User Strategy
-        self.on_bar(bar)
-
-        # 3. Increment Cursor
+        super()._on_bar_event(bar, ctx)
         self.cursors[bar.symbol] += 1
 
     def get_value(self, name: str, symbol: Optional[str] = None) -> float:

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 from akquant import run_backtest, run_warm_start, save_snapshot
-from akquant.akquant import Bar, StrategyContext, Tick
+from akquant.akquant import Bar, OrderStatus, StrategyContext, Tick
 from akquant.strategy import Strategy
 
 
@@ -873,6 +873,221 @@ def test_unknown_canceled_order_does_not_emit_order_callback() -> None:
     assert strategy.trade_count == 0
     assert strategy.timer_count == 1
     assert strategy.events == ["on_timer:plain_timer"]
+
+
+class FrameworkHooksStrategy(Strategy):
+    """Strategy for framework-level hooks tests."""
+
+    def __init__(self) -> None:
+        """Initialize records."""
+        self.events: list[str] = []
+        self.errors: list[tuple[str, str]] = []
+        self.portfolio_updates = 0
+
+    def on_session_start(self, session: Any, timestamp: int) -> None:
+        """Record session start."""
+        self.events.append(f"session_start:{session}:{timestamp}")
+
+    def on_session_end(self, session: Any, timestamp: int) -> None:
+        """Record session end."""
+        self.events.append(f"session_end:{session}:{timestamp}")
+
+    def before_trading(self, trading_date: Any, timestamp: int) -> None:
+        """Record before trading hook."""
+        self.events.append(f"before:{trading_date}:{timestamp}")
+
+    def after_trading(self, trading_date: Any, timestamp: int) -> None:
+        """Record after trading hook."""
+        self.events.append(f"after:{trading_date}:{timestamp}")
+
+    def on_portfolio_update(self, snapshot: dict[str, Any]) -> None:
+        """Record portfolio update."""
+        self.portfolio_updates += 1
+        self.events.append(f"portfolio:{snapshot['cash']}:{snapshot['equity']}")
+
+    def on_reject(self, order: Any) -> None:
+        """Record reject callback."""
+        self.events.append(f"reject:{order.id}")
+
+    def on_order(self, order: Any) -> None:
+        """Record order callback."""
+        self.events.append(f"order:{order.id}")
+
+    def on_tick(self, tick: Tick) -> None:
+        """Record tick callback."""
+        self.events.append("tick")
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """Record error callback."""
+        self.errors.append((source, type(error).__name__))
+
+    def on_stop(self) -> None:
+        """Record stop callback."""
+        self.events.append("stop")
+
+
+def test_framework_hooks_session_day_reject_and_portfolio() -> None:
+    """Framework hooks should fire with expected transitions."""
+    strategy = FrameworkHooksStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.recent_trades = []
+    ctx.positions = {"AAPL": 1.0}
+    ctx.available_positions = {"AAPL": 1.0}
+    rejected = SimpleNamespace(
+        id="rej1",
+        status=OrderStatus.Rejected,
+        filled_quantity=0.0,
+        average_filled_price=None,
+    )
+    ctx.active_orders = [rejected]
+    ctx.cash = 1000.0
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+
+    tick1 = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick1, ctx)
+
+    assert any(e.startswith("session_start:") for e in strategy.events)
+    assert any(e.startswith("before:") for e in strategy.events)
+    assert "order:rej1" in strategy.events
+    assert "reject:rej1" in strategy.events
+    assert strategy.events.index("order:rej1") < strategy.events.index("reject:rej1")
+    assert strategy.events.index("reject:rej1") < strategy.events.index("tick")
+    assert strategy.portfolio_updates == 1
+
+    ctx.current_time = pd.Timestamp("2023-01-01 15:10:00", tz="Asia/Shanghai").value
+    ctx.session = "postmarket"
+    tick2 = Tick(timestamp=ctx.current_time, price=101.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick2, ctx)
+    assert any(e.startswith("session_end:") for e in strategy.events)
+    assert any(e.startswith("after:") for e in strategy.events)
+
+    before_count = len([e for e in strategy.events if e.startswith("before:")])
+    ctx.current_time = pd.Timestamp("2023-01-02 09:31:00", tz="Asia/Shanghai").value
+    ctx.session = "normal"
+    tick3 = Tick(timestamp=ctx.current_time, price=102.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick3, ctx)
+    after_count = len([e for e in strategy.events if e.startswith("before:")])
+    assert after_count == before_count + 1
+
+
+class ErrorHookStrategy(Strategy):
+    """Strategy for on_error hook tests."""
+
+    def __init__(self) -> None:
+        """Initialize captured errors."""
+        self.captured: list[tuple[str, str]] = []
+
+    def on_tick(self, tick: Tick) -> None:
+        """Raise an exception for testing."""
+        raise ValueError("boom")
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """Capture on_error callback."""
+        self.captured.append((source, str(error)))
+
+
+def test_on_error_hook_called_and_exception_re_raised() -> None:
+    """Errors in user callback should call on_error then re-raise."""
+    strategy = ErrorHookStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+
+    tick = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    with pytest.raises(ValueError, match="boom"):
+        strategy._on_tick_event(tick, ctx)
+
+    assert strategy.captured == [("on_tick", "boom")]
+
+
+def test_on_error_hook_can_swallow_user_callback_exception() -> None:
+    """Errors can be swallowed when re_raise_on_error is disabled."""
+    strategy = ErrorHookStrategy()
+    strategy.re_raise_on_error = False
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+
+    tick = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick, ctx)
+
+    assert strategy.captured == [("on_tick", "boom")]
+
+
+def test_stop_internal_flushes_session_and_after_trading_hooks() -> None:
+    """Stop phase should flush session_end and after_trading when pending."""
+    strategy = FrameworkHooksStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 10:00:00", tz="Asia/Shanghai").value
+
+    tick = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick, ctx)
+    assert any(e.startswith("before:") for e in strategy.events)
+    assert not any(e.startswith("after:") for e in strategy.events)
+    assert not any(e.startswith("session_end:") for e in strategy.events)
+
+    strategy._on_stop_internal()
+
+    assert any(e.startswith("after:") for e in strategy.events)
+    assert any(e.startswith("session_end:") for e in strategy.events)
+    assert strategy.events[-1] == "stop"
+
+
+def test_boundary_timers_register_and_drive_day_hooks() -> None:
+    """Boundary timers should register once and trigger day hooks precisely."""
+    strategy = FrameworkHooksStrategy()
+    strategy.enable_precise_day_boundary_hooks = True
+    start_ts = pd.Timestamp("2023-01-03 09:30:00", tz="Asia/Shanghai").value
+    end_ts = pd.Timestamp("2023-01-03 15:00:00", tz="Asia/Shanghai").value
+    strategy._trading_day_bounds = {"2023-01-03": (start_ts, end_ts)}
+
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "closed"
+    ctx.current_time = start_ts
+
+    tick = Tick(timestamp=start_ts, price=100.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick, ctx)
+
+    scheduled = [call.args for call in ctx.schedule.call_args_list]
+    assert (start_ts, "__framework_boundary__|before|2023-01-03") in scheduled
+    assert (end_ts + 1, "__framework_boundary__|after|2023-01-03") in scheduled
+
+    strategy._on_timer_event("__framework_boundary__|before|2023-01-03", ctx)
+    assert any(e.startswith("before:2023-01-03") for e in strategy.events)
+
+    ctx.current_time = end_ts + 1
+    strategy._on_timer_event("__framework_boundary__|after|2023-01-03", ctx)
+    assert any(e.startswith("after:2023-01-03") for e in strategy.events)
 
 
 @pytest.mark.parametrize(

@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any, Tuple
 
 from .akquant import OrderStatus
+from .strategy_framework_hooks import call_user_callback, ensure_framework_state
 
 
 def check_order_events(strategy: Any) -> None:
     """检查订单和成交事件并触发回调."""
+    ensure_framework_state(strategy)
     if strategy.ctx is None:
         return
 
@@ -19,7 +21,7 @@ def check_order_events(strategy: Any) -> None:
                 except Exception:
                     pass
 
-                strategy.on_order(order)
+                _emit_order_callback(strategy, order)
                 del strategy._known_orders[oid]
 
     current_active_ids: set[str] = set()
@@ -30,14 +32,14 @@ def check_order_events(strategy: Any) -> None:
 
             if oid not in strategy._known_orders:
                 strategy._known_orders[oid] = order
-                strategy.on_order(order)
+                _emit_order_callback(strategy, order)
             else:
                 known = strategy._known_orders[oid]
                 status_changed = known.status != order.status
                 qty_changed = known.filled_quantity != order.filled_quantity
                 if status_changed or qty_changed:
                     strategy._known_orders[oid] = order
-                    strategy.on_order(order)
+                    _emit_order_callback(strategy, order)
 
     recent_trade_order_ids: set[str] = set()
     if hasattr(strategy.ctx, "recent_trades"):
@@ -52,7 +54,7 @@ def check_order_events(strategy: Any) -> None:
                     order.status = OrderStatus.Filled
                 except Exception:
                     pass
-                strategy.on_order(order)
+                _emit_order_callback(strategy, order)
                 del strategy._known_orders[oid]
             else:
                 del strategy._known_orders[oid]
@@ -62,7 +64,17 @@ def check_order_events(strategy: Any) -> None:
             key = trade_event_key(strategy, t)
             if not remember_trade_key(strategy, key):
                 continue
-            strategy.on_trade(t)
+            call_user_callback(strategy, "on_trade", t, payload=t)
+
+
+def _emit_order_callback(strategy: Any, order: Any) -> None:
+    call_user_callback(strategy, "on_order", order, payload=order)
+
+    if getattr(order, "status", None) == OrderStatus.Rejected:
+        order_id = getattr(order, "id", "")
+        if order_id and order_id not in strategy._framework_rejected_order_ids:
+            strategy._framework_rejected_order_ids.add(order_id)
+            call_user_callback(strategy, "on_reject", order, payload=order)
 
 
 def trade_event_key(strategy: Any, trade: Any) -> Tuple[Any, ...]:

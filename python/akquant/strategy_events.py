@@ -6,11 +6,21 @@ import numpy as np
 import pandas as pd
 
 from .akquant import Bar, StrategyContext, Tick
+from .strategy_framework_hooks import (
+    call_user_callback,
+    dispatch_boundary_timer,
+    dispatch_portfolio_update,
+    dispatch_time_hooks,
+    ensure_framework_state,
+    register_boundary_timers,
+)
 
 
 def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
     """引擎调用的 Bar 回调 (Internal)."""
+    ensure_framework_state(strategy)
     strategy.ctx = ctx
+    register_boundary_timers(strategy)
     strategy._last_event_type = "bar"
 
     strategy._check_order_events()
@@ -38,6 +48,8 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
     strategy.current_bar = bar
     strategy.current_tick = None
     strategy._last_prices[bar.symbol] = bar.close
+    dispatch_time_hooks(strategy)
+    dispatch_portfolio_update(strategy)
 
     strategy._bar_count += 1
 
@@ -45,33 +57,44 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
         return
 
     if strategy._rolling_step > 0 and strategy._bar_count % strategy._rolling_step == 0:
-        strategy.on_train_signal(strategy)
+        call_user_callback(strategy, "on_train_signal", strategy, payload=strategy)
 
-    strategy.on_bar(bar)
+    call_user_callback(strategy, "on_bar", bar, payload=bar)
 
 
 def on_tick_event(strategy: Any, tick: Tick, ctx: StrategyContext) -> None:
     """引擎调用的 Tick 回调 (Internal)."""
+    ensure_framework_state(strategy)
     strategy.ctx = ctx
+    register_boundary_timers(strategy)
     strategy._last_event_type = "tick"
     strategy._check_order_events()
     strategy.current_tick = tick
     strategy.current_bar = None
     strategy._last_prices[tick.symbol] = tick.price
-    strategy.on_tick(tick)
+    dispatch_time_hooks(strategy)
+    dispatch_portfolio_update(strategy)
+    call_user_callback(strategy, "on_tick", tick, payload=tick)
 
 
 def on_timer_event(strategy: Any, payload: str, ctx: StrategyContext) -> None:
     """引擎调用的 Timer 回调 (Internal)."""
+    ensure_framework_state(strategy)
     strategy.ctx = ctx
+    register_boundary_timers(strategy)
     strategy._check_order_events()
+    dispatch_time_hooks(strategy)
+    dispatch_portfolio_update(strategy)
+
+    if dispatch_boundary_timer(strategy, payload):
+        return
 
     if payload.startswith("__daily__|"):
         parts = payload.split("|", 2)
         if len(parts) == 3:
             _, time_str, user_payload = parts
 
-            strategy.on_timer(user_payload)
+            call_user_callback(strategy, "on_timer", user_payload, payload=user_payload)
 
             if not strategy._trading_days:
                 try:
@@ -89,4 +112,4 @@ def on_timer_event(strategy: Any, payload: str, ctx: StrategyContext) -> None:
                     print(f"Error processing daily timer: {e}")
             return
 
-    strategy.on_timer(payload)
+    call_user_callback(strategy, "on_timer", payload, payload=payload)

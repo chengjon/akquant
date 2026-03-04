@@ -202,6 +202,13 @@ BacktestConfig (回测场景)
 *   `on_tick(tick: Tick)`: Tick 到达时触发。
 *   `on_order(order: Order)`: 订单状态更新时触发（如成交、取消、拒绝）。
 *   `on_trade(trade: Trade)`: 订单成交时触发。
+*   `on_reject(order: Order)`: 订单首次进入 `Rejected` 时触发一次。
+*   `on_session_start(session, timestamp)`: 会话切换开始时触发。
+*   `on_session_end(session, timestamp)`: 会话切换结束时触发。
+*   `before_trading(trading_date, timestamp)`: 每个本地交易日首次进入 Normal 会话时触发一次。
+*   `after_trading(trading_date, timestamp)`: 离开 Normal 会话时触发；若先跨日则在下一事件补发。
+*   `on_portfolio_update(snapshot)`: 账户快照变化时触发。
+*   `on_error(error, source, payload=None)`: 用户回调抛异常时触发，默认触发后继续抛出。
 *   `on_timer(payload: str)`: 定时器触发。
 *   `on_stop()`: 策略停止时触发。
 *   `on_train_signal(context)`: 滚动训练信号触发 (ML 模式)。
@@ -212,6 +219,8 @@ BacktestConfig (回测场景)
 *   `self.close`, `self.open`, `self.high`, `self.low`, `self.volume`: 当前 Bar/Tick 的价格和成交量。
 *   `self.position`: 当前标的持仓辅助对象 (`Position`)，包含 `size` 和 `available` 属性。
 *   `self.now`: 当前回测时间 (`pd.Timestamp`)。
+*   `self.enable_precise_day_boundary_hooks`: 是否启用边界定时器精确交易日钩子（默认 `False`）。
+*   `self.re_raise_on_error`: 用户回调异常后是否继续抛出（默认 `True`）。
 *   `self.ctx`: 策略上下文 (`StrategyContext`)，提供底层 API 访问。
 
 **交易方法:**

@@ -27,10 +27,32 @@ A strategy goes through the following stages from start to finish:
 *   `on_tick`: Triggered when each Tick arrives (high-frequency/order book strategies).
 *   `on_order`: Triggered when order status changes (e.g., Submitted, Filled, Cancelled).
 *   `on_trade`: Triggered when a trade execution report is received.
+*   `on_reject`: Triggered when an order enters `Rejected` status.
+*   `on_session_start` / `on_session_end`: Triggered on session transitions.
+*   `before_trading` / `after_trading`: Daily trading hooks.
+*   `on_portfolio_update`: Triggered when portfolio snapshot changes.
+*   `on_error`: Triggered when user callback raises an exception, then exception is re-raised by default.
 *   `on_timer`: Called when a timer triggers (needs manual registration).
     > Recommended: Use `self.add_daily_timer("14:55:00", "payload")`.
 *   `on_stop`: Called when the strategy stops, suitable for resource cleanup or result statistics (refer to Backtrader `stop` / Nautilus `on_stop`).
 *   `on_train_signal`: Triggered for rolling training signals (only in ML mode).
+
+### 2.1 Callback Dispatch Contract
+
+For each `bar/tick/timer` event, AKQuant dispatches callbacks in this order:
+
+1. `on_order` / `on_trade` (plus `on_reject` when status is `Rejected`)
+2. Framework hooks (`on_session_*`, `before_trading`/`after_trading`, `on_portfolio_update`)
+3. User event callback (`on_bar` / `on_tick` / `on_timer`)
+
+Notes:
+
+* `on_reject` is emitted once per order id when the order first becomes `Rejected`.
+* `before_trading` is emitted once per local trading date when session enters `Normal`.
+* `after_trading` is emitted once per local trading date when leaving `Normal`, or on next event if day rollover occurs first.
+* Set `self.enable_precise_day_boundary_hooks = True` to enable boundary-timer based precise day hooks.
+* During stop phase, pending `on_session_end` / `after_trading` are flushed before `on_stop`.
+* `on_error` receives `(error, source, payload)` and `self.re_raise_on_error` controls re-raise behavior (default `True`).
 
 ## 3. Utilities
 

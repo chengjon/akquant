@@ -28,9 +28,31 @@
 * `on_tick`: 每一个 Tick 到达时触发 (高频/盘口策略)。
 * `on_order`: 订单状态变化时触发 (如提交、成交、取消)。
 * `on_trade`: 收到成交回报时触发。
+* `on_reject`: 订单进入 `Rejected` 状态时触发。
+* `on_session_start` / `on_session_end`: 会话切换时触发。
+* `before_trading` / `after_trading`: 交易日级钩子。
+* `on_portfolio_update`: 账户快照变化时触发。
+* `on_error`: 用户回调抛异常时触发，默认触发后继续抛出异常。
 * `on_timer`: 定时器触发时调用 (需手动注册)。
 *   `on_stop`: 策略停止时调用，适合进行资源清理或结果统计。
 *   `on_train_signal`: 滚动训练触发信号 (仅在 ML 模式下触发)。
+
+### 2.1 回调触发契约
+
+对于每个 `bar/tick/timer` 事件，框架按以下顺序分发回调：
+
+1. `on_order` / `on_trade`（若拒单则额外触发 `on_reject`）
+2. 框架钩子（`on_session_*`、`before_trading`/`after_trading`、`on_portfolio_update`）
+3. 用户事件回调（`on_bar` / `on_tick` / `on_timer`）
+
+说明：
+
+* `on_reject` 对同一订单 id 只触发一次。
+* `before_trading` 在本地交易日首次进入 Normal 会话时触发一次。
+* `after_trading` 在离开 Normal 会话时触发；若先跨日再收到事件，会在下一事件补发上一交易日的 `after_trading`。
+* 若需要更精确的交易日边界触发，可在策略中设置 `self.enable_precise_day_boundary_hooks = True`。
+* 停止阶段会在 `on_stop` 之前补发待触发的 `on_session_end` / `after_trading`。
+* `on_error` 参数为 `(error, source, payload)`，可通过 `self.re_raise_on_error` 控制是否继续抛出（默认 `True`）。
 
 ## 3. 风险管理 (Risk Management)
 
