@@ -277,3 +277,16 @@ The `examples/` directory contains more scripts demonstrating AKShare integratio
 *   **[17_readme_demo.py](https://github.com/akfamily/akquant/blob/main/examples/17_readme_demo.py)**:
     *   A simple, standalone script for the README demonstration.
     *   Good for a quick "Hello World" test.
+
+*   **[22_strategy_runtime_config_demo.py](https://github.com/akfamily/akquant/blob/main/examples/22_strategy_runtime_config_demo.py)**:
+    *   Demonstrates `strategy_runtime_config`, `runtime_config_override`, and warm-start injection.
+    *   Shows conflict warning deduplication with repeated runs on the same strategy instance.
+    *   Expected output markers include `scenario1_done`, `scenario2_exception=...`, `scenario3_done`.
+
+*   **[23_functional_callbacks_demo.py](https://github.com/akfamily/akquant/blob/main/examples/23_functional_callbacks_demo.py)**:
+    *   Demonstrates function-style callbacks with `initialize`, `on_bar`, and optional `on_order` / `on_trade` / `on_timer`.
+    *   Prints callback counters and ends with `done_functional_callbacks_demo`.
+
+*   **[24_functional_tick_simulation_demo.py](https://github.com/akfamily/akquant/blob/main/examples/24_functional_tick_simulation_demo.py)**:
+    *   Demonstrates function-style `on_tick` callback triggering via simulated tick event dispatch.
+    *   Prints tick/order/trade/timer counters and ends with `done_functional_tick_simulation_demo`.

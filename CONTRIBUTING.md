@@ -70,6 +70,17 @@
         ruff check .
         mypy .
         ```
+    *   推荐在提交前统一执行：
+        ```bash
+        pre-commit run --all-files
+        ```
+        说明：
+        *   仓库中的 mypy hook 已配置为以项目根目录运行并读取 `pyproject.toml`，用于避免 `__init__.py` 与 `__init__.pyi` 的重复模块报错。
+        *   如果你修改了 pre-commit 配置或首次运行遇到环境问题，可执行：
+            ```bash
+            pre-commit clean
+            pre-commit install --install-hooks
+            ```
 
 ### 4. 提交与推送 (Commit & Push)
 

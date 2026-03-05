@@ -1,7 +1,8 @@
 import datetime as dt_module
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
+from dataclasses import fields
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import pandas as pd
 
@@ -17,10 +18,12 @@ from ..config import BacktestConfig, RiskConfig
 from ..data import ParquetDataCatalog
 from ..log import get_logger, register_logger
 from ..risk import apply_risk_config
-from ..strategy import Strategy
+from ..strategy import Strategy, StrategyRuntimeConfig
 from ..utils import df_to_arrays, prepare_dataframe
 from ..utils.inspector import infer_warmup_period
 from .result import BacktestResult
+
+_RUNTIME_CONFIG_FIELDS = {f.name for f in fields(StrategyRuntimeConfig)}
 
 
 class FunctionalStrategy(Strategy):
@@ -30,12 +33,20 @@ class FunctionalStrategy(Strategy):
         self,
         initialize: Optional[Callable[[Any], None]],
         on_bar: Optional[Callable[[Any, Bar], None]],
+        on_tick: Optional[Callable[[Any, Any], None]] = None,
+        on_order: Optional[Callable[[Any, Any], None]] = None,
+        on_trade: Optional[Callable[[Any, Any], None]] = None,
+        on_timer: Optional[Callable[[Any, str], None]] = None,
         context: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the FunctionalStrategy."""
         super().__init__()
         self._initialize = initialize
         self._on_bar_func = on_bar
+        self._on_tick_func = on_tick
+        self._on_order_func = on_order
+        self._on_trade_func = on_trade
+        self._on_timer_func = on_timer
         self._context = context or {}
 
         # 将 context 注入到 self 中，模拟 Zipline 的 context 对象
@@ -51,6 +62,100 @@ class FunctionalStrategy(Strategy):
         """Delegate on_bar event to the user-provided function."""
         if self._on_bar_func is not None:
             self._on_bar_func(self, bar)
+
+    def on_tick(self, tick: Any) -> None:
+        """Delegate on_tick event to the user-provided function."""
+        if self._on_tick_func is not None:
+            self._on_tick_func(self, tick)
+
+    def on_order(self, order: Any) -> None:
+        """Delegate on_order event to the user-provided function."""
+        if self._on_order_func is not None:
+            self._on_order_func(self, order)
+
+    def on_trade(self, trade: Any) -> None:
+        """Delegate on_trade event to the user-provided function."""
+        if self._on_trade_func is not None:
+            self._on_trade_func(self, trade)
+
+    def on_timer(self, payload: str) -> None:
+        """Delegate on_timer event to the user-provided function."""
+        if self._on_timer_func is not None:
+            self._on_timer_func(self, payload)
+
+
+def _coerce_strategy_runtime_config(
+    value: Union[StrategyRuntimeConfig, Dict[str, Any]],
+) -> StrategyRuntimeConfig:
+    if isinstance(value, StrategyRuntimeConfig):
+        return StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=value.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=value.portfolio_update_eps,
+            error_mode=value.error_mode,
+            re_raise_on_error=value.re_raise_on_error,
+        )
+    if isinstance(value, dict):
+        unknown_fields = sorted(set(value.keys()) - _RUNTIME_CONFIG_FIELDS)
+        if unknown_fields:
+            allowed = ", ".join(sorted(_RUNTIME_CONFIG_FIELDS))
+            unknown = ", ".join(unknown_fields)
+            raise ValueError(
+                "strategy_runtime_config contains unknown fields: "
+                f"{unknown}. Allowed fields: {allowed}"
+            )
+        try:
+            return StrategyRuntimeConfig(**value)
+        except ValueError as exc:
+            raise ValueError(f"invalid strategy_runtime_config: {exc}") from None
+    raise TypeError(
+        "strategy_runtime_config must be StrategyRuntimeConfig or Dict[str, Any]"
+    )
+
+
+def _runtime_config_conflicts(
+    current: StrategyRuntimeConfig, incoming: StrategyRuntimeConfig
+) -> List[str]:
+    conflicts: List[str] = []
+    for key in sorted(_RUNTIME_CONFIG_FIELDS):
+        before = getattr(current, key)
+        after = getattr(incoming, key)
+        if before != after:
+            conflicts.append(f"{key}: {before} -> {after}")
+    return conflicts
+
+
+def _apply_strategy_runtime_config(
+    strategy_instance: Strategy,
+    incoming: Union[StrategyRuntimeConfig, Dict[str, Any]],
+    runtime_config_override: bool,
+    logger: Any,
+) -> None:
+    cfg = _coerce_strategy_runtime_config(incoming)
+    current = strategy_instance.runtime_config
+    conflicts = _runtime_config_conflicts(current, cfg)
+    if conflicts:
+        conflict_text = "; ".join(conflicts)
+        warning_key = f"{runtime_config_override}|{conflict_text}"
+        warned_keys = getattr(strategy_instance, "_runtime_config_warning_keys", None)
+        if not isinstance(warned_keys, set):
+            warned_keys = set()
+            setattr(strategy_instance, "_runtime_config_warning_keys", warned_keys)
+        should_log = warning_key not in warned_keys
+        warned_keys.add(warning_key)
+        if runtime_config_override:
+            if should_log:
+                logger.warning(
+                    "strategy_runtime_config overrides strategy runtime_config: "
+                    f"{conflict_text}"
+                )
+        else:
+            if should_log:
+                logger.warning(
+                    "strategy_runtime_config is ignored because "
+                    f"runtime_config_override=False: {conflict_text}"
+                )
+            return
+    strategy_instance.runtime_config = cfg
 
 
 def run_backtest(
@@ -70,6 +175,10 @@ def run_backtest(
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
     initialize: Optional[Callable[[Any], None]] = None,
+    on_tick: Optional[Callable[[Any, Any], None]] = None,
+    on_order: Optional[Callable[[Any, Any], None]] = None,
+    on_trade: Optional[Callable[[Any, Any], None]] = None,
+    on_timer: Optional[Callable[[Any, str], None]] = None,
     context: Optional[Dict[str, Any]] = None,
     history_depth: Optional[int] = None,
     warmup_period: int = 0,
@@ -80,6 +189,10 @@ def run_backtest(
     config: Optional[BacktestConfig] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
     risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
+    strategy_runtime_config: Optional[
+        Union[StrategyRuntimeConfig, Dict[str, Any]]
+    ] = None,
+    runtime_config_override: bool = True,
     **kwargs: Any,
 ) -> BacktestResult:
     """
@@ -108,6 +221,10 @@ def run_backtest(
     :param timezone: 时区名称 (默认 "Asia/Shanghai")
     :param t_plus_one: 是否启用 T+1 交易规则 (默认 False)
     :param initialize: 初始化回调函数 (仅当 strategy 为函数时使用)
+    :param on_tick: Tick 回调函数 (仅当 strategy 为函数时使用)
+    :param on_order: 订单回调函数 (仅当 strategy 为函数时使用)
+    :param on_trade: 成交回调函数 (仅当 strategy 为函数时使用)
+    :param on_timer: 定时器回调函数 (仅当 strategy 为函数时使用)
     :param context: 初始上下文数据 (仅当 strategy 为函数时使用)
     :param history_depth: 自动维护历史数据的长度 (0 表示禁用)
     :param warmup_period: 策略预热期 (等同于 history_depth，取最大值)
@@ -119,6 +236,10 @@ def run_backtest(
     :param end_time: 回测结束时间 (e.g., "2020-12-31 15:00"). 优先级高于
                      config.end_time.
     :param config: BacktestConfig 配置对象 (可选)
+    :param strategy_runtime_config: 策略运行时配置对象或字典 (可选)
+    :param runtime_config_override: 是否覆盖策略实例内已有 runtime_config (默认 True)
+    故障速查可参考 docs/zh/advanced/runtime_config.md，
+    英文文档参考 docs/en/advanced/runtime_config.md
     :param instruments_config: 标的配置列表或字典 (可选)
     :return: 回测结果 Result 对象
 
@@ -251,6 +372,8 @@ def run_backtest(
         s_params = kwargs.pop("strategy_params")
         if isinstance(s_params, dict):
             kwargs.update(s_params)
+    if strategy_runtime_config is None and "strategy_runtime_config" in kwargs:
+        strategy_runtime_config = kwargs.pop("strategy_runtime_config")
 
     # 2. 实例化策略 (提前实例化以获取订阅信息)
     strategy_instance = None
@@ -279,12 +402,26 @@ def run_backtest(
         strategy_instance = strategy
     elif callable(strategy):
         strategy_instance = FunctionalStrategy(
-            initialize, cast(Callable[[Any, Bar], None], strategy), context
+            initialize,
+            cast(Callable[[Any, Bar], None], strategy),
+            on_tick=on_tick,
+            on_order=on_order,
+            on_trade=on_trade,
+            on_timer=on_timer,
+            context=context,
         )
     elif strategy is None:
         raise ValueError("Strategy must be provided.")
     else:
         raise ValueError("Invalid strategy type")
+
+    if strategy_runtime_config is not None and isinstance(strategy_instance, Strategy):
+        _apply_strategy_runtime_config(
+            strategy_instance,
+            strategy_runtime_config,
+            runtime_config_override,
+            logger,
+        )
 
     # 注入 context
     if context and hasattr(strategy_instance, "_context"):
@@ -546,13 +683,29 @@ def run_backtest(
     # Inject trading days to strategy (for add_daily_timer)
     if hasattr(strategy_instance, "_trading_days") and data_map_for_indicators:
         all_dates: set[pd.Timestamp] = set()
+        day_bounds: Dict[str, Tuple[int, int]] = {}
         for df in data_map_for_indicators.values():
             if not df.empty and isinstance(df.index, pd.DatetimeIndex):
                 dates = df.index.normalize().unique()
                 all_dates.update(dates)
+                grouped = df.groupby(df.index.normalize())
+                for day_ts, day_df in grouped:
+                    day_key = pd.Timestamp(day_ts).date().isoformat()
+                    start_ns = int(day_df.index.min().value)
+                    end_ns = int(day_df.index.max().value)
+                    if day_key in day_bounds:
+                        prev_start, prev_end = day_bounds[day_key]
+                        day_bounds[day_key] = (
+                            min(prev_start, start_ns),
+                            max(prev_end, end_ns),
+                        )
+                    else:
+                        day_bounds[day_key] = (start_ns, end_ns)
 
         if all_dates:
             strategy_instance._trading_days = sorted(list(all_dates))
+        if hasattr(strategy_instance, "_trading_day_bounds"):
+            strategy_instance._trading_day_bounds = day_bounds
 
     # 3.5 Pre-calculate indicators
     # Inject data into indicators so they can be accessed in on_bar via get_value()
@@ -881,7 +1034,12 @@ def run_backtest(
         logger.error(f"Backtest failed: {e}")
         raise e
     finally:
-        if hasattr(strategy_instance, "on_stop"):
+        if hasattr(strategy_instance, "_on_stop_internal"):
+            try:
+                strategy_instance._on_stop_internal()
+            except Exception as e:
+                logger.error(f"Error in on_stop: {e}")
+        elif hasattr(strategy_instance, "on_stop"):
             try:
                 strategy_instance.on_stop()
             except Exception as e:
@@ -903,10 +1061,17 @@ def run_warm_start(
     ] = None,
     show_progress: bool = True,
     symbol: Union[str, List[str]] = "BENCHMARK",
+    strategy_runtime_config: Optional[
+        Union[StrategyRuntimeConfig, Dict[str, Any]]
+    ] = None,
+    runtime_config_override: bool = True,
     **kwargs: Any,
 ) -> BacktestResult:
     """
     热启动回测 (Warm Start Backtest).
+
+    故障速查可参考 docs/zh/advanced/runtime_config.md，
+    英文文档参考 docs/en/advanced/runtime_config.md
 
     :param kwargs: 其他引擎配置参数 (如 commission_rate, stamp_tax, t_plus_one)
     """
@@ -988,6 +1153,42 @@ def run_warm_start(
     # 2. 恢复引擎和策略
     logger.info(f"Resuming from checkpoint: {checkpoint_path}")
     engine, strategy_instance = warm_start(checkpoint_path, feed)
+
+    if strategy_runtime_config is None and "strategy_runtime_config" in kwargs:
+        strategy_runtime_config = kwargs.pop("strategy_runtime_config")
+    if strategy_runtime_config is not None and isinstance(strategy_instance, Strategy):
+        _apply_strategy_runtime_config(
+            strategy_instance,
+            strategy_runtime_config,
+            runtime_config_override,
+            logger,
+        )
+
+    if hasattr(strategy_instance, "_trading_days") and data_map_for_indicators:
+        all_dates: set[pd.Timestamp] = set()
+        day_bounds: Dict[str, Tuple[int, int]] = {}
+        for df in data_map_for_indicators.values():
+            if not df.empty and isinstance(df.index, pd.DatetimeIndex):
+                dates = df.index.normalize().unique()
+                all_dates.update(dates)
+                grouped = df.groupby(df.index.normalize())
+                for day_ts, day_df in grouped:
+                    day_key = pd.Timestamp(day_ts).date().isoformat()
+                    start_ns = int(day_df.index.min().value)
+                    end_ns = int(day_df.index.max().value)
+                    if day_key in day_bounds:
+                        prev_start, prev_end = day_bounds[day_key]
+                        day_bounds[day_key] = (
+                            min(prev_start, start_ns),
+                            max(prev_end, end_ns),
+                        )
+                    else:
+                        day_bounds[day_key] = (start_ns, end_ns)
+
+        if all_dates:
+            strategy_instance._trading_days = sorted(list(all_dates))
+        if hasattr(strategy_instance, "_trading_day_bounds"):
+            strategy_instance._trading_day_bounds = day_bounds
 
     # Capture restored cash BEFORE running (for correct initial_market_value in result)
     restored_cash = engine.portfolio.cash
@@ -1071,6 +1272,14 @@ def run_warm_start(
         except Exception as e:
             logger.error(f"Failed to update indicators for warm start: {e}")
 
+    if hasattr(strategy_instance, "_on_start_internal"):
+        strategy_instance._on_start_internal()
+    elif hasattr(strategy_instance, "on_start"):
+        if hasattr(strategy_instance, "is_restored") and strategy_instance.is_restored:
+            if hasattr(strategy_instance, "on_resume"):
+                strategy_instance.on_resume()
+        strategy_instance.on_start()
+
     # 4. 运行
     try:
         engine.run(strategy_instance, show_progress)
@@ -1078,7 +1287,12 @@ def run_warm_start(
         logger.error(f"Warm start backtest failed: {e}")
         raise e
     finally:
-        if hasattr(strategy_instance, "on_stop"):
+        if hasattr(strategy_instance, "_on_stop_internal"):
+            try:
+                strategy_instance._on_stop_internal()
+            except Exception as e:
+                logger.error(f"Error in on_stop: {e}")
+        elif hasattr(strategy_instance, "on_stop"):
             try:
                 strategy_instance.on_stop()
             except Exception as e:

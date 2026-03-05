@@ -401,8 +401,11 @@ impl Engine {
                     self.set_history_depth(depth);
                 }
 
-        // Trigger Strategy on_start
-        strategy.call_method0("on_start")?;
+        if strategy.hasattr("_on_start_internal")? {
+            strategy.call_method0("_on_start_internal")?;
+        } else {
+            strategy.call_method0("on_start")?;
+        }
 
         // Progress Bar Initialization
         let total_events = self.state.feed.len_hint().unwrap_or(0);

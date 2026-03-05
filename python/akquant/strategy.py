@@ -1,7 +1,19 @@
 import datetime as dt
 import logging
-from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
+from collections import defaultdict, deque
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Deque,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 import numpy as np
 import pandas as pd
@@ -10,50 +22,158 @@ from .akquant import (
     Bar,
     ExecutionMode,
     Order,
-    OrderStatus,
     StrategyContext,
     Tick,
     TimeInForce,
 )
-from .log import get_logger
 from .sizer import FixedSize, Sizer
-from .utils import parse_duration_to_bars
+from .strategy_events import (
+    on_bar_event as _on_bar_event_impl,
+)
+from .strategy_events import (
+    on_tick_event as _on_tick_event_impl,
+)
+from .strategy_events import (
+    on_timer_event as _on_timer_event_impl,
+)
+from .strategy_framework_hooks import (
+    call_user_callback as _call_user_callback_impl,
+)
+from .strategy_framework_hooks import (
+    dispatch_shutdown_hooks as _dispatch_shutdown_hooks_impl,
+)
+from .strategy_framework_hooks import (
+    ensure_framework_state as _ensure_framework_state_impl,
+)
+from .strategy_history import get_history as _get_history_impl
+from .strategy_history import get_history_df as _get_history_df_impl
+from .strategy_history import get_rolling_data as _get_rolling_data_impl
+from .strategy_history import set_history_depth as _set_history_depth_impl
+from .strategy_history import set_rolling_window as _set_rolling_window_impl
+from .strategy_logging import log as _log_impl
+from .strategy_ml import auto_configure_model as _auto_configure_model_impl
+from .strategy_ml import on_train_signal as _on_train_signal_impl
+from .strategy_order_events import (
+    check_order_events as _check_order_events_impl,
+)
+from .strategy_order_events import (
+    key_value as _key_value_impl,
+)
+from .strategy_order_events import (
+    remember_trade_key as _remember_trade_key_impl,
+)
+from .strategy_order_events import (
+    trade_dedupe_cache_limit as _trade_dedupe_cache_limit_impl,
+)
+from .strategy_order_events import (
+    trade_event_key as _trade_event_key_impl,
+)
+from .strategy_position import Position
+from .strategy_scheduler import add_daily_timer as _add_daily_timer_impl
+from .strategy_scheduler import schedule as _schedule_impl
+from .strategy_time import format_time as _format_time_impl
+from .strategy_time import now as _now_impl
+from .strategy_time import to_local_time as _to_local_time_impl
+from .strategy_trading_api import (
+    buy as _buy_impl,
+)
+from .strategy_trading_api import (
+    buy_all as _buy_all_impl,
+)
+from .strategy_trading_api import (
+    calculate_max_buy_qty as _calculate_max_buy_qty_impl,
+)
+from .strategy_trading_api import (
+    cancel_all_orders as _cancel_all_orders_impl,
+)
+from .strategy_trading_api import (
+    cancel_order as _cancel_order_impl,
+)
+from .strategy_trading_api import (
+    close_position as _close_position_impl,
+)
+from .strategy_trading_api import (
+    cover as _cover_impl,
+)
+from .strategy_trading_api import (
+    get_account as _get_account_impl,
+)
+from .strategy_trading_api import (
+    get_available_position as _get_available_position_impl,
+)
+from .strategy_trading_api import (
+    get_cash as _get_cash_impl,
+)
+from .strategy_trading_api import (
+    get_open_orders as _get_open_orders_impl,
+)
+from .strategy_trading_api import (
+    get_order as _get_order_impl,
+)
+from .strategy_trading_api import (
+    get_portfolio_value as _get_portfolio_value_impl,
+)
+from .strategy_trading_api import (
+    get_position as _get_position_impl,
+)
+from .strategy_trading_api import (
+    get_positions as _get_positions_impl,
+)
+from .strategy_trading_api import (
+    hold_bar as _hold_bar_impl,
+)
+from .strategy_trading_api import (
+    order_target as _order_target_impl,
+)
+from .strategy_trading_api import (
+    order_target_percent as _order_target_percent_impl,
+)
+from .strategy_trading_api import (
+    order_target_value as _order_target_value_impl,
+)
+from .strategy_trading_api import (
+    resolve_symbol as _resolve_symbol_impl,
+)
+from .strategy_trading_api import (
+    sell as _sell_impl,
+)
+from .strategy_trading_api import (
+    short as _short_impl,
+)
+from .strategy_trading_api import (
+    stop_buy as _stop_buy_impl,
+)
+from .strategy_trading_api import (
+    stop_sell as _stop_sell_impl,
+)
 
 if TYPE_CHECKING:
     from .indicator import Indicator
     from .ml.model import QuantModel
 
 
-class Position:
-    """
-    持仓信息辅助类 (Position Helper).
+@dataclass
+class StrategyRuntimeConfig:
+    """策略运行时行为配置."""
 
-    允许通过属性访问特定标的的持仓信息.
-    """
+    enable_precise_day_boundary_hooks: bool = False
+    portfolio_update_eps: float = 0.0
+    error_mode: Literal["raise", "continue", "legacy"] = "raise"
+    re_raise_on_error: bool = True
 
-    def __init__(self, ctx: StrategyContext, symbol: str) -> None:
-        """
-        初始化持仓辅助对象.
-
-        :param ctx: 策略上下文
-        :param symbol: 标的代码
-        """
-        self._ctx = ctx
-        self._symbol = symbol
-
-    @property
-    def size(self) -> float:
-        """持仓数量."""
-        return self._ctx.get_position(self._symbol)
-
-    @property
-    def available(self) -> float:
-        """可用持仓数量."""
-        return self._ctx.get_available_position(self._symbol)
-
-    def __repr__(self) -> str:
-        """返回持仓信息的字符串表示."""
-        return f"Position(symbol={self._symbol}, size={self.size})"
+    def __post_init__(self) -> None:
+        """校验并标准化配置."""
+        self.portfolio_update_eps = float(self.portfolio_update_eps)
+        if self.portfolio_update_eps < 0.0:
+            raise ValueError("portfolio_update_eps must be >= 0")
+        mode = str(self.error_mode).strip().lower()
+        if mode not in {"raise", "continue", "legacy"}:
+            raise ValueError("error_mode must be one of: raise, continue, legacy")
+        self.error_mode = cast(Literal["raise", "continue", "legacy"], mode)
+        self.enable_precise_day_boundary_hooks = bool(
+            self.enable_precise_day_boundary_hooks
+        )
+        self.re_raise_on_error = bool(self.re_raise_on_error)
 
 
 class Strategy:
@@ -81,11 +201,24 @@ class Strategy:
     _model_configured: bool
     model: Optional["QuantModel"]
     _known_orders: Dict[str, Order]
+    _seen_trade_keys: set[Tuple[Any, ...]]
+    _seen_trade_key_order: Deque[Tuple[Any, ...]]
     timezone: str = "Asia/Shanghai"
     warmup_period: int = 0
+    _runtime_config: StrategyRuntimeConfig
     _last_event_type: str = ""  # "bar" or "tick"
     _hold_bars: "defaultdict[str, int]"
     _last_position_signs: "defaultdict[str, float]"
+    _framework_last_session: Any
+    _framework_last_local_date: Optional[dt.date]
+    _framework_before_trading_done_date: Optional[dt.date]
+    _framework_after_trading_done_date: Optional[dt.date]
+    _framework_last_portfolio_state: Any
+    _framework_portfolio_dirty: bool
+    _framework_rejected_order_ids: set[str]
+    _framework_stop_flushed: bool
+    _framework_boundary_timers_registered: bool
+    _trading_day_bounds: Dict[str, Tuple[int, int]]
 
     _trading_days: List[pd.Timestamp]
 
@@ -110,9 +243,36 @@ class Strategy:
         instance._subscriptions = []
         instance._last_prices = {}
         instance._known_orders = {}
+        instance._seen_trade_keys = set()
+        instance._seen_trade_key_order = deque()
         instance._hold_bars = defaultdict(int)
         instance._last_position_signs = defaultdict(float)
         instance.timezone = getattr(instance, "timezone", "Asia/Shanghai")
+        raw_runtime_config = getattr(instance, "_runtime_config", None)
+        class_enable_hooks = cls.__dict__.get(
+            "enable_precise_day_boundary_hooks", False
+        )
+        class_portfolio_eps = cls.__dict__.get("portfolio_update_eps", 0.0)
+        class_error_mode = cls.__dict__.get("error_mode", "raise")
+        class_re_raise = cls.__dict__.get("re_raise_on_error", True)
+        if isinstance(raw_runtime_config, dict):
+            instance.runtime_config = StrategyRuntimeConfig(**raw_runtime_config)
+        elif isinstance(raw_runtime_config, StrategyRuntimeConfig):
+            instance.runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=raw_runtime_config.enable_precise_day_boundary_hooks,
+                portfolio_update_eps=raw_runtime_config.portfolio_update_eps,
+                error_mode=raw_runtime_config.error_mode,
+                re_raise_on_error=raw_runtime_config.re_raise_on_error,
+            )
+        else:
+            instance.runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=bool(class_enable_hooks),
+                portfolio_update_eps=float(class_portfolio_eps),
+                error_mode=cast(
+                    Literal["raise", "continue", "legacy"], str(class_error_mode)
+                ),
+                re_raise_on_error=bool(class_re_raise),
+            )
         instance._last_event_type = ""
         instance._trading_days = []
 
@@ -125,6 +285,7 @@ class Strategy:
         instance._rolling_step = 0
         instance._bar_count = 0
         instance._model_configured = False
+        instance._start_initialized = False
 
         # 初始化通常在 __init__ 中的属性，允许子类省略 super().__init__()
         instance.model = None
@@ -137,6 +298,16 @@ class Strategy:
         # lot_size 可以是 int (全局统一) 或 Dict[str, int] (按标的设置)
         # 默认 1，这是最通用的设置（适用于美股、加密货币等）。A股回测请务必设置为 100。
         instance.lot_size = 1
+        instance._framework_last_session = None
+        instance._framework_last_local_date = None
+        instance._framework_before_trading_done_date = None
+        instance._framework_after_trading_done_date = None
+        instance._framework_last_portfolio_state = None
+        instance._framework_portfolio_dirty = True
+        instance._framework_rejected_order_ids = set()
+        instance._framework_stop_flushed = False
+        instance._framework_boundary_timers_registered = False
+        instance._trading_day_bounds = {}
 
         return instance
 
@@ -157,15 +328,154 @@ class Strategy:
             del state["current_bar"]
         if "current_tick" in state:
             del state["current_tick"]
+        if "_framework_last_session" in state:
+            del state["_framework_last_session"]
+        if "_framework_last_local_date" in state:
+            del state["_framework_last_local_date"]
+        if "_framework_before_trading_done_date" in state:
+            del state["_framework_before_trading_done_date"]
+        if "_framework_after_trading_done_date" in state:
+            del state["_framework_after_trading_done_date"]
+        if "_framework_last_portfolio_state" in state:
+            del state["_framework_last_portfolio_state"]
+        if "_framework_portfolio_dirty" in state:
+            del state["_framework_portfolio_dirty"]
+        if "_framework_rejected_order_ids" in state:
+            del state["_framework_rejected_order_ids"]
+        if "_framework_stop_flushed" in state:
+            del state["_framework_stop_flushed"]
+        if "_framework_boundary_timers_registered" in state:
+            del state["_framework_boundary_timers_registered"]
         return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Pickle 反序列化支持."""
         self.__dict__.update(state)
+        raw_runtime_config = self.__dict__.pop("runtime_config", None)
+        if raw_runtime_config is not None:
+            self.runtime_config = raw_runtime_config
+        elif "_runtime_config" in self.__dict__:
+            self.runtime_config = self.__dict__["_runtime_config"]
+        else:
+            self.runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=bool(
+                    self.__dict__.pop("enable_precise_day_boundary_hooks", False)
+                ),
+                portfolio_update_eps=float(
+                    self.__dict__.pop("portfolio_update_eps", 0.0)
+                ),
+                error_mode=cast(
+                    Literal["raise", "continue", "legacy"],
+                    str(self.__dict__.pop("error_mode", "raise")),
+                ),
+                re_raise_on_error=bool(self.__dict__.pop("re_raise_on_error", True)),
+            )
         self.ctx = None
         self.current_bar = None
         self.current_tick = None
         self._is_restored = True  # 标记为已恢复状态
+        self._start_initialized = False
+        if not hasattr(self, "_seen_trade_keys"):
+            self._seen_trade_keys = set()
+        if not hasattr(self, "_seen_trade_key_order"):
+            self._seen_trade_key_order = deque()
+        _ensure_framework_state_impl(self)
+
+    @property
+    def runtime_config(self) -> StrategyRuntimeConfig:
+        """返回策略运行时配置."""
+        cfg = getattr(self, "_runtime_config", None)
+        if isinstance(cfg, StrategyRuntimeConfig):
+            return cfg
+        if isinstance(cfg, dict):
+            self._runtime_config = StrategyRuntimeConfig(**cfg)
+            return self._runtime_config
+        self._runtime_config = StrategyRuntimeConfig()
+        return self._runtime_config
+
+    @runtime_config.setter
+    def runtime_config(
+        self, value: Union[StrategyRuntimeConfig, Dict[str, Any]]
+    ) -> None:
+        """设置策略运行时配置."""
+        if isinstance(value, StrategyRuntimeConfig):
+            self._runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=value.enable_precise_day_boundary_hooks,
+                portfolio_update_eps=value.portfolio_update_eps,
+                error_mode=value.error_mode,
+                re_raise_on_error=value.re_raise_on_error,
+            )
+            return
+        if isinstance(value, dict):
+            self._runtime_config = StrategyRuntimeConfig(**value)
+            return
+        raise TypeError(
+            "runtime_config must be StrategyRuntimeConfig or Dict[str, Any]"
+        )
+
+    @property
+    def enable_precise_day_boundary_hooks(self) -> bool:
+        """是否启用边界定时器精确交易日钩子."""
+        return self.runtime_config.enable_precise_day_boundary_hooks
+
+    @enable_precise_day_boundary_hooks.setter
+    def enable_precise_day_boundary_hooks(self, value: bool) -> None:
+        """设置边界定时器精确交易日钩子开关."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=bool(value),
+            portfolio_update_eps=cfg.portfolio_update_eps,
+            error_mode=cfg.error_mode,
+            re_raise_on_error=cfg.re_raise_on_error,
+        )
+
+    @property
+    def portfolio_update_eps(self) -> float:
+        """返回账户快照更新阈值."""
+        return self.runtime_config.portfolio_update_eps
+
+    @portfolio_update_eps.setter
+    def portfolio_update_eps(self, value: float) -> None:
+        """设置账户快照更新阈值."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=cfg.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=float(value),
+            error_mode=cfg.error_mode,
+            re_raise_on_error=cfg.re_raise_on_error,
+        )
+
+    @property
+    def error_mode(self) -> str:
+        """返回错误处理模式."""
+        return self.runtime_config.error_mode
+
+    @error_mode.setter
+    def error_mode(self, value: str) -> None:
+        """设置错误处理模式."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=cfg.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=cfg.portfolio_update_eps,
+            error_mode=cast(Literal["raise", "continue", "legacy"], value),
+            re_raise_on_error=cfg.re_raise_on_error,
+        )
+
+    @property
+    def re_raise_on_error(self) -> bool:
+        """返回是否在 on_error 后继续抛出异常."""
+        return self.runtime_config.re_raise_on_error
+
+    @re_raise_on_error.setter
+    def re_raise_on_error(self, value: bool) -> None:
+        """设置 on_error 后是否继续抛出异常."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=cfg.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=cfg.portfolio_update_eps,
+            error_mode=cfg.error_mode,
+            re_raise_on_error=bool(value),
+        )
 
     @property
     def is_restored(self) -> bool:
@@ -193,12 +503,16 @@ class Strategy:
 
     def _on_start_internal(self) -> None:
         """内部启动回调，用于自动发现指标等."""
+        if self._start_initialized:
+            return
+
         # 如果是恢复模式，先调用 on_resume
         if self.is_restored:
             self.on_resume()
 
         self.on_start()
         self._discover_indicators()
+        self._start_initialized = True
 
     def _discover_indicators(self) -> None:
         """自动发现并注册 self 属性中的指标."""
@@ -220,6 +534,12 @@ class Strategy:
         """
         pass
 
+    def _on_stop_internal(self) -> None:
+        """内部停止回调，用于补发框架级结束钩子."""
+        _ensure_framework_state_impl(self)
+        _dispatch_shutdown_hooks_impl(self)
+        _call_user_callback_impl(self, "on_stop")
+
     def log(self, msg: str, level: int = logging.INFO) -> None:
         """
         输出日志 (自动添加当前回测时间).
@@ -227,18 +547,7 @@ class Strategy:
         :param msg: 日志内容
         :param level: 日志等级 (logging.INFO, logging.WARNING, etc.)
         """
-        timestamp_str = ""
-        # Try to get current time
-        ts = self.now
-        if ts:
-            timestamp_str = ts.strftime("%Y-%m-%d %H:%M:%S")
-
-        if timestamp_str:
-            final_msg = f"[{timestamp_str}] {msg}"
-        else:
-            final_msg = msg
-
-        get_logger().log(level, final_msg)
+        _log_impl(self, msg, level)
 
     @property
     def symbol(self) -> str:
@@ -293,37 +602,7 @@ class Strategy:
         :param trigger_time: 触发时间 (支持 "2023-01-01 14:55:00", datetime, Timestamp)
         :param payload: 回调标识
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        ts_ns = 0
-        if isinstance(trigger_time, str):
-            # Parse string
-            try:
-                dt_obj = pd.to_datetime(trigger_time)
-                if dt_obj.tz is None:
-                    dt_obj = dt_obj.tz_localize(self.timezone)
-                ts_ns = dt_obj.value
-            except Exception:
-                # If pandas parsing fails, maybe it's just a time string?
-                # But here we expect full datetime string for schedule()
-                pass
-        elif isinstance(trigger_time, (dt.datetime, pd.Timestamp)):
-            if trigger_time.tzinfo is None:
-                trigger_time = pd.Timestamp(trigger_time).tz_localize(self.timezone)
-            if hasattr(trigger_time, "value"):
-                ts_ns = trigger_time.value  # type: ignore
-            elif isinstance(trigger_time, dt.datetime):
-                # Standard datetime doesn't have .value (nanoseconds)
-                # convert to pd.Timestamp first
-                ts_ns = pd.Timestamp(trigger_time).value
-            else:
-                # Should not happen given isinstance check
-                ts_ns = 0
-
-        # Ensure we pass int (nanoseconds) to rust
-        if ts_ns > 0:
-            self.ctx.schedule(int(ts_ns), payload)
+        _schedule_impl(self, trigger_time, payload)
 
     def add_daily_timer(self, time_str: str, payload: str) -> None:
         """
@@ -332,53 +611,7 @@ class Strategy:
         :param time_str: 时间字符串 (例如 "14:55:00")
         :param payload: 回调标识
         """
-        # Wrap payload to include time_str for recurrence handling
-        # Format: __daily__|{time_str}|{payload}
-        wrapped_payload = f"__daily__|{time_str}|{payload}"
-
-        if not self._trading_days:
-            # Live Mode: Schedule the next occurrence immediately
-            try:
-                t = pd.to_datetime(time_str).time()
-            except Exception:
-                print(f"Error parsing time: {time_str}")
-                return
-
-            # Get current time in strategy timezone
-            now = pd.Timestamp.now(tz=self.timezone)
-
-            # Combine today's date with target time
-            target = pd.Timestamp.combine(now.date(), t).tz_localize(self.timezone)
-
-            # If target time has passed today, schedule for tomorrow
-            if target <= now:
-                target += pd.Timedelta(days=1)
-
-            self.schedule(target, wrapped_payload)
-            return
-
-        # Parse time part
-        try:
-            t = pd.to_datetime(time_str).time()
-        except Exception:
-            print(f"Error parsing time: {time_str}")
-            return
-
-        # Generate timestamps for each trading day
-        for day in self._trading_days:
-            # Combine date and time
-            # Note: day is already timezone aware (from backtest injection)
-            # We need to combine date and time, and ensure correct timezone
-
-            # If day is tz-aware, day.date() returns naive date
-            # We combine it with time t to get naive datetime
-            naive_dt = pd.Timestamp.combine(day.date(), t)
-
-            # Then localize
-            dt_obj = naive_dt.tz_localize(self.timezone)
-
-            # Pass int timestamp directly to avoid re-parsing logic in schedule
-            self.schedule(dt_obj, wrapped_payload)
+        _add_daily_timer_impl(self, time_str, payload)
 
     def to_local_time(self, timestamp: int) -> pd.Timestamp:
         """
@@ -387,8 +620,7 @@ class Strategy:
         :param timestamp: UTC 纳秒时间戳 (int64)
         :return: 本地时间 (pd.Timestamp)
         """
-        ts_utc = pd.to_datetime(timestamp, unit="ns", utc=True)
-        return cast(pd.Timestamp, ts_utc.tz_convert(self.timezone))
+        return _to_local_time_impl(self, timestamp)
 
     def format_time(self, timestamp: int, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
         """
@@ -398,7 +630,7 @@ class Strategy:
         :param fmt: 时间格式字符串
         :return: 格式化后的时间字符串
         """
-        return self.to_local_time(timestamp).strftime(fmt)
+        return _format_time_impl(self, timestamp, fmt)
 
     @property
     def now(self) -> Optional[pd.Timestamp]:
@@ -407,15 +639,7 @@ class Strategy:
 
         如果当前没有 Bar 或 Tick，则返回 None.
         """
-        ts = None
-        if self.current_bar:
-            ts = self.current_bar.timestamp
-        elif self.current_tick:
-            ts = self.current_tick.timestamp
-
-        if ts is not None:
-            return self.to_local_time(ts)
-        return None
+        return _now_impl(self)
 
     def set_history_depth(self, depth: int) -> None:
         """
@@ -423,7 +647,7 @@ class Strategy:
 
         :param depth: 保留的 Bar 数量 (0 表示不保留)
         """
-        self._history_depth = depth
+        _set_history_depth_impl(self, depth)
 
     def set_rolling_window(self, train_window: int, step: int) -> None:
         """
@@ -432,11 +656,7 @@ class Strategy:
         :param train_window: 训练数据长度 (Bars)
         :param step: 滚动步长 (每隔多少个 Bar 触发一次训练)
         """
-        self._rolling_train_window = train_window
-        self._rolling_step = step
-        # 自动调整 history_depth 以满足训练窗口需求
-        if self._history_depth < train_window:
-            self._history_depth = train_window
+        _set_rolling_window_impl(self, train_window, step)
 
     def get_history(
         self, count: int, symbol: Optional[str] = None, field: str = "close"
@@ -449,28 +669,7 @@ class Strategy:
         :param field: 字段名 (open, high, low, close, volume)
         :return: Numpy 数组
         """
-        if self._history_depth == 0:
-            raise RuntimeError(
-                "History tracking is not enabled. Call set_history_depth() first."
-            )
-
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        symbol = self._resolve_symbol(symbol)
-
-        # Call Rust implementation
-        arr = self.ctx.history(symbol, field.lower(), count)
-
-        if arr is None:
-            return cast(np.ndarray, np.full(count, np.nan))
-
-        if len(arr) < count:
-            # Pad with NaN at the beginning
-            padding = np.full(count - len(arr), np.nan)
-            return cast(np.ndarray, np.concatenate((padding, arr)))
-
-        return cast(np.ndarray, arr)
+        return _get_history_impl(self, count, symbol, field)
 
     def get_history_df(self, count: int, symbol: Optional[str] = None) -> pd.DataFrame:
         """
@@ -480,16 +679,7 @@ class Strategy:
         :param symbol: 标的代码
         :return: pd.DataFrame
         """
-        symbol = self._resolve_symbol(symbol)
-
-        data = {
-            "open": self.get_history(count, symbol, "open"),
-            "high": self.get_history(count, symbol, "high"),
-            "low": self.get_history(count, symbol, "low"),
-            "close": self.get_history(count, symbol, "close"),
-            "volume": self.get_history(count, symbol, "volume"),
-        }
-        return pd.DataFrame(data)
+        return _get_history_df_impl(self, count, symbol)
 
     def get_rolling_data(
         self, length: Optional[int] = None, symbol: Optional[str] = None
@@ -501,17 +691,7 @@ class Strategy:
         :param symbol: 标的代码
         :return: (X, y) 默认为 (DataFrame, None)
         """
-        if length is None:
-            length = self._rolling_train_window
-
-        if length <= 0:
-            raise ValueError("Invalid rolling window length")
-
-        df = self.get_history_df(length, symbol)
-
-        # 默认返回 raw DataFrame 作为 X，y 为 None
-        # 用户可以在策略中重写此方法或自行处理数据
-        return df, None
+        return _get_rolling_data_impl(self, length, symbol)
 
     def on_train_signal(self, context: Any) -> None:
         """
@@ -521,28 +701,7 @@ class Strategy:
 
         :param context: 策略上下文 (通常是 self)
         """
-        if self.model:
-            try:
-                X_df, _ = self.get_rolling_data()
-
-                if (
-                    self.model.validation_config
-                    and self.model.validation_config.verbose
-                ):
-                    ts_str = ""
-                    if self.current_bar:
-                        ts_str = self.format_time(self.current_bar.timestamp)
-                    print(
-                        f"[{ts_str}] Auto-training triggered | Train Size: {len(X_df)}"
-                    )
-
-                X, y = self.prepare_features(X_df, mode="training")
-                self.model.fit(X, y)
-            except NotImplementedError:
-                # User didn't implement prepare_features, assuming manual handling
-                pass
-            except Exception as e:
-                print(f"Auto-training failed at bar {self._bar_count}: {e}")
+        _on_train_signal_impl(self, context)
 
     def prepare_features(
         self, df: pd.DataFrame, mode: str = "training"
@@ -564,22 +723,7 @@ class Strategy:
 
     def _auto_configure_model(self) -> None:
         """Apply model validation configuration if present."""
-        if self._model_configured:
-            return
-
-        if self.model and self.model.validation_config:
-            cfg = self.model.validation_config
-
-            try:
-                train_window = parse_duration_to_bars(cfg.train_window, cfg.frequency)
-                step = parse_duration_to_bars(cfg.rolling_step, cfg.frequency)
-
-                # Update settings
-                self.set_rolling_window(train_window, step)
-            except Exception as e:
-                print(f"Failed to configure model validation: {e}")
-
-        self._model_configured = True
+        _auto_configure_model_impl(self)
 
     def set_sizer(self, sizer: Sizer) -> None:
         """设置仓位管理器."""
@@ -632,172 +776,57 @@ class Strategy:
         """
         pass
 
+    def on_session_start(self, session: Any, timestamp: int) -> None:
+        """会话开始回调."""
+        pass
+
+    def on_session_end(self, session: Any, timestamp: int) -> None:
+        """会话结束回调."""
+        pass
+
+    def before_trading(self, trading_date: dt.date, timestamp: int) -> None:
+        """交易日开始前回调."""
+        pass
+
+    def after_trading(self, trading_date: dt.date, timestamp: int) -> None:
+        """交易日结束后回调."""
+        pass
+
+    def on_reject(self, order: Any) -> None:
+        """拒单回调."""
+        pass
+
+    def on_portfolio_update(self, snapshot: Dict[str, Any]) -> None:
+        """账户变化回调."""
+        pass
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """错误回调."""
+        pass
+
     def _check_order_events(self) -> None:
-        """检查订单和成交事件并触发回调."""
-        if self.ctx is None:
-            return
+        _check_order_events_impl(self)
 
-        # 1. Process New Trades (from Rust Engine)
-        if hasattr(self.ctx, "recent_trades"):
-            for trade in self.ctx.recent_trades:
-                self.on_trade(trade)
+    def _trade_event_key(self, trade: Any) -> Tuple[Any, ...]:
+        return _trade_event_key_impl(self, trade)
 
-                # Update known order status if we have it
-                if trade.order_id in self._known_orders:
-                    pass
+    def _key_value(self, value: Any) -> Any:
+        return _key_value_impl(value)
 
-        # 2. Process Canceled Orders (from Rust Engine)
-        if hasattr(self.ctx, "canceled_order_ids"):
-            for oid in self.ctx.canceled_order_ids:
-                if oid in self._known_orders:
-                    order = self._known_orders[oid]
-                    try:
-                        order.status = OrderStatus.Cancelled
-                    except Exception:
-                        pass
+    def _remember_trade_key(self, key: Tuple[Any, ...]) -> bool:
+        return _remember_trade_key_impl(self, key)
 
-                    self.on_order(order)
-                    del self._known_orders[oid]
-
-        # 3. Process Active Orders (New & Status Changes)
-        current_active_ids = set()
-        if hasattr(self.ctx, "active_orders"):
-            for order in self.ctx.active_orders:
-                current_active_ids.add(order.id)
-                oid = order.id
-
-                # New Order or Status Change
-                if oid not in self._known_orders:
-                    self._known_orders[oid] = order
-                    self.on_order(order)
-                else:
-                    known = self._known_orders[oid]
-                    status_changed = known.status != order.status
-                    qty_changed = known.filled_quantity != order.filled_quantity
-                    if status_changed or qty_changed:
-                        self._known_orders[oid] = order
-                        self.on_order(order)
-
-        # 4. Cleanup Disappeared Orders (Filled?)
-        recent_trade_order_ids = set()
-        if hasattr(self.ctx, "recent_trades"):
-            for t in self.ctx.recent_trades:
-                recent_trade_order_ids.add(t.order_id)
-
-        for oid in list(self._known_orders.keys()):
-            if oid not in current_active_ids:
-                # It disappeared. Was it canceled? (Handled in step 2)
-                # Is it Filled?
-                if oid in recent_trade_order_ids:
-                    order = self._known_orders[oid]
-                    try:
-                        order.status = OrderStatus.Filled
-                    except Exception:
-                        pass
-                    self.on_order(order)
-                    del self._known_orders[oid]
-                else:
-                    # Disappeared but not canceled and no trade?
-                    del self._known_orders[oid]
-
-        # 5. Process Trades
-        if hasattr(self.ctx, "recent_trades"):
-            for t in self.ctx.recent_trades:
-                self.on_trade(t)
+    def _trade_dedupe_cache_limit(self) -> int:
+        return _trade_dedupe_cache_limit_impl(self)
 
     def _on_bar_event(self, bar: Bar, ctx: StrategyContext) -> None:
-        """引擎调用的 Bar 回调 (Internal)."""
-        self.ctx = ctx
-        self._last_event_type = "bar"
-
-        self._check_order_events()
-
-        # Update hold bars count
-        symbol = bar.symbol
-        current_pos = ctx.get_position(symbol)
-
-        if current_pos == 0:
-            self._hold_bars[symbol] = 0
-            self._last_position_signs[symbol] = 0.0
-        else:
-            current_sign = np.sign(current_pos)
-            prev_sign = self._last_position_signs[symbol]
-
-            if current_sign != prev_sign:
-                # Opened or Flipped position
-                self._hold_bars[symbol] = 1
-            else:
-                # Holding
-                self._hold_bars[symbol] += 1
-
-            self._last_position_signs[symbol] = current_sign
-
-        # Lazy configuration
-        if not self._model_configured:
-            self._auto_configure_model()
-
-        self.current_bar = bar
-        self.current_tick = None
-        self._last_prices[bar.symbol] = bar.close
-
-        self._bar_count += 1
-
-        # Check warmup period
-        if self._bar_count < self.warmup_period:
-            return
-
-        # 检查滚动训练信号
-        if self._rolling_step > 0:
-            if self._bar_count % self._rolling_step == 0:
-                # 触发训练信号，传入 self 作为 context
-                self.on_train_signal(self)
-
-        self.on_bar(bar)
+        _on_bar_event_impl(self, bar, ctx)
 
     def _on_tick_event(self, tick: Tick, ctx: StrategyContext) -> None:
-        """引擎调用的 Tick 回调 (Internal)."""
-        self.ctx = ctx
-        self._last_event_type = "tick"
-        self.current_tick = tick
-        self.current_bar = None
-        self._last_prices[tick.symbol] = tick.price
-        self.on_tick(tick)
+        _on_tick_event_impl(self, tick, ctx)
 
     def _on_timer_event(self, payload: str, ctx: StrategyContext) -> None:
-        """引擎调用的 Timer 回调 (Internal)."""
-        self.ctx = ctx
-
-        # Handle wrapped daily timer payload
-        if payload.startswith("__daily__|"):
-            try:
-                # Split: prefix, time_str, user_payload
-                parts = payload.split("|", 2)
-                if len(parts) == 3:
-                    _, time_str, user_payload = parts
-
-                    # 1. Trigger user callback
-                    self.on_timer(user_payload)
-
-                    # 2. Reschedule if Live Mode
-                    if not self._trading_days:
-                        t = pd.to_datetime(time_str).time()
-                        now = pd.Timestamp.now(tz=self.timezone)
-                        target = pd.Timestamp.combine(now.date(), t).tz_localize(
-                            self.timezone
-                        )
-
-                        # Ensure target is in future
-                        if target <= now:
-                            target += pd.Timedelta(days=1)
-
-                        self.schedule(target, payload)  # Use original wrapped payload
-                    return
-            except Exception as e:
-                print(f"Error processing daily timer: {e}")
-                # Fallback to calling on_timer with raw payload if parsing fails
-                pass
-
-        self.on_timer(payload)
+        _on_timer_event_impl(self, payload, ctx)
 
     def on_bar(self, bar: Bar) -> None:
         """
@@ -839,20 +868,7 @@ class Strategy:
         pass
 
     def _resolve_symbol(self, symbol: Optional[str] = None) -> str:
-        if symbol is None:
-            # Prioritize based on the last event type
-            if self._last_event_type == "tick" and self.current_tick:
-                symbol = self.current_tick.symbol
-            elif self._last_event_type == "bar" and self.current_bar:
-                symbol = self.current_bar.symbol
-            # Fallbacks
-            elif self.current_bar:
-                symbol = self.current_bar.symbol
-            elif self.current_tick:
-                symbol = self.current_tick.symbol
-            else:
-                raise ValueError("Symbol must be provided")
-        return symbol
+        return _resolve_symbol_impl(self, symbol)
 
     def get_position(self, symbol: Optional[str] = None) -> float:
         """
@@ -864,10 +880,7 @@ class Strategy:
         Returns:
             float: 持仓数量 (正数为多头, 负数为空头)
         """
-        if self.ctx is None:
-            return 0.0
-        symbol = self._resolve_symbol(symbol)
-        return self.ctx.get_position(symbol)
+        return _get_position_impl(self, symbol)
 
     def get_available_position(self, symbol: Optional[str] = None) -> float:
         """
@@ -879,10 +892,7 @@ class Strategy:
         Returns:
             float: 可用持仓数量
         """
-        if self.ctx is None:
-            return 0.0
-        symbol = self._resolve_symbol(symbol)
-        return self.ctx.get_available_position(symbol)
+        return _get_available_position_impl(self, symbol)
 
     def hold_bar(self, symbol: Optional[str] = None) -> int:
         """
@@ -894,11 +904,7 @@ class Strategy:
         Returns:
             int: 持有的 Bar 数量. 如果未持仓，返回 0.
         """
-        if self.ctx is None:
-            return 0
-
-        symbol = self._resolve_symbol(symbol)
-        return self._hold_bars[symbol]
+        return _hold_bar_impl(self, symbol)
 
     def get_positions(self) -> Dict[str, float]:
         """
@@ -907,9 +913,7 @@ class Strategy:
         Returns:
             Dict[str, float]: 持仓字典 {symbol: quantity}
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-        return self.ctx.positions
+        return _get_positions_impl(self)
 
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Any]:
         """
@@ -921,17 +925,7 @@ class Strategy:
         Returns:
             List[Order]: 订单列表
         """
-        if self.ctx is None:
-            return []
-
-        orders = [
-            o
-            for o in self.ctx.active_orders
-            if o.status in (OrderStatus.New, OrderStatus.Submitted)
-        ]
-        if symbol:
-            return [o for o in orders if o.symbol == symbol]
-        return orders
+        return _get_open_orders_impl(self, symbol)
 
     def get_order(self, order_id: str) -> Optional[Any]:
         """
@@ -943,23 +937,7 @@ class Strategy:
         Returns:
             Order: 订单对象，如果未找到则返回 None
         """
-        # 首先在已知订单缓存中查找
-        if order_id in self._known_orders:
-            return self._known_orders[order_id]
-
-        # 如果缓存中没有（可能是初始化前的历史订单），
-        # 尝试从 ctx.orders 中查找（效率较低）
-        if self.ctx:
-            # 检查活跃订单
-            for o in self.ctx.active_orders:
-                if o.id == order_id:
-                    return o
-            # 检查当前 tick/bar 完成的订单
-            # 注意：Rust context.orders 通常只包含新生成的订单，不包含所有历史
-            # 这里我们主要依赖 _known_orders 缓存
-            pass
-
-        return None
+        return _get_order_impl(self, order_id)
 
     def get_account(self) -> Dict[str, float]:
         """
@@ -973,20 +951,7 @@ class Strategy:
                 - frozen_cash: (预留) 冻结资金, 暂为 0.0
                 - margin: (预留) 占用保证金, 暂为 0.0
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        cash = self.ctx.cash
-        equity = self.equity
-        market_value = equity - cash
-
-        return {
-            "cash": cash,
-            "equity": equity,
-            "market_value": market_value,
-            "frozen_cash": 0.0,  # Placeholder for future implementation
-            "margin": 0.0,  # Placeholder for future implementation
-        }
+        return _get_account_impl(self)
 
     def get_trades(self) -> List[Any]:
         """
@@ -1006,8 +971,7 @@ class Strategy:
         Args:
             order_id: 订单 ID
         """
-        if self.ctx:
-            self.ctx.cancel_order(order_id)
+        _cancel_order_impl(self, order_id)
 
     def cancel_all_orders(self, symbol: Optional[str] = None) -> None:
         """
@@ -1016,8 +980,7 @@ class Strategy:
         Args:
             symbol: 标的代码 (如果不填, 取消所有标的订单)
         """
-        for order in self.get_open_orders(symbol=symbol):
-            self.cancel_order(order.id)
+        _cancel_all_orders_impl(self, symbol)
 
     def buy(
         self,
@@ -1042,27 +1005,9 @@ class Strategy:
         Returns:
             str: 订单 ID
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        # 1. Determine Symbol
-        symbol = self._resolve_symbol(symbol)
-
-        # 2. Determine Reference Price for Sizing
-        ref_price = price
-        if ref_price is None:
-            ref_price = self._last_prices.get(symbol, 0.0)
-
-        # 3. Determine Quantity via Sizer
-        if quantity is None:
-            quantity = self.sizer.get_size(ref_price, self.ctx.cash, self.ctx, symbol)
-
-        # 4. Execute Buy
-        if quantity > 0:
-            return self.ctx.buy(
-                symbol, quantity, price, time_in_force, trigger_price, tag or ""
-            )
-        return ""
+        return _buy_impl(
+            self, symbol, quantity, price, time_in_force, trigger_price, tag
+        )
 
     def sell(
         self,
@@ -1087,29 +1032,9 @@ class Strategy:
         Returns:
             str: 订单 ID
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        # 1. Determine Symbol
-        symbol = self._resolve_symbol(symbol)
-
-        # 2. Determine Quantity (Default to Close Position if None)
-        if quantity is None:
-            # Default to closing the entire position for this symbol
-            pos = self.ctx.get_position(symbol)
-            if pos > 0:
-                quantity = pos
-            else:
-                # If no position, maybe use Sizer?
-                # For now, if no position and no quantity, we can't sell.
-                return ""
-
-        # 3. Execute Sell
-        if quantity > 0:
-            return self.ctx.sell(
-                symbol, quantity, price, time_in_force, trigger_price, tag or ""
-            )
-        return ""
+        return _sell_impl(
+            self, symbol, quantity, price, time_in_force, trigger_price, tag
+        )
 
     def stop_buy(
         self,
@@ -1126,7 +1051,7 @@ class Strategy:
         - 如果 price 为 None, 触发后转为市价单 (Stop Market).
         - 如果 price 不为 None, 触发后转为限价单 (Stop Limit).
         """
-        self.buy(symbol, quantity, price, time_in_force, trigger_price=trigger_price)
+        _stop_buy_impl(self, symbol, trigger_price, quantity, price, time_in_force)
 
     def stop_sell(
         self,
@@ -1143,31 +1068,11 @@ class Strategy:
         - 如果 price 为 None, 触发后转为市价单 (Stop Market).
         - 如果 price 不为 None, 触发后转为限价单 (Stop Limit).
         """
-        self.sell(symbol, quantity, price, time_in_force, trigger_price=trigger_price)
+        _stop_sell_impl(self, symbol, trigger_price, quantity, price, time_in_force)
 
     def get_portfolio_value(self) -> float:
         """计算当前投资组合总价值 (现金 + 持仓市值)."""
-        if self.ctx is None:
-            return 0.0
-
-        total_value = float(self.ctx.cash)
-
-        for symbol, qty in self.ctx.positions.items():
-            if qty == 0:
-                continue
-
-            # 使用最新价格计算市值
-            price = self._last_prices.get(symbol, 0.0)
-            # 如果没有最新价格，尝试使用当前 bar/tick
-            if price == 0.0:
-                if self.current_bar and self.current_bar.symbol == symbol:
-                    price = self.current_bar.close
-                elif self.current_tick and self.current_tick.symbol == symbol:
-                    price = self.current_tick.price
-
-            total_value += float(qty) * price
-
-        return total_value
+        return _get_portfolio_value_impl(self)
 
     @property
     def equity(self) -> float:
@@ -1193,18 +1098,7 @@ class Strategy:
         :param price: 限价 (可选)
         :param kwargs: 其他下单参数
         """
-        symbol = self._resolve_symbol(symbol)
-
-        current_qty = 0.0
-        if self.ctx:
-            current_qty = float(self.ctx.get_position(symbol))
-
-        delta_qty = target - current_qty
-
-        if delta_qty > 0:
-            self.buy(symbol, delta_qty, price, **kwargs)
-        elif delta_qty < 0:
-            self.sell(symbol, abs(delta_qty), price, **kwargs)
+        _order_target_impl(self, target, symbol, price, **kwargs)
 
     def _calculate_max_buy_qty(self, symbol: str, price: float, cash: float) -> float:
         """
@@ -1215,52 +1109,7 @@ class Strategy:
         :param cash: 可用资金
         :return: 最大可买数量
         """
-        if price <= 0 or cash <= 0:
-            return 0.0
-
-        # 1. 预估模式 (假设费用超过最低佣金)
-        # 综合买入费率 = 佣金率 + 过户费率 (印花税仅卖出收，不影响买入)
-        total_rate = self.commission_rate + self.transfer_fee_rate
-
-        # Get safety margin from config
-        safety_margin = 0.0001
-        if self.ctx and hasattr(self.ctx, "risk_config"):
-            safety_margin = self.ctx.risk_config.safety_margin
-
-        # 预留缓冲，防止浮点数精度误差
-        safe_cash = cash * (1.0 - safety_margin)
-
-        # 初始预估数量
-        est_qty = safe_cash / (price * (1 + total_rate))
-
-        # 2. 检查最低佣金
-        est_commission = est_qty * price * self.commission_rate
-
-        if est_commission < self.min_commission:
-            # 触发最低佣金，费用变为固定值
-            # Cash >= Qty * Price * (1 + TransferRate) + MinCommission
-            # Qty <= (Cash - MinCommission) / (Price * (1 + TransferRate))
-            remaining_cash = safe_cash - self.min_commission
-            if remaining_cash <= 0:
-                return 0.0
-
-            est_qty = remaining_cash / (price * (1 + self.transfer_fee_rate))
-
-        # 3. 整手调整 (向下取整到 lot_size 倍数)
-        # 获取当前标的的 lot_size
-        current_lot_size = 1
-        if isinstance(self.lot_size, int):
-            current_lot_size = self.lot_size
-        elif isinstance(self.lot_size, dict):
-            # Ensure we get an int, defaulting to 1 if something goes wrong
-            # or returns None
-            val = self.lot_size.get(symbol, self.lot_size.get("DEFAULT", 1))
-            current_lot_size = int(val) if val is not None else 1
-
-        if current_lot_size > 0:
-            est_qty = (est_qty // current_lot_size) * current_lot_size
-
-        return est_qty
+        return _calculate_max_buy_qty_impl(self, symbol, price, cash)
 
     def order_target_value(
         self,
@@ -1277,66 +1126,7 @@ class Strategy:
         :param price: 限价 (可选)
         :param kwargs: 其他下单参数
         """
-        symbol = self._resolve_symbol(symbol)
-
-        # 1. Cancel existing open orders for this symbol
-        # This prevents "stacking" orders and ensures we target the net exposure
-        self.cancel_all_orders(symbol=symbol)
-
-        # 2. Get Price
-        if price is not None:
-            current_price = price
-        else:
-            current_price = self._last_prices.get(symbol, 0.0)
-        if current_price == 0.0:
-            if self.current_bar and self.current_bar.symbol == symbol:
-                current_price = self.current_bar.close
-            elif self.current_tick and self.current_tick.symbol == symbol:
-                current_price = self.current_tick.price
-            else:
-                # 无法获取价格，无法计算数量
-                print(
-                    f"Warning: Cannot determine price for {symbol}, "
-                    "skipping order_target_value"
-                )
-                return
-
-        # 获取当前持仓
-        current_qty = 0.0
-        if self.ctx:
-            current_qty = float(self.ctx.get_position(symbol))
-
-        # 计算目标数量
-        target_qty = target_value / current_price
-        delta_qty = target_qty - current_qty
-
-        # 3. 整手调整 (向下取整到 lot_size 倍数)
-        current_lot_size = 1
-        if isinstance(self.lot_size, int):
-            current_lot_size = self.lot_size
-        elif isinstance(self.lot_size, dict):
-            val = self.lot_size.get(symbol, self.lot_size.get("DEFAULT", 1))
-            current_lot_size = int(val) if val is not None else 1
-
-        if current_lot_size > 0:
-            if delta_qty > 0:
-                delta_qty = (delta_qty // current_lot_size) * current_lot_size
-            elif delta_qty < 0:
-                delta_qty = -((abs(delta_qty) // current_lot_size) * current_lot_size)
-
-        # 自动调整买入数量，防止资金不足
-        if delta_qty > 0 and self.ctx:
-            max_buy_qty = self._calculate_max_buy_qty(
-                symbol, current_price, float(self.ctx.cash)
-            )
-            if delta_qty > max_buy_qty:
-                delta_qty = max_buy_qty
-
-        # 下单
-        if delta_qty > 0:
-            self.buy(symbol, delta_qty, price, **kwargs)
-        elif delta_qty < 0:
-            self.sell(symbol, abs(delta_qty), price, **kwargs)
+        _order_target_value_impl(self, target_value, symbol, price, **kwargs)
 
     def order_target_percent(
         self,
@@ -1353,9 +1143,7 @@ class Strategy:
         :param price: 限价 (可选)
         :param kwargs: 其他下单参数
         """
-        portfolio_value = self.get_portfolio_value()
-        target_value = portfolio_value * float(target_percent)
-        self.order_target_value(target_value, symbol, price, **kwargs)
+        _order_target_percent_impl(self, target_percent, symbol, price, **kwargs)
 
     def buy_all(self, symbol: Optional[str] = None) -> None:
         """
@@ -1366,31 +1154,7 @@ class Strategy:
         Args:
             symbol: 标的代码 (如果不填, 默认使用当前 Bar/Tick 的 symbol)
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        symbol = self._resolve_symbol(symbol)
-
-        # 获取参考价格
-        price = 0.0
-        if self.current_bar and self.current_bar.symbol == symbol:
-            price = self.current_bar.close
-        elif self.current_tick and self.current_tick.symbol == symbol:
-            price = self.current_tick.price
-
-        if price <= 0:
-            # 无法获取价格，无法计算数量
-            # 这里可以选择记录日志或抛出警告，暂时直接返回
-            return
-
-        cash = self.ctx.cash
-        # 计算最大可买数量 (向下取整)
-        # 注意：这里未扣除预估手续费，如果资金刚好卡在边界，可能会因为手续费导致拒单
-        # 建议引擎层或用户预留 buffer，或者在这里 * 0.99
-        quantity = int(cash / price)
-
-        if quantity > 0:
-            self.buy(symbol=symbol, quantity=quantity)
+        _buy_all_impl(self, symbol)
 
     def close_position(self, symbol: Optional[str] = None) -> None:
         """
@@ -1401,13 +1165,7 @@ class Strategy:
         Args:
             symbol: 标的代码 (如果不填, 默认使用当前 Bar/Tick 的 symbol)
         """
-        symbol = self._resolve_symbol(symbol)
-        position = self.get_position(symbol)
-
-        if position > 0:
-            self.sell(symbol=symbol, quantity=position)
-        elif position < 0:
-            self.buy(symbol=symbol, quantity=abs(position))
+        _close_position_impl(self, symbol)
 
     def short(
         self,
@@ -1427,29 +1185,7 @@ class Strategy:
             time_in_force: 订单有效期
             trigger_price: 触发价 (止损/止盈)
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        # 1. Determine Symbol
-        symbol = self._resolve_symbol(symbol)
-
-        # 2. Determine Reference Price for Sizing
-        ref_price = price
-        if ref_price is None:
-            if self.current_bar:
-                ref_price = self.current_bar.close
-            elif self.current_tick:
-                ref_price = self.current_tick.price
-            else:
-                ref_price = 0.0
-
-        # 3. Determine Quantity via Sizer
-        if quantity is None:
-            quantity = self.sizer.get_size(ref_price, self.ctx.cash, self.ctx, symbol)
-
-        # 4. Execute Sell (Short)
-        if quantity > 0:
-            self.ctx.sell(symbol, quantity, price, time_in_force, trigger_price)
+        _short_impl(self, symbol, quantity, price, time_in_force, trigger_price)
 
     def cover(
         self,
@@ -1469,30 +1205,11 @@ class Strategy:
             time_in_force: 订单有效期
             trigger_price: 触发价 (止损/止盈)
         """
-        if self.ctx is None:
-            raise RuntimeError("Context not ready")
-
-        # 1. Determine Symbol
-        symbol = self._resolve_symbol(symbol)
-
-        # 2. Determine Quantity (Default to Close Short Position if None)
-        if quantity is None:
-            pos = self.ctx.get_position(symbol)
-            if pos < 0:
-                quantity = abs(pos)
-            else:
-                # No short position to cover
-                return
-
-        # 3. Execute Buy (Cover)
-        if quantity > 0:
-            self.ctx.buy(symbol, quantity, price, time_in_force, trigger_price)
+        _cover_impl(self, symbol, quantity, price, time_in_force, trigger_price)
 
     def get_cash(self) -> float:
         """获取现金."""
-        if self.ctx is None:
-            return 0.0
-        return self.ctx.cash
+        return _get_cash_impl(self)
 
 
 class VectorizedStrategy(Strategy):
@@ -1521,18 +1238,7 @@ class VectorizedStrategy(Strategy):
 
     def _on_bar_event(self, bar: Bar, ctx: StrategyContext) -> None:
         """Wrap the user on_bar handler internally."""
-        # 1. Call standard setup (ctx, current_bar, history)
-        # Note: We copy logic from Strategy._on_bar_event to avoid double calling on_bar
-        # if we just called super()._on_bar_event(bar, ctx).
-        # Actually Strategy._on_bar_event calls self.on_bar(bar).
-
-        self.ctx = ctx
-        self.current_bar = bar
-
-        # 2. Call User Strategy
-        self.on_bar(bar)
-
-        # 3. Increment Cursor
+        super()._on_bar_event(bar, ctx)
         self.cursors[bar.symbol] += 1
 
     def get_value(self, name: str, symbol: Optional[str] = None) -> float:

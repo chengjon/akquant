@@ -20,4 +20,7 @@ repos:
     rev: v1.19.1
     hooks:
       - id: mypy
-        additional_dependencies: [types-pytz, pandas-stubs, numpy]
+        pass_filenames: false
+        args: ["--config-file=pyproject.toml", "."]
+        additional_dependencies:
+          [types-pytz, pandas-stubs, numpy, pytest, polars, quantstats]

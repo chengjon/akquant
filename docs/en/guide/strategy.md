@@ -27,10 +27,36 @@ A strategy goes through the following stages from start to finish:
 *   `on_tick`: Triggered when each Tick arrives (high-frequency/order book strategies).
 *   `on_order`: Triggered when order status changes (e.g., Submitted, Filled, Cancelled).
 *   `on_trade`: Triggered when a trade execution report is received.
+*   `on_reject`: Triggered when an order enters `Rejected` status.
+*   `on_session_start` / `on_session_end`: Triggered on session transitions.
+*   `before_trading` / `after_trading`: Daily trading hooks.
+*   `on_portfolio_update`: Triggered when portfolio snapshot changes.
+*   `on_error`: Triggered when user callback raises an exception, then exception is re-raised by default.
 *   `on_timer`: Called when a timer triggers (needs manual registration).
     > Recommended: Use `self.add_daily_timer("14:55:00", "payload")`.
 *   `on_stop`: Called when the strategy stops, suitable for resource cleanup or result statistics (refer to Backtrader `stop` / Nautilus `on_stop`).
 *   `on_train_signal`: Triggered for rolling training signals (only in ML mode).
+
+### 2.1 Callback Dispatch Contract
+
+For each `bar/tick/timer` event, AKQuant dispatches callbacks in this order:
+
+1. `on_order` / `on_trade` (plus `on_reject` when status is `Rejected`)
+2. Framework hooks (`on_session_*`, `before_trading`/`after_trading`, `on_portfolio_update`)
+3. User event callback (`on_bar` / `on_tick` / `on_timer`)
+
+Notes:
+
+* `on_reject` is emitted once per order id when the order first becomes `Rejected`.
+* `before_trading` is emitted once per local trading date when session enters `Normal`.
+* `after_trading` is emitted once per local trading date when leaving `Normal`, or on next event if day rollover occurs first.
+* Set `self.enable_precise_day_boundary_hooks = True` to enable boundary-timer based precise day hooks.
+* `on_portfolio_update` is incremental: emitted once at initialization, then only on order/trade or position-relevant price changes.
+* Use `self.portfolio_update_eps` to filter tiny equity/cash changes (default `0.0`).
+* During stop phase, pending `on_session_end` / `after_trading` are flushed before `on_stop`.
+* `on_error` receives `(error, source, payload)`. Prefer `self.error_mode = "raise" | "continue"` (default `raise`). `self.re_raise_on_error` remains as fallback for compatibility.
+* Prefer `self.runtime_config = StrategyRuntimeConfig(...)` as a unified runtime switch entry.
+* Legacy alias fields and `runtime_config` stay synchronized automatically.
 
 ## 3. Utilities
 
@@ -101,10 +127,28 @@ AKQuant provides two styles of strategy development interfaces:
 
 | Feature | Class-based Style (Recommended) | Function-based Style |
 | :--- | :--- | :--- |
-| **Definition** | Inherit from `akquant.Strategy` | Define `initialize` and `on_bar` functions |
+| **Definition** | Inherit from `akquant.Strategy` | Define `initialize` + `on_bar` (required), optional `on_tick` / `on_order` / `on_trade` / `on_timer` |
 | **Scenarios** | Complex strategies, need to maintain internal state, production | Rapid prototyping, migrating Zipline/Backtrader strategies |
 | **Structure** | Object-oriented, good logic encapsulation | Script-like, simple and intuitive |
 | **API Call** | `self.buy()`, `self.ctx` | `ctx.buy()`, pass `ctx` as parameter |
+
+### 4.1 Function-style Callback Trigger Conditions
+
+| Callback | Trigger Condition | Notes |
+| :--- | :--- | :--- |
+| `on_bar(ctx, bar)` | Backtest feed emits Bar events | Required entry callback for function-style strategies |
+| `on_tick(ctx, tick)` | Backtest feed emits Tick events | Tick callbacks are not triggered in bar-only datasets |
+| `on_order(ctx, order)` | Order state changes are observed in strategy context | Triggered before event callback in each event loop |
+| `on_trade(ctx, trade)` | Trade reports appear in `recent_trades` | Trade dedupe applies to avoid repeated callbacks |
+| `on_timer(ctx, payload)` | A timer is scheduled and fired | Includes both one-shot and daily timer payloads |
+
+### 4.2 Related Examples
+
+*   Function-style callback baseline: `examples/23_functional_callbacks_demo.py`
+*   Function-style tick callback simulation: `examples/24_functional_tick_simulation_demo.py`
+*   Output markers:
+    *   `done_functional_callbacks_demo`
+    *   `done_functional_tick_simulation_demo`
 
 ## 4. Writing Class-based Strategies {: #class-based }
 

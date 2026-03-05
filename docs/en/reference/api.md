@@ -177,7 +177,34 @@ The `risk_config` parameter has special handling logic designed to support a "Ba
 *   **Override**: If `risk_config` parameter (dict or object) is provided, it overrides fields in the baseline configuration.
     *   This allows you to quickly adjust risk parameters for testing without modifying the main Config object, e.g., `run_backtest(..., risk_config={"max_position_pct": 0.5})`.
 
-#### 4. Best Practices
+#### 4. Strategy Runtime Config Injection
+
+`run_backtest` and `run_warm_start` support `strategy_runtime_config`:
+
+*   Accepted formats: `StrategyRuntimeConfig` or `dict`.
+*   Purpose: Inject runtime behavior switches without modifying strategy class code.
+*   Example: `run_backtest(..., strategy_runtime_config={"error_mode": "continue"})`.
+*   Validation: Unknown keys and invalid values fail fast with field-level errors.
+*   Conflict handling: `runtime_config_override=True` applies external config; `False` keeps strategy-side config.
+*   The same conflict rules apply consistently to both `run_backtest` and `run_warm_start`.
+*   Conflict warnings are deduplicated per strategy instance for identical conflict payloads.
+*   Priority rule: explicit `strategy_runtime_config` parameter has higher priority than forwarded config maps.
+*   Troubleshooting quick lookup: see [Runtime Config Guide](../advanced/runtime_config.md).
+
+```python
+from akquant import StrategyRuntimeConfig, run_backtest
+
+result = run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    strategy_runtime_config=StrategyRuntimeConfig(
+        error_mode="continue",
+        portfolio_update_eps=1.0,
+    ),
+)
+```
+
+#### 5. Best Practices
 
 *   **Simple Scripts**: Use flat parameters of `run_backtest` directly (e.g., `initial_cash`, `start_time`).
 *   **Production/Complex Strategies**: Build a complete `BacktestConfig` object for version control and reuse.
@@ -222,6 +249,15 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `on_start()`: Triggered when the strategy starts. Used for subscription (`subscribe`) and indicator registration.
 *   `on_bar(bar: Bar)`: Triggered when a Bar closes.
 *   `on_tick(tick: Tick)`: Triggered when a Tick arrives.
+*   `on_order(order)`: Triggered when order state changes.
+*   `on_trade(trade)`: Triggered when trade report arrives.
+*   `on_reject(order)`: Triggered once when an order becomes `Rejected`.
+*   `on_session_start(session, timestamp)`: Triggered on session transition start.
+*   `on_session_end(session, timestamp)`: Triggered on session transition end.
+*   `before_trading(trading_date, timestamp)`: Triggered once when entering Normal session each local day.
+*   `after_trading(trading_date, timestamp)`: Triggered when leaving Normal session, or replayed on next event after day rollover.
+*   `on_portfolio_update(snapshot)`: Triggered when cash/equity/position snapshot changes.
+*   `on_error(error, source, payload=None)`: Triggered when user callback raises, then exception is re-raised by default.
 *   `on_timer(payload: str)`: Triggered by timer.
 *   `on_stop()`: Triggered when the strategy stops.
 *   `on_train_signal(context)`: Triggered by rolling training signal (ML mode).
@@ -232,6 +268,11 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `self.close`, `self.open`, `self.high`, `self.low`, `self.volume`: Current Bar/Tick price and volume.
 *   `self.position`: Position object for current symbol, with `size` and `available` properties.
 *   `self.now`: Current backtest time (`pd.Timestamp`).
+*   `self.runtime_config`: Runtime behavior config object (`StrategyRuntimeConfig`).
+*   `self.enable_precise_day_boundary_hooks`: Enable boundary timer based precise day hooks (default `False`).
+*   `self.portfolio_update_eps`: Snapshot threshold; changes below it skip `on_portfolio_update` (default `0.0`).
+*   `self.error_mode`: Error handling mode, `"raise"` or `"continue"` (default `"raise"`).
+*   `self.re_raise_on_error`: Whether to re-raise user callback exception after `on_error` (default `True`).
 
 **Trading Methods:**
 

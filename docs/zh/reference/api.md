@@ -183,7 +183,34 @@ BacktestConfig (回测场景)
 *   **覆盖**: 如果提供了 `risk_config` 参数（字典或对象），它将覆盖基准配置中的同名字段。
     *   这允许你在不修改 Config 对象的情况下，通过 `run_backtest(..., risk_config={"max_position_pct": 0.5})` 快速调整风控参数进行测试。
 
-#### 4. 最佳实践 (Best Practices)
+#### 4. 策略运行时配置注入 (Strategy Runtime Config Injection)
+
+`run_backtest` 与 `run_warm_start` 支持 `strategy_runtime_config` 参数：
+
+*   支持 `StrategyRuntimeConfig` 对象或 `dict`。
+*   用于在不修改策略类代码的前提下注入运行时行为开关。
+*   示例：`run_backtest(..., strategy_runtime_config={"error_mode": "continue"})`。
+*   校验行为：未知字段或非法值会快速失败，并给出字段级错误信息。
+*   冲突处理：`runtime_config_override=True` 时应用外部配置；`False` 时保留策略侧配置。
+*   上述冲突规则在 `run_backtest` 与 `run_warm_start` 中保持一致。
+*   对同一策略实例、同一冲突内容，告警日志会自动去重。
+*   优先级规则：显式传入的 `strategy_runtime_config` 参数高于转发配置映射中的同名配置。
+*   故障速查入口：参考 [Runtime Config 指南](../advanced/runtime_config.md)。
+
+```python
+from akquant import StrategyRuntimeConfig, run_backtest
+
+result = run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    strategy_runtime_config=StrategyRuntimeConfig(
+        error_mode="continue",
+        portfolio_update_eps=1.0,
+    ),
+)
+```
+
+#### 5. 最佳实践 (Best Practices)
 
 *   **简单脚本**: 直接使用 `run_backtest` 的扁平参数（如 `initial_cash`, `start_time`）。
 *   **生产/复杂策略**: 构建完整的 `BacktestConfig` 对象，以便于版本管理和复用。
@@ -202,6 +229,13 @@ BacktestConfig (回测场景)
 *   `on_tick(tick: Tick)`: Tick 到达时触发。
 *   `on_order(order: Order)`: 订单状态更新时触发（如成交、取消、拒绝）。
 *   `on_trade(trade: Trade)`: 订单成交时触发。
+*   `on_reject(order: Order)`: 订单首次进入 `Rejected` 时触发一次。
+*   `on_session_start(session, timestamp)`: 会话切换开始时触发。
+*   `on_session_end(session, timestamp)`: 会话切换结束时触发。
+*   `before_trading(trading_date, timestamp)`: 每个本地交易日首次进入 Normal 会话时触发一次。
+*   `after_trading(trading_date, timestamp)`: 离开 Normal 会话时触发；若先跨日则在下一事件补发。
+*   `on_portfolio_update(snapshot)`: 账户快照变化时触发。
+*   `on_error(error, source, payload=None)`: 用户回调抛异常时触发，默认触发后继续抛出。
 *   `on_timer(payload: str)`: 定时器触发。
 *   `on_stop()`: 策略停止时触发。
 *   `on_train_signal(context)`: 滚动训练信号触发 (ML 模式)。
@@ -212,6 +246,11 @@ BacktestConfig (回测场景)
 *   `self.close`, `self.open`, `self.high`, `self.low`, `self.volume`: 当前 Bar/Tick 的价格和成交量。
 *   `self.position`: 当前标的持仓辅助对象 (`Position`)，包含 `size` 和 `available` 属性。
 *   `self.now`: 当前回测时间 (`pd.Timestamp`)。
+*   `self.runtime_config`: 运行时行为配置对象 (`StrategyRuntimeConfig`)。
+*   `self.enable_precise_day_boundary_hooks`: 是否启用边界定时器精确交易日钩子（默认 `False`）。
+*   `self.portfolio_update_eps`: 账户快照更新阈值，低于该变化量不触发 `on_portfolio_update`（默认 `0.0`）。
+*   `self.error_mode`: 错误处理模式，`"raise"` 或 `"continue"`（默认 `"raise"`）。
+*   `self.re_raise_on_error`: 用户回调异常后是否继续抛出（默认 `True`）。
 *   `self.ctx`: 策略上下文 (`StrategyContext`)，提供底层 API 访问。
 
 **交易方法:**

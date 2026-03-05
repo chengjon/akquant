@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "akquant"
-version = "0.1.54"
+version = "0.1.55"
 description = "High-performance quantitative trading framework based on Rust and Python"
 readme = "README.md"
 license = {text = "MIT License"}
@@ -97,5 +97,19 @@ disallow_untyped_defs = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["torch.*", "sklearn.*", "matplotlib.*", "akshare.*"]
+module = [
+    "torch.*",
+    "sklearn.*",
+    "matplotlib.*",
+    "akshare.*",
+    "pyarrow",
+    "pyarrow.*",
+    "polars",
+    "polars.*",
+    "pytest",
+    "pytest.*",
+    "quantstats",
+    "quantstats.*",
+]
 ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
