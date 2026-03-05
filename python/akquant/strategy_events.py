@@ -12,6 +12,7 @@ from .strategy_framework_hooks import (
     dispatch_portfolio_update,
     dispatch_time_hooks,
     ensure_framework_state,
+    mark_portfolio_dirty,
     register_boundary_timers,
 )
 
@@ -45,9 +46,12 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
     if not strategy._model_configured:
         strategy._auto_configure_model()
 
+    previous_price = strategy._last_prices.get(bar.symbol)
     strategy.current_bar = bar
     strategy.current_tick = None
     strategy._last_prices[bar.symbol] = bar.close
+    if current_pos != 0 and previous_price is not None and previous_price != bar.close:
+        mark_portfolio_dirty(strategy)
     dispatch_time_hooks(strategy)
     dispatch_portfolio_update(strategy)
 
@@ -69,9 +73,13 @@ def on_tick_event(strategy: Any, tick: Tick, ctx: StrategyContext) -> None:
     register_boundary_timers(strategy)
     strategy._last_event_type = "tick"
     strategy._check_order_events()
+    previous_price = strategy._last_prices.get(tick.symbol)
     strategy.current_tick = tick
     strategy.current_bar = None
     strategy._last_prices[tick.symbol] = tick.price
+    current_pos = ctx.get_position(tick.symbol)
+    if current_pos != 0 and previous_price is not None and previous_price != tick.price:
+        mark_portfolio_dirty(strategy)
     dispatch_time_hooks(strategy)
     dispatch_portfolio_update(strategy)
     call_user_callback(strategy, "on_tick", tick, payload=tick)

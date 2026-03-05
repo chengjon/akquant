@@ -1,10 +1,39 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 import pandas as pd
 
 from .akquant import TradingSession
+
+_RUNTIME_DEFAULTS = {
+    "enable_precise_day_boundary_hooks": False,
+    "portfolio_update_eps": 0.0,
+    "error_mode": "raise",
+    "re_raise_on_error": True,
+}
+
+
+def _runtime_option(strategy: Any, name: str) -> Any:
+    default = _RUNTIME_DEFAULTS[name]
+    cfg = getattr(strategy, "runtime_config", None)
+    if isinstance(cfg, dict):
+        value = cfg.get(name, default)
+    else:
+        value = getattr(cfg, name, default) if cfg is not None else default
+    if name == "portfolio_update_eps":
+        try:
+            value = float(cast(Any, value))
+        except (TypeError, ValueError):
+            raise ValueError("portfolio_update_eps must be >= 0") from None
+        if value < 0.0:
+            raise ValueError("portfolio_update_eps must be >= 0")
+    if name == "error_mode":
+        mode = str(value).strip().lower()
+        if mode not in {"raise", "continue", "legacy"}:
+            raise ValueError("error_mode must be one of: raise, continue, legacy")
+        value = mode
+    return value
 
 
 def _is_normal_session(session: Any) -> bool:
@@ -13,6 +42,15 @@ def _is_normal_session(session: Any) -> bool:
         return bool(session == normal)
     text = str(session).lower()
     return text == "normal" or text.endswith(".normal")
+
+
+def _should_reraise_on_error(strategy: Any) -> bool:
+    mode = str(_runtime_option(strategy, "error_mode")).strip().lower()
+    if mode == "raise":
+        return True
+    if mode == "continue":
+        return False
+    return bool(_runtime_option(strategy, "re_raise_on_error"))
 
 
 def call_user_callback(
@@ -31,7 +69,7 @@ def call_user_callback(
                 strategy.on_error(exc, callback_name, error_payload)
             except Exception:
                 pass
-            if not getattr(strategy, "re_raise_on_error", True):
+            if not _should_reraise_on_error(strategy):
                 return None
         raise
 
@@ -125,7 +163,7 @@ def register_boundary_timers(strategy: Any) -> None:
     """注册交易日边界定时器，用于精确触发 before/after_trading."""
     if strategy.ctx is None:
         return
-    if not getattr(strategy, "enable_precise_day_boundary_hooks", False):
+    if not bool(_runtime_option(strategy, "enable_precise_day_boundary_hooks")):
         return
     if getattr(strategy, "_framework_boundary_timers_registered", False):
         return
@@ -152,7 +190,7 @@ def dispatch_boundary_timer(strategy: Any, payload: str) -> bool:
     """处理框架级边界定时器，返回是否已消费该 payload."""
     if strategy.ctx is None:
         return False
-    if not getattr(strategy, "enable_precise_day_boundary_hooks", False):
+    if not bool(_runtime_option(strategy, "enable_precise_day_boundary_hooks")):
         return False
     if not payload.startswith("__framework_boundary__|"):
         return False
@@ -195,9 +233,19 @@ def dispatch_boundary_timer(strategy: Any, payload: str) -> bool:
     return True
 
 
+def mark_portfolio_dirty(strategy: Any) -> None:
+    """标记账户快照需要重新计算."""
+    strategy._framework_portfolio_dirty = True
+
+
 def dispatch_portfolio_update(strategy: Any) -> None:
     """在账户状态变化时分发 on_portfolio_update."""
     if strategy.ctx is None:
+        return
+    if (
+        not getattr(strategy, "_framework_portfolio_dirty", True)
+        and getattr(strategy, "_framework_last_portfolio_state", None) is not None
+    ):
         return
 
     current_time = int(getattr(strategy.ctx, "current_time", 0))
@@ -218,6 +266,21 @@ def dispatch_portfolio_update(strategy: Any) -> None:
     )
 
     if state_key == getattr(strategy, "_framework_last_portfolio_state", None):
+        strategy._framework_portfolio_dirty = False
+        return
+
+    eps = float(_runtime_option(strategy, "portfolio_update_eps"))
+    last_state = getattr(strategy, "_framework_last_portfolio_state", None)
+    if eps > 0.0 and last_state is not None:
+        last_positions = last_state[2]
+        last_available_positions = last_state[3]
+        if (
+            state_key[2] == last_positions
+            and state_key[3] == last_available_positions
+            and abs(cash - float(last_state[0])) <= eps
+            and abs(equity - float(last_state[1])) <= eps
+        ):
+            strategy._framework_portfolio_dirty = False
         return
 
     strategy._framework_last_portfolio_state = state_key
@@ -232,6 +295,7 @@ def dispatch_portfolio_update(strategy: Any) -> None:
         "margin": 0.0,
     }
     call_user_callback(strategy, "on_portfolio_update", snapshot, payload=snapshot)
+    strategy._framework_portfolio_dirty = False
 
 
 def dispatch_shutdown_hooks(strategy: Any) -> None:
@@ -280,6 +344,8 @@ def ensure_framework_state(strategy: Any) -> None:
         strategy._framework_after_trading_done_date = None
     if not hasattr(strategy, "_framework_last_portfolio_state"):
         strategy._framework_last_portfolio_state = None
+    if not hasattr(strategy, "_framework_portfolio_dirty"):
+        strategy._framework_portfolio_dirty = True
     if not hasattr(strategy, "_framework_rejected_order_ids"):
         strategy._framework_rejected_order_ids = set()
     if not hasattr(strategy, "_framework_stop_flushed"):

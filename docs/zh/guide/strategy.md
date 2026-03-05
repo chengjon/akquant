@@ -51,8 +51,12 @@
 * `before_trading` 在本地交易日首次进入 Normal 会话时触发一次。
 * `after_trading` 在离开 Normal 会话时触发；若先跨日再收到事件，会在下一事件补发上一交易日的 `after_trading`。
 * 若需要更精确的交易日边界触发，可在策略中设置 `self.enable_precise_day_boundary_hooks = True`。
+* `on_portfolio_update` 采用增量触发：初始化时触发一次，后续仅在订单/成交或持仓相关价格变化时触发。
+* 可通过 `self.portfolio_update_eps` 过滤微小资产波动（默认 `0.0`，即不过滤）。
 * 停止阶段会在 `on_stop` 之前补发待触发的 `on_session_end` / `after_trading`。
-* `on_error` 参数为 `(error, source, payload)`，可通过 `self.re_raise_on_error` 控制是否继续抛出（默认 `True`）。
+* `on_error` 参数为 `(error, source, payload)`，推荐通过 `self.error_mode = "raise" | "continue"` 控制行为（默认 `raise`）。`self.re_raise_on_error` 仍兼容，作为兜底开关。
+* 推荐使用 `self.runtime_config = StrategyRuntimeConfig(...)` 统一配置上述行为开关。
+* 旧别名字段与 `runtime_config` 会自动保持同步。
 
 ## 3. 风险管理 (Risk Management)
 

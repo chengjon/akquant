@@ -277,3 +277,8 @@ class AdjSignal(Strategy):
 *   **[17_readme_demo.py](https://github.com/akfamily/akquant/blob/main/examples/17_readme_demo.py)**:
     *   README 中的演示脚本，是一个简单的独立文件。
     *   适合作为 "Hello World" 快速测试。
+
+*   **[22_strategy_runtime_config_demo.py](https://github.com/akfamily/akquant/blob/main/examples/22_strategy_runtime_config_demo.py)**:
+    *   演示 `strategy_runtime_config`、`runtime_config_override` 与热启动注入。
+    *   展示同一策略实例重复运行时的冲突告警去重效果。
+    *   预期输出标记包括 `scenario1_done`、`scenario2_exception=...`、`scenario3_done`。

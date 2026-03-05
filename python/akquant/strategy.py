@@ -1,15 +1,18 @@
 import datetime as dt
 import logging
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
     Deque,
     Dict,
     List,
+    Literal,
     Optional,
     Tuple,
     Union,
+    cast,
 )
 
 import numpy as np
@@ -149,6 +152,30 @@ if TYPE_CHECKING:
     from .ml.model import QuantModel
 
 
+@dataclass
+class StrategyRuntimeConfig:
+    """策略运行时行为配置."""
+
+    enable_precise_day_boundary_hooks: bool = False
+    portfolio_update_eps: float = 0.0
+    error_mode: Literal["raise", "continue", "legacy"] = "raise"
+    re_raise_on_error: bool = True
+
+    def __post_init__(self) -> None:
+        """校验并标准化配置."""
+        self.portfolio_update_eps = float(self.portfolio_update_eps)
+        if self.portfolio_update_eps < 0.0:
+            raise ValueError("portfolio_update_eps must be >= 0")
+        mode = str(self.error_mode).strip().lower()
+        if mode not in {"raise", "continue", "legacy"}:
+            raise ValueError("error_mode must be one of: raise, continue, legacy")
+        self.error_mode = cast(Literal["raise", "continue", "legacy"], mode)
+        self.enable_precise_day_boundary_hooks = bool(
+            self.enable_precise_day_boundary_hooks
+        )
+        self.re_raise_on_error = bool(self.re_raise_on_error)
+
+
 class Strategy:
     """
     策略基类 (Base Strategy Class).
@@ -178,8 +205,7 @@ class Strategy:
     _seen_trade_key_order: Deque[Tuple[Any, ...]]
     timezone: str = "Asia/Shanghai"
     warmup_period: int = 0
-    enable_precise_day_boundary_hooks: bool = False
-    re_raise_on_error: bool = True
+    _runtime_config: StrategyRuntimeConfig
     _last_event_type: str = ""  # "bar" or "tick"
     _hold_bars: "defaultdict[str, int]"
     _last_position_signs: "defaultdict[str, float]"
@@ -188,6 +214,7 @@ class Strategy:
     _framework_before_trading_done_date: Optional[dt.date]
     _framework_after_trading_done_date: Optional[dt.date]
     _framework_last_portfolio_state: Any
+    _framework_portfolio_dirty: bool
     _framework_rejected_order_ids: set[str]
     _framework_stop_flushed: bool
     _framework_boundary_timers_registered: bool
@@ -221,10 +248,31 @@ class Strategy:
         instance._hold_bars = defaultdict(int)
         instance._last_position_signs = defaultdict(float)
         instance.timezone = getattr(instance, "timezone", "Asia/Shanghai")
-        instance.enable_precise_day_boundary_hooks = getattr(
-            instance, "enable_precise_day_boundary_hooks", False
+        raw_runtime_config = getattr(instance, "_runtime_config", None)
+        class_enable_hooks = cls.__dict__.get(
+            "enable_precise_day_boundary_hooks", False
         )
-        instance.re_raise_on_error = getattr(instance, "re_raise_on_error", True)
+        class_portfolio_eps = cls.__dict__.get("portfolio_update_eps", 0.0)
+        class_error_mode = cls.__dict__.get("error_mode", "raise")
+        class_re_raise = cls.__dict__.get("re_raise_on_error", True)
+        if isinstance(raw_runtime_config, dict):
+            instance.runtime_config = StrategyRuntimeConfig(**raw_runtime_config)
+        elif isinstance(raw_runtime_config, StrategyRuntimeConfig):
+            instance.runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=raw_runtime_config.enable_precise_day_boundary_hooks,
+                portfolio_update_eps=raw_runtime_config.portfolio_update_eps,
+                error_mode=raw_runtime_config.error_mode,
+                re_raise_on_error=raw_runtime_config.re_raise_on_error,
+            )
+        else:
+            instance.runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=bool(class_enable_hooks),
+                portfolio_update_eps=float(class_portfolio_eps),
+                error_mode=cast(
+                    Literal["raise", "continue", "legacy"], str(class_error_mode)
+                ),
+                re_raise_on_error=bool(class_re_raise),
+            )
         instance._last_event_type = ""
         instance._trading_days = []
 
@@ -255,6 +303,7 @@ class Strategy:
         instance._framework_before_trading_done_date = None
         instance._framework_after_trading_done_date = None
         instance._framework_last_portfolio_state = None
+        instance._framework_portfolio_dirty = True
         instance._framework_rejected_order_ids = set()
         instance._framework_stop_flushed = False
         instance._framework_boundary_timers_registered = False
@@ -289,6 +338,8 @@ class Strategy:
             del state["_framework_after_trading_done_date"]
         if "_framework_last_portfolio_state" in state:
             del state["_framework_last_portfolio_state"]
+        if "_framework_portfolio_dirty" in state:
+            del state["_framework_portfolio_dirty"]
         if "_framework_rejected_order_ids" in state:
             del state["_framework_rejected_order_ids"]
         if "_framework_stop_flushed" in state:
@@ -300,6 +351,25 @@ class Strategy:
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Pickle 反序列化支持."""
         self.__dict__.update(state)
+        raw_runtime_config = self.__dict__.pop("runtime_config", None)
+        if raw_runtime_config is not None:
+            self.runtime_config = raw_runtime_config
+        elif "_runtime_config" in self.__dict__:
+            self.runtime_config = self.__dict__["_runtime_config"]
+        else:
+            self.runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=bool(
+                    self.__dict__.pop("enable_precise_day_boundary_hooks", False)
+                ),
+                portfolio_update_eps=float(
+                    self.__dict__.pop("portfolio_update_eps", 0.0)
+                ),
+                error_mode=cast(
+                    Literal["raise", "continue", "legacy"],
+                    str(self.__dict__.pop("error_mode", "raise")),
+                ),
+                re_raise_on_error=bool(self.__dict__.pop("re_raise_on_error", True)),
+            )
         self.ctx = None
         self.current_bar = None
         self.current_tick = None
@@ -310,6 +380,102 @@ class Strategy:
         if not hasattr(self, "_seen_trade_key_order"):
             self._seen_trade_key_order = deque()
         _ensure_framework_state_impl(self)
+
+    @property
+    def runtime_config(self) -> StrategyRuntimeConfig:
+        """返回策略运行时配置."""
+        cfg = getattr(self, "_runtime_config", None)
+        if isinstance(cfg, StrategyRuntimeConfig):
+            return cfg
+        if isinstance(cfg, dict):
+            self._runtime_config = StrategyRuntimeConfig(**cfg)
+            return self._runtime_config
+        self._runtime_config = StrategyRuntimeConfig()
+        return self._runtime_config
+
+    @runtime_config.setter
+    def runtime_config(
+        self, value: Union[StrategyRuntimeConfig, Dict[str, Any]]
+    ) -> None:
+        """设置策略运行时配置."""
+        if isinstance(value, StrategyRuntimeConfig):
+            self._runtime_config = StrategyRuntimeConfig(
+                enable_precise_day_boundary_hooks=value.enable_precise_day_boundary_hooks,
+                portfolio_update_eps=value.portfolio_update_eps,
+                error_mode=value.error_mode,
+                re_raise_on_error=value.re_raise_on_error,
+            )
+            return
+        if isinstance(value, dict):
+            self._runtime_config = StrategyRuntimeConfig(**value)
+            return
+        raise TypeError(
+            "runtime_config must be StrategyRuntimeConfig or Dict[str, Any]"
+        )
+
+    @property
+    def enable_precise_day_boundary_hooks(self) -> bool:
+        """是否启用边界定时器精确交易日钩子."""
+        return self.runtime_config.enable_precise_day_boundary_hooks
+
+    @enable_precise_day_boundary_hooks.setter
+    def enable_precise_day_boundary_hooks(self, value: bool) -> None:
+        """设置边界定时器精确交易日钩子开关."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=bool(value),
+            portfolio_update_eps=cfg.portfolio_update_eps,
+            error_mode=cfg.error_mode,
+            re_raise_on_error=cfg.re_raise_on_error,
+        )
+
+    @property
+    def portfolio_update_eps(self) -> float:
+        """返回账户快照更新阈值."""
+        return self.runtime_config.portfolio_update_eps
+
+    @portfolio_update_eps.setter
+    def portfolio_update_eps(self, value: float) -> None:
+        """设置账户快照更新阈值."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=cfg.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=float(value),
+            error_mode=cfg.error_mode,
+            re_raise_on_error=cfg.re_raise_on_error,
+        )
+
+    @property
+    def error_mode(self) -> str:
+        """返回错误处理模式."""
+        return self.runtime_config.error_mode
+
+    @error_mode.setter
+    def error_mode(self, value: str) -> None:
+        """设置错误处理模式."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=cfg.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=cfg.portfolio_update_eps,
+            error_mode=cast(Literal["raise", "continue", "legacy"], value),
+            re_raise_on_error=cfg.re_raise_on_error,
+        )
+
+    @property
+    def re_raise_on_error(self) -> bool:
+        """返回是否在 on_error 后继续抛出异常."""
+        return self.runtime_config.re_raise_on_error
+
+    @re_raise_on_error.setter
+    def re_raise_on_error(self, value: bool) -> None:
+        """设置 on_error 后是否继续抛出异常."""
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=cfg.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=cfg.portfolio_update_eps,
+            error_mode=cfg.error_mode,
+            re_raise_on_error=bool(value),
+        )
 
     @property
     def is_restored(self) -> bool:

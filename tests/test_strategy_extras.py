@@ -1,14 +1,14 @@
 import logging
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 from akquant import run_backtest, run_warm_start, save_snapshot
 from akquant.akquant import Bar, OrderStatus, StrategyContext, Tick
-from akquant.strategy import Strategy
+from akquant.strategy import Strategy, StrategyRuntimeConfig
 
 
 class MyStrategy(Strategy):
@@ -388,6 +388,43 @@ class WarmStartE2EStrategy(Strategy):
         self.events.append(f"on_bar:{self.bar_seen}")
 
 
+class RuntimeConfigWarmStartStrategy(Strategy):
+    """Strategy for warm start runtime config injection test."""
+
+    def __init__(self) -> None:
+        """Initialize records."""
+        self.errors: list[str] = []
+        self.bar_seen = 0
+
+    def on_bar(self, bar: Bar) -> None:
+        """Raise only after restored to test warm-start injection."""
+        self.bar_seen += 1
+        if self.is_restored:
+            raise ValueError("warm_boom")
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """Record callback source."""
+        self.errors.append(source)
+
+
+class RuntimeConfigWarmConflictStrategy(Strategy):
+    """Strategy for warm-start runtime config conflict behavior tests."""
+
+    def __init__(self) -> None:
+        """Initialize with strict runtime config."""
+        self.errors: list[str] = []
+        self.runtime_config = StrategyRuntimeConfig(error_mode="raise")
+
+    def on_bar(self, bar: Bar) -> None:
+        """Raise only after restored."""
+        if self.is_restored:
+            raise ValueError("warm_conflict_boom")
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """Record callback source."""
+        self.errors.append(source)
+
+
 def _make_bars(
     start: str,
     periods: int,
@@ -445,6 +482,96 @@ def test_run_warm_start_end_to_end_lifecycle(tmp_path: Path) -> None:
     assert strategy.events[resume_idx + 1] == "on_start"
     assert strategy.events[-1] == "on_bar:7"
     assert result2.metrics.initial_market_value == result1.metrics.end_market_value
+
+
+def test_run_warm_start_accepts_strategy_runtime_config(tmp_path: Path) -> None:
+    """run_warm_start should inject runtime config into restored strategy."""
+    checkpoint = tmp_path / "snapshot_runtime_config.pkl"
+    phase1 = _make_bars("2023-01-01", 2)
+    phase2 = _make_bars("2023-01-03", 2, start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=RuntimeConfigWarmStartStrategy,
+        symbol="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="TEST",
+        show_progress=False,
+        strategy_runtime_config={"error_mode": "continue"},
+    )
+
+    strategy = result2.strategy
+    assert strategy is not None
+    assert strategy.errors == ["on_bar", "on_bar"]
+
+
+def test_run_warm_start_runtime_config_override_true_by_default(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """run_warm_start should override strategy runtime config by default."""
+    checkpoint = tmp_path / "snapshot_runtime_override_true.pkl"
+    phase1 = _make_bars("2023-01-01", 2)
+    phase2 = _make_bars("2023-01-03", 2, start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=RuntimeConfigWarmConflictStrategy,
+        symbol="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.WARNING, logger="akquant"):
+        result2 = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbol="TEST",
+            show_progress=False,
+            strategy_runtime_config={"error_mode": "continue"},
+        )
+
+    strategy = result2.strategy
+    assert strategy is not None
+    assert strategy.errors == ["on_bar", "on_bar"]
+    assert "overrides strategy runtime_config" in caplog.text
+    assert "error_mode: raise -> continue" in caplog.text
+
+
+def test_run_warm_start_runtime_config_override_false_keeps_strategy_config(
+    tmp_path: Path, caplog: Any
+) -> None:
+    """runtime_config_override=False should keep restored strategy config."""
+    checkpoint = tmp_path / "snapshot_runtime_override_false.pkl"
+    phase1 = _make_bars("2023-01-01", 2)
+    phase2 = _make_bars("2023-01-03", 1, start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=RuntimeConfigWarmConflictStrategy,
+        symbol="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.WARNING, logger="akquant"):
+        with pytest.raises(ValueError, match="warm_conflict_boom"):
+            run_warm_start(
+                checkpoint_path=str(checkpoint),
+                data=phase2,
+                symbol="TEST",
+                show_progress=False,
+                strategy_runtime_config={"error_mode": "continue"},
+                runtime_config_override=False,
+            )
+
+    assert "runtime_config_override=False" in caplog.text
+    assert "error_mode: raise -> continue" in caplog.text
 
 
 class WarmStartMultiSymbolStrategy(Strategy):
@@ -973,6 +1100,85 @@ def test_framework_hooks_session_day_reject_and_portfolio() -> None:
     assert after_count == before_count + 1
 
 
+def test_portfolio_update_skips_clean_tick_without_changes() -> None:
+    """Clean tick without price/position/order changes should not emit update."""
+    strategy = FrameworkHooksStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.cash = 1000.0
+    ctx.session = "normal"
+    ts1 = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+    ts2 = pd.Timestamp("2023-01-01 09:30:01", tz="Asia/Shanghai").value
+    tick1 = Tick(timestamp=ts1, price=100.0, volume=1.0, symbol="AAPL")
+    tick2 = Tick(timestamp=ts2, price=100.0, volume=1.0, symbol="AAPL")
+
+    ctx.current_time = ts1
+    strategy._on_tick_event(tick1, ctx)
+    assert strategy.portfolio_updates == 1
+
+    ctx.current_time = ts2
+    strategy._on_tick_event(tick2, ctx)
+    assert strategy.portfolio_updates == 1
+
+
+def test_portfolio_update_emits_on_price_change_with_position() -> None:
+    """Price move with open position should emit portfolio update."""
+    strategy = FrameworkHooksStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 1.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.positions = {"AAPL": 1.0}
+    ctx.available_positions = {"AAPL": 1.0}
+    ctx.cash = 1000.0
+    ctx.session = "normal"
+    ts1 = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+    ts2 = pd.Timestamp("2023-01-01 09:30:01", tz="Asia/Shanghai").value
+    tick1 = Tick(timestamp=ts1, price=100.0, volume=1.0, symbol="AAPL")
+    tick2 = Tick(timestamp=ts2, price=101.0, volume=1.0, symbol="AAPL")
+
+    ctx.current_time = ts1
+    strategy._on_tick_event(tick1, ctx)
+    assert strategy.portfolio_updates == 1
+
+    ctx.current_time = ts2
+    strategy._on_tick_event(tick2, ctx)
+    assert strategy.portfolio_updates == 2
+
+
+def test_portfolio_update_respects_eps_threshold() -> None:
+    """Small equity changes under eps should not emit updates."""
+    strategy = FrameworkHooksStrategy()
+    strategy.portfolio_update_eps = 5.0
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 1.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.positions = {"AAPL": 1.0}
+    ctx.available_positions = {"AAPL": 1.0}
+    ctx.cash = 1000.0
+    ctx.session = "normal"
+    ts1 = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+    ts2 = pd.Timestamp("2023-01-01 09:30:01", tz="Asia/Shanghai").value
+    tick1 = Tick(timestamp=ts1, price=100.0, volume=1.0, symbol="AAPL")
+    tick2 = Tick(timestamp=ts2, price=101.0, volume=1.0, symbol="AAPL")
+
+    ctx.current_time = ts1
+    strategy._on_tick_event(tick1, ctx)
+    assert strategy.portfolio_updates == 1
+
+    ctx.current_time = ts2
+    strategy._on_tick_event(tick2, ctx)
+    assert strategy.portfolio_updates == 1
+
+
 class ErrorHookStrategy(Strategy):
     """Strategy for on_error hook tests."""
 
@@ -987,6 +1193,78 @@ class ErrorHookStrategy(Strategy):
     def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
         """Capture on_error callback."""
         self.captured.append((source, str(error)))
+
+
+class RuntimeConfigBarErrorStrategy(Strategy):
+    """Strategy for runtime config injection test via run_backtest."""
+
+    def __init__(self) -> None:
+        """Initialize error counter."""
+        self.errors: list[str] = []
+
+    def on_bar(self, bar: Bar) -> None:
+        """Raise error on each bar."""
+        raise ValueError("bar_boom")
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """Record callback source."""
+        self.errors.append(source)
+
+
+class RuntimeConfigConflictStrategy(Strategy):
+    """Strategy for runtime config conflict behavior tests."""
+
+    def __init__(self) -> None:
+        """Initialize with strict default config."""
+        self.errors: list[str] = []
+        self.runtime_config = StrategyRuntimeConfig(error_mode="raise")
+
+    def on_bar(self, bar: Bar) -> None:
+        """Raise on every bar."""
+        raise ValueError("conflict_boom")
+
+    def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+        """Record callback source."""
+        self.errors.append(source)
+
+
+def test_runtime_config_validation_rejects_invalid_values() -> None:
+    """Runtime config should validate mode and eps."""
+    with pytest.raises(ValueError, match="portfolio_update_eps"):
+        StrategyRuntimeConfig(portfolio_update_eps=-1)
+    with pytest.raises(ValueError, match="error_mode"):
+        StrategyRuntimeConfig(error_mode=cast(Any, "bad"))
+
+
+def test_runtime_alias_properties_sync_to_runtime_config() -> None:
+    """Legacy alias fields should update runtime_config."""
+    strategy = ErrorHookStrategy()
+    strategy.enable_precise_day_boundary_hooks = True
+    strategy.portfolio_update_eps = 1.5
+    strategy.error_mode = "continue"
+    strategy.re_raise_on_error = False
+
+    cfg = strategy.runtime_config
+    assert cfg.enable_precise_day_boundary_hooks is True
+    assert cfg.portfolio_update_eps == 1.5
+    assert cfg.error_mode == "continue"
+    assert cfg.re_raise_on_error is False
+
+
+def test_runtime_config_assignment_syncs_alias_properties() -> None:
+    """runtime_config assignment should reflect on alias property getters."""
+    strategy = ErrorHookStrategy()
+    strategy.runtime_config = StrategyRuntimeConfig(
+        enable_precise_day_boundary_hooks=True,
+        portfolio_update_eps=2.0,
+        error_mode="legacy",
+        re_raise_on_error=False,
+    )
+
+    assert strategy.enable_precise_day_boundary_hooks is True
+    assert strategy.portfolio_update_eps == 2.0
+    assert strategy.error_mode == "legacy"
+    assert strategy.re_raise_on_error is False
 
 
 def test_on_error_hook_called_and_exception_re_raised() -> None:
@@ -1012,6 +1290,7 @@ def test_on_error_hook_called_and_exception_re_raised() -> None:
 def test_on_error_hook_can_swallow_user_callback_exception() -> None:
     """Errors can be swallowed when re_raise_on_error is disabled."""
     strategy = ErrorHookStrategy()
+    strategy.error_mode = "legacy"
     strategy.re_raise_on_error = False
     ctx = MagicMock(spec=StrategyContext)
     ctx.canceled_order_ids = []
@@ -1027,6 +1306,211 @@ def test_on_error_hook_can_swallow_user_callback_exception() -> None:
     strategy._on_tick_event(tick, ctx)
 
     assert strategy.captured == [("on_tick", "boom")]
+
+
+def test_error_mode_continue_overrides_re_raise_flag() -> None:
+    """error_mode=continue should swallow even when re_raise_on_error=True."""
+    strategy = ErrorHookStrategy()
+    strategy.error_mode = "continue"
+    strategy.re_raise_on_error = True
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+
+    tick = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick, ctx)
+
+    assert strategy.captured == [("on_tick", "boom")]
+
+
+def test_error_mode_raise_overrides_re_raise_flag() -> None:
+    """error_mode=raise should re-raise even when re_raise_on_error=False."""
+    strategy = ErrorHookStrategy()
+    strategy.error_mode = "raise"
+    strategy.re_raise_on_error = False
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+
+    tick = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    with pytest.raises(ValueError, match="boom"):
+        strategy._on_tick_event(tick, ctx)
+
+    assert strategy.captured == [("on_tick", "boom")]
+
+
+def test_runtime_config_continue_mode_swallow_exception() -> None:
+    """runtime_config should drive error handling when legacy fields stay default."""
+    strategy = ErrorHookStrategy()
+    strategy.runtime_config = StrategyRuntimeConfig(error_mode="continue")
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+
+    tick = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick, ctx)
+
+    assert strategy.captured == [("on_tick", "boom")]
+
+
+def test_legacy_error_mode_overrides_runtime_config() -> None:
+    """Legacy fields should override runtime_config for compatibility."""
+    strategy = ErrorHookStrategy()
+    strategy.runtime_config = StrategyRuntimeConfig(error_mode="raise")
+    strategy.error_mode = "continue"
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.cash = 1000.0
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.session = "normal"
+    ctx.current_time = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+
+    tick = Tick(timestamp=ctx.current_time, price=100.0, volume=1.0, symbol="AAPL")
+    strategy._on_tick_event(tick, ctx)
+
+    assert strategy.captured == [("on_tick", "boom")]
+
+
+def test_run_backtest_accepts_strategy_runtime_config() -> None:
+    """run_backtest should inject runtime config into strategy instance."""
+    bars = _make_bars("2023-01-01", 3, symbol="TEST")
+    result = run_backtest(
+        data=bars,
+        strategy=RuntimeConfigBarErrorStrategy,
+        symbol="TEST",
+        show_progress=False,
+        strategy_runtime_config={"error_mode": "continue"},
+    )
+
+    strategy = result.strategy
+    assert strategy is not None
+    assert strategy.errors == ["on_bar", "on_bar", "on_bar"]
+
+
+def test_run_backtest_rejects_invalid_strategy_runtime_config_type() -> None:
+    """Invalid runtime config type should fail fast."""
+    bars = _make_bars("2023-01-01", 1, symbol="TEST")
+    with pytest.raises(TypeError, match="strategy_runtime_config"):
+        run_backtest(
+            data=bars,
+            strategy=RuntimeConfigBarErrorStrategy,
+            symbol="TEST",
+            show_progress=False,
+            strategy_runtime_config=cast(Any, "invalid"),
+        )
+
+
+def test_run_backtest_rejects_unknown_strategy_runtime_config_fields() -> None:
+    """Unknown runtime config fields should produce field-level error."""
+    bars = _make_bars("2023-01-01", 1, symbol="TEST")
+    with pytest.raises(ValueError, match="unknown fields: unknown_flag"):
+        run_backtest(
+            data=bars,
+            strategy=RuntimeConfigBarErrorStrategy,
+            symbol="TEST",
+            show_progress=False,
+            strategy_runtime_config=cast(Any, {"unknown_flag": True}),
+        )
+
+
+def test_run_backtest_rejects_invalid_strategy_runtime_config_values() -> None:
+    """Invalid runtime config values should produce wrapped validation error."""
+    bars = _make_bars("2023-01-01", 1, symbol="TEST")
+    with pytest.raises(ValueError, match="invalid strategy_runtime_config"):
+        run_backtest(
+            data=bars,
+            strategy=RuntimeConfigBarErrorStrategy,
+            symbol="TEST",
+            show_progress=False,
+            strategy_runtime_config={"portfolio_update_eps": -1},
+        )
+
+
+def test_run_backtest_runtime_config_override_true_by_default(
+    caplog: Any,
+) -> None:
+    """run_backtest should override strategy runtime config by default."""
+    bars = _make_bars("2023-01-01", 2, symbol="TEST")
+    with caplog.at_level(logging.WARNING, logger="akquant"):
+        result = run_backtest(
+            data=bars,
+            strategy=RuntimeConfigConflictStrategy,
+            symbol="TEST",
+            show_progress=False,
+            strategy_runtime_config={"error_mode": "continue"},
+        )
+
+    strategy = result.strategy
+    assert strategy is not None
+    assert strategy.errors == ["on_bar", "on_bar"]
+    assert "overrides strategy runtime_config" in caplog.text
+
+
+def test_runtime_config_conflict_warning_deduplicated_per_strategy_instance(
+    caplog: Any,
+) -> None:
+    """Conflict warning should be emitted once for same strategy instance."""
+    strategy = RuntimeConfigConflictStrategy()
+    bars = _make_bars("2023-01-01", 1, symbol="TEST")
+    with caplog.at_level(logging.WARNING, logger="akquant"):
+        run_backtest(
+            data=bars,
+            strategy=strategy,
+            symbol="TEST",
+            show_progress=False,
+            strategy_runtime_config={"error_mode": "continue"},
+        )
+        run_backtest(
+            data=bars,
+            strategy=strategy,
+            symbol="TEST",
+            show_progress=False,
+            strategy_runtime_config={"error_mode": "continue"},
+        )
+
+    logs = caplog.text
+    assert logs.count("overrides strategy runtime_config") == 1
+    assert strategy.errors == ["on_bar", "on_bar"]
+
+
+def test_run_backtest_runtime_config_override_false_keeps_strategy_config(
+    caplog: Any,
+) -> None:
+    """runtime_config_override=False should keep strategy-side config."""
+    bars = _make_bars("2023-01-01", 1, symbol="TEST")
+    with caplog.at_level(logging.WARNING, logger="akquant"):
+        with pytest.raises(ValueError, match="conflict_boom"):
+            run_backtest(
+                data=bars,
+                strategy=RuntimeConfigConflictStrategy,
+                symbol="TEST",
+                show_progress=False,
+                strategy_runtime_config={"error_mode": "continue"},
+                runtime_config_override=False,
+            )
+
+    assert "runtime_config_override=False" in caplog.text
 
 
 def test_stop_internal_flushes_session_and_after_trading_hooks() -> None:

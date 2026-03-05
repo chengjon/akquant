@@ -51,8 +51,12 @@ Notes:
 * `before_trading` is emitted once per local trading date when session enters `Normal`.
 * `after_trading` is emitted once per local trading date when leaving `Normal`, or on next event if day rollover occurs first.
 * Set `self.enable_precise_day_boundary_hooks = True` to enable boundary-timer based precise day hooks.
+* `on_portfolio_update` is incremental: emitted once at initialization, then only on order/trade or position-relevant price changes.
+* Use `self.portfolio_update_eps` to filter tiny equity/cash changes (default `0.0`).
 * During stop phase, pending `on_session_end` / `after_trading` are flushed before `on_stop`.
-* `on_error` receives `(error, source, payload)` and `self.re_raise_on_error` controls re-raise behavior (default `True`).
+* `on_error` receives `(error, source, payload)`. Prefer `self.error_mode = "raise" | "continue"` (default `raise`). `self.re_raise_on_error` remains as fallback for compatibility.
+* Prefer `self.runtime_config = StrategyRuntimeConfig(...)` as a unified runtime switch entry.
+* Legacy alias fields and `runtime_config` stay synchronized automatically.
 
 ## 3. Utilities
 

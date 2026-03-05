@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any, Tuple
 
 from .akquant import OrderStatus
-from .strategy_framework_hooks import call_user_callback, ensure_framework_state
+from .strategy_framework_hooks import (
+    call_user_callback,
+    ensure_framework_state,
+    mark_portfolio_dirty,
+)
 
 
 def check_order_events(strategy: Any) -> None:
@@ -65,10 +69,12 @@ def check_order_events(strategy: Any) -> None:
             if not remember_trade_key(strategy, key):
                 continue
             call_user_callback(strategy, "on_trade", t, payload=t)
+            mark_portfolio_dirty(strategy)
 
 
 def _emit_order_callback(strategy: Any, order: Any) -> None:
     call_user_callback(strategy, "on_order", order, payload=order)
+    mark_portfolio_dirty(strategy)
 
     if getattr(order, "status", None) == OrderStatus.Rejected:
         order_id = getattr(order, "id", "")
