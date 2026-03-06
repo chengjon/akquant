@@ -376,29 +376,16 @@ def test_run_backtest_with_on_event_matches_stream_entry() -> None:
     )
 
 
-def test_run_backtest_accepts_legacy_blocking_engine_mode() -> None:
-    """Internal legacy_blocking mode should remain available as rollback switch."""
-    data = _build_benchmark_data(n=60, symbol="LEGACY_MODE")
-    result = akquant.run_backtest(
-        data=data,
-        strategy=NoopStrategy,
-        symbol="LEGACY_MODE",
-        show_progress=False,
-        _engine_mode="legacy_blocking",
-    )
-    assert result.metrics.initial_market_value == pytest.approx(1000000.0, rel=1e-9)
-
-
-def test_run_backtest_rejects_invalid_engine_mode() -> None:
-    """Invalid internal engine mode should be rejected."""
+def test_run_backtest_rejects_removed_engine_mode_option() -> None:
+    """Removed internal _engine_mode option should raise fast."""
     data = _build_benchmark_data(n=10, symbol="BAD_MODE")
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError, match="_engine_mode is no longer supported"):
         akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
             symbol="BAD_MODE",
             show_progress=False,
-            _engine_mode="not_valid",
+            _engine_mode="legacy_blocking",
         )
 
 

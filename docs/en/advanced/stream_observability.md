@@ -54,12 +54,11 @@ Hold Phase 5 when any of the following occurs:
 
 ## 4. Rollback and Safety Net
 
-- Temporary rollback switch: `_engine_mode="legacy_blocking"`.
-- Rollback is for compatibility verification and emergency mitigation only, not long-term business dependency.
+- Since Phase 5, rollback is release-level and no runtime rollback flag is provided.
 - Each rollback should record:
   - Trigger condition
   - Impact scope
-  - Fix plan and target date for returning to unified core
+  - Fix plan and target version for returning to unified core
 
 ## 5. Phase-5 Readiness
 

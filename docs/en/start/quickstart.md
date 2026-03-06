@@ -280,6 +280,13 @@ Stream event common fields:
 *   `level`: event level
 *   `payload`: event payload
 
+Phase-5 Migration FAQ:
+
+*   Is `run_backtest` renamed? No, the public entry name stays unchanged.
+*   Can `run_backtest` still be called without `on_event`? Yes, and result-return semantics stay the same.
+*   How do we roll back? Since Phase 5, `_engine_mode` runtime fallback is removed; use release-level rollback.
+*   Home navigation entry: see [Quick Links in docs home](../index.md#quick-links).
+
 ## 4. Advanced Learning
 
 Too simple? Want to learn how to write real quantitative strategies (like Dual Moving Average, MACD, etc.)?

@@ -290,3 +290,10 @@ result = run_backtest_stream(
 - `symbol`: 关联标的（部分事件为空）
 - `level`: 事件级别
 - `payload`: 事件内容
+
+阶段 5 迁移 FAQ：
+
+- `run_backtest` 是否改名？不改名，调用方式保持不变。
+- `run_backtest` 是否还能不传 `on_event`？可以，不传时仍返回同样的结果对象语义。
+- 如何回滚？阶段 5 后不再支持 `_engine_mode` 参数级回滚，建议使用版本级回滚。
+- 首页导航入口：见 [文档首页的阶段 5 迁移入口](../index.md#阶段-5-迁移入口)。

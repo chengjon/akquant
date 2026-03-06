@@ -65,8 +65,14 @@ def run_backtest(
 
 *   推荐逐步将实时 UI / 日志 / 告警接入迁移到 `run_backtest(..., on_event=...)`。
 *   `run_backtest_stream` 继续保留，用于显式表达“必须消费流式事件”的调用语义。
-*   如需灰度回滚，可通过内部参数 `_engine_mode="legacy_blocking"` 临时切回阻塞路径（仅用于兼容验证，不建议业务长期依赖）。
+*   阶段 5 后不再提供运行时参数级回滚开关；如需回滚请使用版本级回滚策略。
 *   阶段 4 观察窗口与推进门槛请参考：[流式统一内核观察清单](../advanced/stream_observability.md)。
+
+**阶段 5 迁移 FAQ:**
+
+*   `run_backtest` 是否改名？不改名，调用方式保持不变。
+*   `run_backtest` 是否仍可不传 `on_event`？可以，不传时仍返回同样的结果对象语义。
+*   线上出现问题如何回退？使用版本级回滚，不再支持 `_engine_mode` 参数级回切。
 
 ### `akquant.run_backtest_stream`
 

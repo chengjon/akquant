@@ -67,13 +67,6 @@ def _noop_stream_event_handler(_event: BacktestStreamEvent) -> None:
     return None
 
 
-def _parse_engine_mode(value: Any) -> str:
-    mode = str(value).strip().lower()
-    if mode not in {"unified_event", "legacy_blocking"}:
-        raise ValueError("_engine_mode must be 'unified_event' or 'legacy_blocking'")
-    return mode
-
-
 class FunctionalStrategy(Strategy):
     """内部策略包装器，用于支持函数式 API (Zipline 风格)."""
 
@@ -287,7 +280,8 @@ def run_backtest(
     :param config: BacktestConfig 配置对象 (可选)
     :param strategy_runtime_config: 策略运行时配置对象或字典 (可选)
     :param runtime_config_override: 是否覆盖策略实例内已有 runtime_config (默认 True)
-    :param on_event: 可选流式事件回调。不传则内部使用 no-op 回调并保持返回语义不变。
+    :param on_event: 可选流式事件回调。阶段 5 后 `run_backtest` 始终走统一事件内核；
+                     不传时内部使用 no-op 回调并保持返回语义不变。
     故障速查可参考 docs/zh/advanced/runtime_config.md，
     英文文档参考 docs/en/advanced/runtime_config.md
     :param instruments_config: 标的配置列表或字典 (可选)
@@ -310,7 +304,8 @@ def run_backtest(
        如果上述两者都未提供，则使用系统默认值。
        例如: `initial_cash` 默认为 1,000,000。
     """
-    engine_mode = _parse_engine_mode(kwargs.pop("_engine_mode", "unified_event"))
+    if "_engine_mode" in kwargs:
+        raise TypeError("_engine_mode is no longer supported")
     stream_on_event = on_event
     internal_stream_callback = kwargs.pop("_stream_on_event", None)
     if internal_stream_callback is not None and stream_on_event is not None:
@@ -319,7 +314,7 @@ def run_backtest(
         stream_on_event = internal_stream_callback
     if stream_on_event is not None and not callable(stream_on_event):
         raise TypeError("on_event must be callable when provided")
-    if stream_on_event is None and engine_mode == "unified_event":
+    if stream_on_event is None:
         stream_on_event = _noop_stream_event_handler
     stream_progress_interval = _parse_positive_int_option(
         "stream_progress_interval", kwargs.pop("stream_progress_interval", 1)

@@ -64,8 +64,14 @@ def run_backtest(
 
 *   Prefer migrating realtime UI/logging/alerting to `run_backtest(..., on_event=...)`.
 *   `run_backtest_stream` remains available to keep explicit “stream callback required” semantics.
-*   For staged rollback, internal parameter `_engine_mode="legacy_blocking"` is available for compatibility verification and should not be a long-term business dependency.
+*   Since Phase 5, runtime rollback flags are removed; use release-level rollback when needed.
 *   Phase-4 observation window and go/no-go gates are documented in [Unified Stream Core Checklist](../advanced/stream_observability.md).
+
+**Phase-5 Migration FAQ:**
+
+*   Is `run_backtest` renamed? No, the public entry name stays unchanged.
+*   Can `run_backtest` still be called without `on_event`? Yes, and result-return semantics stay the same.
+*   How do we roll back in production? Use release-level rollback; `_engine_mode` runtime fallback is removed.
 
 ### `akquant.run_backtest_stream`
 

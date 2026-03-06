@@ -9,12 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `run_backtest` now supports optional `on_event` callback and can emit stream events without switching to `run_backtest_stream`.
-- Internal rollout switch `_engine_mode` in `run_backtest` with values:
-  - `unified_event` (default): uses unified event core and no-op callback when `on_event` is omitted.
-  - `legacy_blocking`: keeps legacy blocking behavior for rollback and compatibility testing.
 
 ### Changed
 - `run_backtest_stream` now delegates to `run_backtest(..., on_event=...)` while preserving required-callback semantics.
+- `run_backtest` always uses the unified stream core; runtime rollback flag `_engine_mode` is removed.
 
 ## [0.1.13] - 2026-02-09
 
