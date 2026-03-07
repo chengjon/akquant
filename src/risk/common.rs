@@ -80,15 +80,14 @@ impl RiskRule for MaxOrderValueRule {
             let price = if let Some(p) = order.price {
                 Some(p)
             } else {
-                ctx.current_prices.get(&order.symbol).cloned()
+                ctx.current_prices.get(&order.symbol).copied()
             };
 
             if let Some(p) = price {
                 let value = p * order.quantity;
                 if value > max_value {
                     return Err(AkQuantError::OrderError(format!(
-                        "Risk: Order value {} exceeds limit {}",
-                        value, max_value
+                        "Risk: Order value {value} exceeds limit {max_value}",
                     )));
                 }
             }
@@ -119,7 +118,7 @@ impl RiskRule for MaxPositionSizeRule {
             let current_pos = ctx.portfolio
                 .positions
                 .get(&order.symbol)
-                .cloned()
+                .copied()
                 .unwrap_or(Decimal::ZERO);
             let new_pos = match order.side {
                 OrderSide::Buy => current_pos + order.quantity,
@@ -127,8 +126,7 @@ impl RiskRule for MaxPositionSizeRule {
             };
             if new_pos.abs() > max_pos {
                 return Err(AkQuantError::OrderError(format!(
-                    "Risk: Resulting position {} exceeds limit {}",
-                    new_pos, max_pos
+                    "Risk: Resulting position {new_pos} exceeds limit {max_pos}",
                 )));
             }
         }
@@ -204,8 +202,7 @@ impl RiskRule for CashMarginRule {
 
                 if required_margin > available_margin {
                      return Err(AkQuantError::OrderError(format!(
-                        "Risk: Insufficient margin. Required: {}, Available: {} (Free: {}, Committed: {}, Safety: {})",
-                        required_margin, available_margin, free_margin, committed_margin, safety_margin
+                        "Risk: Insufficient margin. Required: {required_margin}, Available: {available_margin} (Free: {free_margin}, Committed: {committed_margin}, Safety: {safety_margin})",
                     )));
                 }
             }

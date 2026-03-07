@@ -105,6 +105,11 @@
     pytest
     ```
 
+    Rust 核心测试（推荐使用项目脚本，自动处理 macOS + conda 的动态库路径）：
+    ```bash
+    ./scripts/cargo-test.sh -q
+    ```
+
 2.  **运行黄金测试 (Golden Tests)**:
     黄金测试用于捕捉核心算法变更导致的非预期行为（如 PnL 计算、撮合逻辑差异）。
     ```bash

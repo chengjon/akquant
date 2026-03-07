@@ -548,6 +548,19 @@ class RuntimeConfigWarmConflictStrategy(Strategy):
         self.errors.append(source)
 
 
+class WarmStartRiskStateStrategy(Strategy):
+    """Strategy for risk-state warm-start persistence tests."""
+
+    def __init__(self) -> None:
+        """Initialize deterministic step counter."""
+        self.step = 0
+
+    def on_bar(self, bar: Bar) -> None:
+        """Submit buy sequence across pre/post snapshot phases."""
+        self.buy(symbol=bar.symbol, quantity=10)
+        self.step += 1
+
+
 def _make_bars(
     start: str,
     periods: int,
@@ -632,6 +645,49 @@ def test_run_warm_start_accepts_strategy_runtime_config(tmp_path: Path) -> None:
     strategy = result2.strategy
     assert strategy is not None
     assert strategy.errors == ["on_bar", "on_bar"]
+
+
+def test_run_warm_start_restores_strategy_risk_state(tmp_path: Path) -> None:
+    """Warm start should preserve strategy-level risk state across snapshots."""
+    checkpoint = tmp_path / "snapshot_risk_state.pkl"
+    phase1 = _make_bars("2023-01-01", 1)
+    phase2 = _make_bars("2023-01-02", 1, start_price=101.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartRiskStateStrategy,
+        symbol="TEST",
+        initial_cash=100000.0,
+        execution_mode="current_close",
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": WarmStartRiskStateStrategy},
+        strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+        strategy_risk_cooldown_bars={"alpha": 2},
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="TEST",
+        execution_mode="current_close",
+        show_progress=False,
+    )
+    engine = result2.engine
+    assert engine is not None
+    if not hasattr(engine, "get_default_strategy_id") or not hasattr(
+        engine, "get_strategy_slots"
+    ):
+        pytest.skip("Engine binary does not expose strategy slot methods")
+    assert cast(Any, engine).get_default_strategy_id() == "alpha"
+    assert set(cast(Any, engine).get_strategy_slots()) == {"alpha", "beta"}
+    orders_df = result2.orders_df
+    phase2_rows = orders_df[
+        orders_df["created_at"].dt.strftime("%Y-%m-%d") == "2023-01-02"
+    ]
+    reject_reasons = phase2_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("cooldown" in reason for reason in reject_reasons), reject_reasons
 
 
 def test_run_warm_start_runtime_config_override_true_by_default(

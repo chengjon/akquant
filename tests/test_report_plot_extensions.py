@@ -85,6 +85,11 @@ def test_report_contains_new_analysis_sections(tmp_path: Path) -> None:
     assert "组合归因与容量分析 (Attribution & Capacity)" in html
     assert "最新净暴露比 (Latest Net Exposure %)" in html
     assert "平均换手率 (Avg Turnover)" in html
+    assert "暂无策略级风控拒单占比图" in html
+    assert "暂无策略级拒单原因占比图" in html
+    assert "暂无按日风控拒单趋势图" in html
+    assert "暂无按策略风控拒单趋势图" in html
+    assert "暂无按日拒单原因趋势图" in html
 
 
 def test_report_handles_empty_trade_analysis_blocks(tmp_path: Path) -> None:

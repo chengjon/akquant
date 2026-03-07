@@ -63,21 +63,23 @@ def run_backtest(
         Union[StrategyRuntimeConfig, Dict[str, Any]]
     ] = ...,
     runtime_config_override: bool = ...,
-    on_event: Optional[Callable[[BacktestStreamEvent], None]] = ...,
-    stream_mode: Literal["observability", "audit"] = ...,
-    **kwargs: Any,
-) -> BacktestResult: ...
-def run_backtest_stream(
-    data: Optional[
-        Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed]
+    strategy_id: Optional[str] = ...,
+    strategies_by_slot: Optional[
+        Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]
     ] = ...,
-    strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = ...,
+    strategy_max_order_value: Optional[Dict[str, float]] = ...,
+    strategy_max_order_size: Optional[Dict[str, float]] = ...,
+    strategy_max_position_size: Optional[Dict[str, float]] = ...,
+    strategy_max_daily_loss: Optional[Dict[str, float]] = ...,
+    strategy_max_drawdown: Optional[Dict[str, float]] = ...,
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = ...,
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = ...,
+    strategy_priority: Optional[Dict[str, int]] = ...,
+    strategy_risk_budget: Optional[Dict[str, float]] = ...,
+    portfolio_risk_budget: Optional[float] = ...,
+    risk_budget_mode: Literal["order_notional", "trade_notional"] = ...,
+    risk_budget_reset_daily: bool = ...,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = ...,
-    stream_progress_interval: int = ...,
-    stream_equity_interval: int = ...,
-    stream_batch_size: int = ...,
-    stream_max_buffer: int = ...,
-    stream_error_mode: Literal["continue", "fail_fast"] = ...,
     stream_mode: Literal["observability", "audit"] = ...,
     **kwargs: Any,
 ) -> BacktestResult: ...
@@ -99,7 +101,6 @@ __all__ = [
     "BacktestResult",
     "BacktestStreamEvent",
     "run_backtest",
-    "run_backtest_stream",
     "run_warm_start",
     "FunctionalStrategy",
 ]

@@ -2,114 +2,210 @@ use crate::context::EngineContext;
 use crate::data::FeedAction;
 use crate::engine::Engine;
 use crate::event::Event;
-use crate::model::{Bar, ExecutionMode, OrderStatus, TradingSession};
+use crate::model::{Bar, ExecutionMode, Order, OrderStatus, TradingSession};
 use crate::pipeline::processor::{Processor, ProcessorResult};
 use pyo3::prelude::*;
 use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 pub struct ChannelProcessor;
+
+fn process_order_request(
+    engine: &mut Engine,
+    py: Python<'_>,
+    mut order: Order,
+) {
+    let current_time = engine.clock.timestamp().unwrap_or(0);
+    engine.maybe_reset_risk_budget_usage(current_time);
+    let mut strategy_limit_err = engine.check_strategy_risk_cooldown_mode(&order);
+    let mut triggers_risk_fallback = false;
+    if strategy_limit_err.is_none() {
+        strategy_limit_err = engine.check_strategy_reduce_only_mode(&order);
+    }
+    if strategy_limit_err.is_none() {
+        strategy_limit_err = engine
+            .check_strategy_order_size_limit(&order)
+            .or_else(|| engine.check_strategy_position_size_limit(&order))
+            .or_else(|| engine.check_strategy_order_value_limit(&order));
+        triggers_risk_fallback = strategy_limit_err.is_some();
+    }
+    if strategy_limit_err.is_none() {
+        strategy_limit_err = engine.check_strategy_daily_loss_limit(
+            &order,
+            current_time,
+        );
+        triggers_risk_fallback = strategy_limit_err.is_some();
+    }
+    if strategy_limit_err.is_none() {
+        strategy_limit_err = engine.check_strategy_drawdown_limit(&order);
+        triggers_risk_fallback = strategy_limit_err.is_some();
+    }
+    if strategy_limit_err.is_none() {
+        strategy_limit_err = engine.check_strategy_risk_budget_limit(&order);
+    }
+    if strategy_limit_err.is_none() {
+        strategy_limit_err = engine.check_portfolio_risk_budget_limit(&order);
+    }
+    if triggers_risk_fallback {
+        engine.activate_strategy_reduce_only_if_configured(&order);
+        engine.activate_strategy_risk_cooldown_if_configured(&order);
+    }
+    let strategy_limit_err = strategy_limit_err.map(crate::error::AkQuantError::OrderError);
+    let check_result = if let Some(err) = strategy_limit_err {
+        Err(err)
+    } else {
+        let ctx = EngineContext {
+            instruments: &engine.instruments,
+            portfolio: &engine.state.portfolio,
+            last_prices: &engine.last_prices,
+            market_model: engine.market_manager.model.as_ref(),
+            execution_mode: engine.execution_mode,
+            bar_index: engine.bar_count,
+            current_time: engine.clock.timestamp().unwrap_or(0),
+            session: engine.clock.session,
+            active_orders: &engine.state.order_manager.active_orders,
+        };
+        engine.risk_manager.check_and_adjust(&mut order, &ctx)
+    };
+    if let Err(err) = check_result {
+        order.status = OrderStatus::Rejected;
+        order.reject_reason = err.to_string();
+        order.updated_at = engine.clock.timestamp().unwrap_or(0);
+
+        let mut risk_payload = HashMap::new();
+        risk_payload.insert("order_id", order.id.clone());
+        risk_payload.insert("symbol", order.symbol.clone());
+        risk_payload.insert("reason", order.reject_reason.clone());
+        risk_payload.insert(
+            "owner_strategy_id",
+            order.owner_strategy_id.clone().unwrap_or_default(),
+        );
+        engine.emit_stream_event(
+            py,
+            "risk",
+            Some(order.symbol.as_str()),
+            "warn",
+            risk_payload,
+        );
+        let _ = engine.event_manager.send(Event::ExecutionReport(order, None));
+    } else {
+        let mut order_payload = HashMap::new();
+        order_payload.insert("order_id", order.id.clone());
+        order_payload.insert("status", format!("{:?}", OrderStatus::New));
+        order_payload.insert("symbol", order.symbol.clone());
+        order_payload.insert(
+            "owner_strategy_id",
+            order.owner_strategy_id.clone().unwrap_or_default(),
+        );
+        engine.emit_stream_event(
+            py,
+            "order",
+            Some(order.symbol.as_str()),
+            "info",
+            order_payload,
+        );
+        if !engine.risk_budget_use_trade_mode() {
+            engine.apply_risk_budget_usage(&order);
+        }
+        let _ = engine.event_manager.send(Event::OrderValidated(order));
+    }
+}
 
 impl Processor for ChannelProcessor {
     fn process(&mut self, engine: &mut Engine, py: Python<'_>, _strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
         let mut trades_to_process = Vec::new();
-        while let Some(event) = engine.event_manager.try_recv() {
-            match event {
-                Event::OrderRequest(mut order) => {
-                    // 1. Risk Check & Adjustment
-                    // Create Context
-                    let ctx = EngineContext {
-                        instruments: &engine.instruments,
-                        portfolio: &engine.state.portfolio,
-                        last_prices: &engine.last_prices,
-                        market_model: engine.market_manager.model.as_ref(),
-                        execution_mode: engine.execution_mode,
-                        bar_index: engine.bar_count,
-                        current_time: engine.clock.timestamp().unwrap_or(0),
-                        session: engine.clock.session,
-                        active_orders: &engine.state.order_manager.active_orders,
-                    };
-
-                    if let Err(err) = engine.risk_manager.check_and_adjust(&mut order, &ctx) {
-                        // Rejected
-                        order.status = OrderStatus::Rejected;
-                        order.reject_reason = err.to_string();
-                        order.updated_at = engine.clock.timestamp().unwrap_or(0);
-
-                        let mut risk_payload = HashMap::new();
-                        risk_payload.insert("order_id", order.id.clone());
-                        risk_payload.insert("symbol", order.symbol.clone());
-                        risk_payload.insert("reason", order.reject_reason.clone());
-                        engine.emit_stream_event(
-                            py,
-                            "risk",
-                            Some(order.symbol.as_str()),
-                            "warn",
-                            risk_payload,
-                        );
-
-                        // Send ExecutionReport (Rejected)
-                        let _ = engine.event_manager.send(Event::ExecutionReport(order, None));
-                    } else {
-                        let mut order_payload = HashMap::new();
-                        order_payload.insert("order_id", order.id.clone());
-                        order_payload.insert("status", format!("{:?}", OrderStatus::New));
-                        order_payload.insert("symbol", order.symbol.clone());
-                        engine.emit_stream_event(
-                            py,
-                            "order",
-                            Some(order.symbol.as_str()),
-                            "info",
-                            order_payload,
-                        );
-
-                        // Validated -> Send OrderValidated
-                        let _ = engine.event_manager.send(Event::OrderValidated(order));
+        let mut pending_order_requests = Vec::new();
+        loop {
+            let mut drained_event = false;
+            while let Some(event) = engine.event_manager.try_recv() {
+                drained_event = true;
+                match event {
+                    Event::OrderRequest(order) => pending_order_requests.push(order),
+                    Event::OrderValidated(order) => {
+                        engine.execution_model.on_order(order.clone());
+                        engine.state.order_manager.add_active_order(order);
                     }
-                }
-                Event::OrderValidated(order) => {
-                    // 2. Send to Execution Client
-                    engine.execution_model.on_order(order.clone());
-                    // Add to local active (Strategy View)
-                    engine.state.order_manager.add_active_order(order);
-                }
-                Event::ExecutionReport(order, trade) => {
-                    // 3. Update Order State
-                    engine.state.order_manager.on_execution_report(order);
-                    let updated_order = engine.state.order_manager.orders.last().cloned();
-                    if let Some(order_snapshot) = updated_order {
-                        let mut order_payload = HashMap::new();
-                        order_payload.insert("order_id", order_snapshot.id.clone());
-                        order_payload.insert("status", format!("{:?}", order_snapshot.status));
-                        order_payload.insert("filled_qty", order_snapshot.filled_quantity.to_string());
-                        order_payload.insert("symbol", order_snapshot.symbol.clone());
-                        engine.emit_stream_event(
-                            py,
-                            "order",
-                            Some(order_snapshot.symbol.as_str()),
-                            "info",
-                            order_payload,
-                        );
-                    }
+                    Event::ExecutionReport(order, trade) => {
+                        engine.state.order_manager.on_execution_report(order);
+                        let updated_order = engine.state.order_manager.orders.last().cloned();
+                        if let Some(order_snapshot) = updated_order {
+                            let mut order_payload = HashMap::new();
+                            order_payload.insert("order_id", order_snapshot.id.clone());
+                            order_payload.insert(
+                                "status",
+                                format!("{:?}", order_snapshot.status),
+                            );
+                            order_payload.insert(
+                                "filled_qty",
+                                order_snapshot.filled_quantity.to_string(),
+                            );
+                            order_payload.insert("symbol", order_snapshot.symbol.clone());
+                            order_payload.insert(
+                                "owner_strategy_id",
+                                order_snapshot
+                                    .owner_strategy_id
+                                    .clone()
+                                    .unwrap_or_default(),
+                            );
+                            engine.emit_stream_event(
+                                py,
+                                "order",
+                                Some(order_snapshot.symbol.as_str()),
+                                "info",
+                                order_payload,
+                            );
+                        }
 
-                    // 4. Process Trade (if any)
-                    if let Some(t) = trade {
-                        let mut trade_payload = HashMap::new();
-                        trade_payload.insert("trade_id", t.id.clone());
-                        trade_payload.insert("order_id", t.order_id.clone());
-                        trade_payload.insert("price", t.price.to_string());
-                        trade_payload.insert("quantity", t.quantity.to_string());
-                        engine.emit_stream_event(
-                            py,
-                            "trade",
-                            Some(t.symbol.as_str()),
-                            "info",
-                            trade_payload,
-                        );
-                        trades_to_process.push(t);
+                        if let Some(t) = trade {
+                            engine.maybe_reset_risk_budget_usage(t.timestamp);
+                            if engine.risk_budget_use_trade_mode() {
+                                engine.apply_risk_budget_usage_from_trade(&t);
+                            }
+                            engine.apply_strategy_trade_position(&t);
+                            let mut trade_payload = HashMap::new();
+                            trade_payload.insert("trade_id", t.id.clone());
+                            trade_payload.insert("order_id", t.order_id.clone());
+                            trade_payload.insert("price", t.price.to_string());
+                            trade_payload.insert("quantity", t.quantity.to_string());
+                            trade_payload.insert(
+                                "owner_strategy_id",
+                                t.owner_strategy_id.clone().unwrap_or_default(),
+                            );
+                            engine.emit_stream_event(
+                                py,
+                                "trade",
+                                Some(t.symbol.as_str()),
+                                "info",
+                                trade_payload,
+                            );
+                            trades_to_process.push(t);
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
+            }
+
+            if !pending_order_requests.is_empty() {
+                pending_order_requests.sort_by(|left, right| {
+                    let left_priority = engine.strategy_priority_for_order(left);
+                    let right_priority = engine.strategy_priority_for_order(right);
+                    right_priority.cmp(&left_priority).then_with(|| {
+                        let left_id = Engine::normalized_order_strategy_id(left)
+                            .unwrap_or_default();
+                        let right_id = Engine::normalized_order_strategy_id(right)
+                            .unwrap_or_default();
+                        left_id.cmp(&right_id)
+                    })
+                });
+                for order in pending_order_requests.drain(..) {
+                    process_order_request(engine, py, order);
+                }
+                continue;
+            }
+
+            if !drained_event {
+                break;
             }
         }
 
@@ -140,6 +236,7 @@ impl Default for DataProcessor {
 }
 
 impl DataProcessor {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             last_timestamp: 0,
@@ -152,7 +249,7 @@ impl DataProcessor {
             return;
         }
         if let Ok(mut buffer) = engine.history_buffer.write() {
-            for (symbol, _) in engine.instruments.iter() {
+            for symbol in engine.instruments.keys() {
                 if !self.seen_symbols.contains(symbol)
                     && let Some(&last_price) = engine.last_prices.get(symbol) {
                         // Create synthetic bar
@@ -164,7 +261,7 @@ impl DataProcessor {
                             low: last_price,
                             close: last_price,
                             volume: Decimal::ZERO,
-                            extra: Default::default(),
+                            extra: HashMap::default(),
                         };
                         buffer.update(&bar);
                     }
@@ -325,19 +422,51 @@ impl Processor for DataProcessor {
 pub struct StrategyProcessor;
 
 impl Processor for StrategyProcessor {
-    fn process(&mut self, engine: &mut Engine, _py: Python<'_>, strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
+    fn process(&mut self, engine: &mut Engine, py: Python<'_>, strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
         if let Some(event) = engine.current_event.clone() {
-            let (new_orders, new_timers, canceled_ids) = engine.call_strategy(strategy, &event)?;
+            engine.ensure_strategy_slot_exists();
+            engine.ensure_strategy_context_capacity();
+            let slot_count = engine.strategy_slots.len();
+            let active_orders = Arc::new(engine.state.order_manager.active_orders.clone());
+            let step_trades = engine.state.order_manager.current_step_trades.clone();
 
-            for id in canceled_ids {
-                engine.execution_model.on_cancel(&id);
+            for slot_index in 0..slot_count {
+                let slot_strategy = engine
+                    .strategy_slot_strategies
+                    .get(slot_index)
+                    .and_then(|slot| slot.as_ref())
+                    .map(|slot| slot.clone_ref(py));
+                let (new_orders, new_timers, canceled_ids) =
+                    if let Some(ref slot_py) = slot_strategy {
+                        let slot_bound = slot_py.bind(py);
+                        engine.call_strategy_for_slot(
+                            slot_bound,
+                            &event,
+                            slot_index,
+                            active_orders.clone(),
+                            step_trades.clone(),
+                        )?
+                    } else {
+                        engine.call_strategy_for_slot(
+                            strategy,
+                            &event,
+                            slot_index,
+                            active_orders.clone(),
+                            step_trades.clone(),
+                        )?
+                    };
+
+                for id in canceled_ids {
+                    engine.execution_model.on_cancel(&id);
+                }
+                for order in new_orders {
+                    let _ = engine.event_manager.send(Event::OrderRequest(order));
+                }
+                for t in new_timers {
+                    engine.timers.push(t);
+                }
             }
-            for order in new_orders {
-                let _ = engine.event_manager.send(Event::OrderRequest(order));
-            }
-            for t in new_timers {
-                engine.timers.push(t);
-            }
+            engine.state.order_manager.current_step_trades.clear();
         }
         Ok(ProcessorResult::Next)
     }

@@ -63,5 +63,5 @@ Hold Phase 5 when any of the following occurs:
 ## 5. Phase-5 Readiness
 
 - Confirm internal call paths default to unified core.
-- Keep `run_backtest_stream` as the explicit semantic entry.
+- Use `run_backtest(..., on_event=...)` as the explicit stream semantic entry.
 - Publish release notes clarifying Phase 5 removes internal branching only, without changing public API behavior.

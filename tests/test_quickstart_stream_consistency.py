@@ -94,7 +94,7 @@ def test_quickstart_like_stream_matches_non_stream() -> None:
 
     normal = akquant.run_backtest(**common_args)
     events: list[akquant.BacktestStreamEvent] = []
-    stream = akquant.run_backtest_stream(
+    stream = akquant.run_backtest(
         **common_args,
         on_event=events.append,
         stream_progress_interval=1,

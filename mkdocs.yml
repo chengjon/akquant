@@ -84,6 +84,7 @@ plugins:
             LLM Guide: LLM 辅助
             Runtime Config Guide: 运行时配置指南
             Warm Start Guide: 热启动指南
+            Multi-Strategy Migration Guide: 多策略迁移指南
             Timezone Handling: 时区处理
             Testing Guide: 测试指南
             API Reference: API 参考
@@ -135,6 +136,7 @@ plugins:
             ML Guide: ML Guide
             LLM Guide: LLM Guide
             Runtime Config Guide: Runtime Config Guide
+            Multi-Strategy Migration Guide: Multi-Strategy Migration Guide
             Timezone Handling: Timezone Handling
             Testing Guide: Testing Guide
             API Reference: API Reference
@@ -209,6 +211,7 @@ nav:
       - LLM Guide: advanced/llm.md
       - Runtime Config Guide: advanced/runtime_config.md
       - Warm Start Guide: advanced/warm_start.md
+      - Multi-Strategy Migration Guide: advanced/multi_strategy_migration.md
       - Timezone Handling: advanced/timezone.md
   - API Reference: reference/api.md
   - Architecture & Internals:

@@ -22,6 +22,7 @@ fn create_trade(
         commission,
         timestamp: 0,
         bar_index: 0,
+        owner_strategy_id: None,
     }
 }
 

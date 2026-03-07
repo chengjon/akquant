@@ -8,10 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `run_backtest` now supports optional `on_event` callback and can emit stream events without switching to `run_backtest_stream`.
+- `run_backtest` now supports optional `on_event` callback and can emit stream events directly.
 
 ### Changed
-- `run_backtest_stream` now delegates to `run_backtest(..., on_event=...)` while preserving required-callback semantics.
+- `run_backtest_stream` is removed; stream scenarios should call `run_backtest(..., on_event=...)`.
 - `run_backtest` always uses the unified stream core; runtime rollback flag `_engine_mode` is removed.
 
 ## [0.1.13] - 2026-02-09

@@ -77,7 +77,7 @@ If you modify core algorithms (e.g., improved matching logic or fee calculation)
 
 ### Streaming Regression Checklist
 
-After changes to `run_backtest_stream`, event protocol, or streaming pipeline,
+After changes to `run_backtest(..., on_event=...)`, event protocol, or streaming pipeline,
 run this minimum checklist:
 
 1.  **Semantic parity**: Stream and non-stream runs keep identical semantics

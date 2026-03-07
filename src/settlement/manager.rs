@@ -24,6 +24,7 @@ pub struct SettlementManager {
 }
 
 impl SettlementManager {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             option_handler: OptionSettlementHandler,
@@ -31,7 +32,7 @@ impl SettlementManager {
     }
 
     /// Process daily settlement routine
-    /// 1. T+1 Settlement (MarketManager)
+    /// 1. T+1 Settlement (`MarketManager`)
     /// 2. Option Expiry
     /// 3. Order Expiration (Day orders)
     pub fn process_daily_settlement(

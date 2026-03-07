@@ -96,6 +96,7 @@ mod tests {
             current_time: 123456789,
             portfolio,
             order_manager,
+            strategy_risk_state: Default::default(),
         };
 
         let encoded: Vec<u8> = rmp_serde::to_vec(&snapshot).unwrap();

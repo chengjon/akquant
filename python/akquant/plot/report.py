@@ -352,6 +352,41 @@ HTML_TEMPLATE = """
         <div class="chart-container" style="margin-top: 20px;">
             {attribution_summary_html}
         </div>
+        <div class="chart-container" style="margin-top: 20px;">
+            <div class="section-title">
+                策略归属聚合 (Strategy Ownership Aggregation)
+            </div>
+        </div>
+        <div class="row">
+            <div class="col">
+                <div class="chart-container">
+                    {orders_by_strategy_html}
+                </div>
+            </div>
+            <div class="col">
+                <div class="chart-container">
+                    {executions_by_strategy_html}
+                </div>
+            </div>
+        </div>
+        <div class="chart-container" style="margin-top: 20px;">
+            {risk_by_strategy_html}
+        </div>
+        <div class="chart-container" style="margin-top: 20px;">
+            {risk_reject_ratio_html}
+        </div>
+        <div class="chart-container" style="margin-top: 20px;">
+            {risk_reason_ratio_html}
+        </div>
+        <div class="chart-container" style="margin-top: 20px;">
+            {risk_reject_trend_html}
+        </div>
+        <div class="chart-container" style="margin-top: 20px;">
+            {risk_reject_trend_by_strategy_html}
+        </div>
+        <div class="chart-container" style="margin-top: 20px;">
+            {risk_reason_trend_html}
+        </div>
 
         <footer>
             AKQuant Report | Powered by Plotly & AKQuant
@@ -606,6 +641,271 @@ def _build_chart_html_sections(result: Any) -> dict[str, str]:
         if fig_duration
         else "<div>无交易数据</div>"
     )
+    risk_reject_ratio_html = "<div>暂无策略级风控拒单占比图</div>"
+    risk_reason_ratio_html = "<div>暂无策略级拒单原因占比图</div>"
+    risk_reject_trend_html = "<div>暂无按日风控拒单趋势图</div>"
+    risk_reject_trend_by_strategy_html = "<div>暂无按策略风控拒单趋势图</div>"
+    risk_reason_trend_html = "<div>暂无按日拒单原因趋势图</div>"
+    risk_df = (
+        result.risk_rejections_by_strategy()
+        if hasattr(result, "risk_rejections_by_strategy")
+        else pd.DataFrame()
+    )
+    if not risk_df.empty and "risk_reject_count" in risk_df.columns:
+        risk_base_df = risk_df.copy()
+        if "owner_strategy_id" not in risk_base_df.columns:
+            risk_base_df["owner_strategy_id"] = "_default"
+        risk_base_df["owner_strategy_id"] = (
+            risk_base_df["owner_strategy_id"].fillna("_default").astype(str)
+        )
+        reject_count = pd.to_numeric(
+            risk_base_df["risk_reject_count"], errors="coerce"
+        ).fillna(0.0)
+        total_reject_count = float(reject_count.sum())
+        if total_reject_count > 0.0:
+            px = __import__("plotly.express", fromlist=["bar"])
+
+            ratio_df = pd.DataFrame(
+                {
+                    "owner_strategy_id": risk_base_df["owner_strategy_id"],
+                    "reject_ratio": reject_count / total_reject_count,
+                    "risk_reject_count": reject_count,
+                }
+            ).sort_values("reject_ratio", ascending=False)
+            fig_risk_ratio = px.bar(
+                ratio_df,
+                x="owner_strategy_id",
+                y="reject_ratio",
+                title="策略级风控拒单占比 (Risk Reject Ratio by Strategy)",
+                text=ratio_df["reject_ratio"].map(lambda v: f"{v:.1%}"),
+                labels={
+                    "owner_strategy_id": "策略ID (Strategy ID)",
+                    "reject_ratio": "拒单占比 (Reject Ratio)",
+                },
+            )
+            fig_risk_ratio.update_traces(
+                hovertemplate=(
+                    "策略ID=%{x}<br>拒单占比=%{y:.1%}<br>"
+                    "拒单数=%{customdata[0]:.0f}<extra></extra>"
+                ),
+                customdata=ratio_df[["risk_reject_count"]].to_numpy(),
+            )
+            fig_risk_ratio.update_yaxes(tickformat=".0%")
+            fig_risk_ratio.update_layout(
+                height=320, margin=dict(l=20, r=20, t=60, b=20)
+            )
+            risk_reject_ratio_html = fig_risk_ratio.to_html(
+                full_html=False, include_plotlyjs=False, config=config
+            )
+        reason_columns = [
+            ("daily_loss_reject_count", "Daily Loss"),
+            ("drawdown_reject_count", "Drawdown"),
+            ("reduce_only_reject_count", "Reduce-Only"),
+            ("position_limit_reject_count", "Position Limit"),
+            ("order_size_limit_reject_count", "Order Size Limit"),
+            ("order_value_limit_reject_count", "Order Value Limit"),
+            ("strategy_risk_budget_reject_count", "Strategy Risk Budget"),
+            ("portfolio_risk_budget_reject_count", "Portfolio Risk Budget"),
+            ("other_risk_reject_count", "Other"),
+        ]
+        available_reason_columns = [
+            (column_name, label)
+            for column_name, label in reason_columns
+            if column_name in risk_base_df.columns
+        ]
+        if available_reason_columns:
+            stacked_df = pd.DataFrame(
+                {"owner_strategy_id": risk_base_df["owner_strategy_id"]}
+            )
+            for column_name, label in available_reason_columns:
+                values = pd.to_numeric(
+                    risk_base_df[column_name], errors="coerce"
+                ).fillna(0.0)
+                stacked_df[label] = values
+            totals = stacked_df.drop(columns=["owner_strategy_id"]).sum(axis=1)
+            non_zero_totals = totals > 0
+            if bool(non_zero_totals.any()):
+                stacked_df = stacked_df.loc[non_zero_totals].reset_index(drop=True)
+                totals = totals.loc[non_zero_totals].reset_index(drop=True)
+                value_columns = [
+                    col for col in stacked_df.columns if col != "owner_strategy_id"
+                ]
+                ratio_stacked = stacked_df.copy()
+                ratio_stacked[value_columns] = ratio_stacked[value_columns].div(
+                    totals, axis=0
+                )
+                px = __import__("plotly.express", fromlist=["bar"])
+                long_df = ratio_stacked.melt(
+                    id_vars=["owner_strategy_id"],
+                    value_vars=value_columns,
+                    var_name="risk_reason",
+                    value_name="reject_ratio",
+                )
+                fig_reason_ratio = px.bar(
+                    long_df,
+                    x="owner_strategy_id",
+                    y="reject_ratio",
+                    color="risk_reason",
+                    title="策略级拒单原因占比 (Risk Reason Ratio by Strategy)",
+                    labels={
+                        "owner_strategy_id": "策略ID (Strategy ID)",
+                        "reject_ratio": "拒单原因占比 (Reason Ratio)",
+                        "risk_reason": "拒单原因 (Reason)",
+                    },
+                )
+                fig_reason_ratio.update_layout(
+                    barmode="stack",
+                    height=360,
+                    margin=dict(l=20, r=20, t=60, b=20),
+                )
+                fig_reason_ratio.update_yaxes(tickformat=".0%")
+                fig_reason_ratio.update_traces(
+                    hovertemplate=(
+                        "策略ID=%{x}<br>原因=%{fullData.name}<br>"
+                        "占比=%{y:.1%}<extra></extra>"
+                    )
+                )
+                risk_reason_ratio_html = fig_reason_ratio.to_html(
+                    full_html=False, include_plotlyjs=False, config=config
+                )
+    risk_trend_df = (
+        result.risk_rejections_trend(freq="D")
+        if hasattr(result, "risk_rejections_trend")
+        else pd.DataFrame()
+    )
+    if not risk_trend_df.empty:
+        trend_df = risk_trend_df.copy()
+        trend_df["date"] = pd.to_datetime(trend_df["date"], errors="coerce")
+        trend_df = trend_df.dropna(subset=["date"]).sort_values("date")
+        if not trend_df.empty and "risk_reject_count" in trend_df.columns:
+            px = __import__("plotly.express", fromlist=["line"])
+            trend_df["risk_reject_count"] = pd.to_numeric(
+                trend_df["risk_reject_count"], errors="coerce"
+            ).fillna(0.0)
+            fig_risk_trend = px.line(
+                trend_df,
+                x="date",
+                y="risk_reject_count",
+                markers=True,
+                title="按日风控拒单趋势 (Daily Risk Reject Trend)",
+                labels={
+                    "date": "日期 (Date)",
+                    "risk_reject_count": "风控拒单数 (Risk Reject Count)",
+                },
+            )
+            fig_risk_trend.update_layout(
+                height=320, margin=dict(l=20, r=20, t=60, b=20)
+            )
+            fig_risk_trend.update_traces(
+                hovertemplate="日期=%{x}<br>拒单数=%{y:.0f}<extra></extra>"
+            )
+            risk_reject_trend_html = fig_risk_trend.to_html(
+                full_html=False, include_plotlyjs=False, config=config
+            )
+            reason_columns = [
+                ("daily_loss_reject_count", "Daily Loss"),
+                ("drawdown_reject_count", "Drawdown"),
+                ("reduce_only_reject_count", "Reduce-Only"),
+                ("position_limit_reject_count", "Position Limit"),
+                ("order_size_limit_reject_count", "Order Size Limit"),
+                ("order_value_limit_reject_count", "Order Value Limit"),
+                ("strategy_risk_budget_reject_count", "Strategy Risk Budget"),
+                ("portfolio_risk_budget_reject_count", "Portfolio Risk Budget"),
+                ("other_risk_reject_count", "Other"),
+            ]
+            available_reason_columns = [
+                (column_name, label)
+                for column_name, label in reason_columns
+                if column_name in trend_df.columns
+            ]
+            if available_reason_columns:
+                reason_trend_df = pd.DataFrame({"date": trend_df["date"]})
+                for column_name, label in available_reason_columns:
+                    values = pd.to_numeric(
+                        trend_df[column_name], errors="coerce"
+                    ).fillna(0.0)
+                    reason_trend_df[label] = values
+                long_reason_df = reason_trend_df.melt(
+                    id_vars=["date"],
+                    value_vars=[
+                        col for col in reason_trend_df.columns if col != "date"
+                    ],
+                    var_name="risk_reason",
+                    value_name="reject_count",
+                )
+                fig_reason_trend = px.area(
+                    long_reason_df,
+                    x="date",
+                    y="reject_count",
+                    color="risk_reason",
+                    title="按日拒单原因趋势 (Daily Risk Reason Trend)",
+                    labels={
+                        "date": "日期 (Date)",
+                        "reject_count": "拒单数 (Reject Count)",
+                        "risk_reason": "拒单原因 (Reason)",
+                    },
+                )
+                fig_reason_trend.update_layout(
+                    height=340, margin=dict(l=20, r=20, t=60, b=20)
+                )
+                fig_reason_trend.update_traces(
+                    hovertemplate=(
+                        "日期=%{x}<br>原因=%{fullData.name}<br>"
+                        "拒单数=%{y:.0f}<extra></extra>"
+                    )
+                )
+                risk_reason_trend_html = fig_reason_trend.to_html(
+                    full_html=False, include_plotlyjs=False, config=config
+                )
+    trend_by_strategy_df = (
+        result.risk_rejections_trend_by_strategy(freq="D")
+        if hasattr(result, "risk_rejections_trend_by_strategy")
+        else pd.DataFrame()
+    )
+    if not trend_by_strategy_df.empty:
+        strategy_trend_df = trend_by_strategy_df.copy()
+        strategy_trend_df["date"] = pd.to_datetime(
+            strategy_trend_df["date"], errors="coerce"
+        )
+        strategy_trend_df = strategy_trend_df.dropna(subset=["date"]).sort_values(
+            ["date", "owner_strategy_id"]
+        )
+        if (
+            not strategy_trend_df.empty
+            and "risk_reject_count" in strategy_trend_df.columns
+        ):
+            px = __import__("plotly.express", fromlist=["line"])
+            strategy_trend_df["owner_strategy_id"] = (
+                strategy_trend_df["owner_strategy_id"].fillna("_default").astype(str)
+            )
+            strategy_trend_df["risk_reject_count"] = pd.to_numeric(
+                strategy_trend_df["risk_reject_count"], errors="coerce"
+            ).fillna(0.0)
+            fig_risk_strategy_trend = px.line(
+                strategy_trend_df,
+                x="date",
+                y="risk_reject_count",
+                color="owner_strategy_id",
+                markers=True,
+                title="按策略风控拒单趋势 (Risk Reject Trend by Strategy)",
+                labels={
+                    "date": "日期 (Date)",
+                    "risk_reject_count": "风控拒单数 (Risk Reject Count)",
+                    "owner_strategy_id": "策略ID (Strategy ID)",
+                },
+            )
+            fig_risk_strategy_trend.update_layout(
+                height=340, margin=dict(l=20, r=20, t=60, b=20)
+            )
+            fig_risk_strategy_trend.update_traces(
+                hovertemplate=(
+                    "日期=%{x}<br>策略ID=%{fullData.name}<br>"
+                    "拒单数=%{y:.0f}<extra></extra>"
+                )
+            )
+            risk_reject_trend_by_strategy_html = fig_risk_strategy_trend.to_html(
+                full_html=False, include_plotlyjs=False, config=config
+            )
 
     return {
         "dashboard_html": dashboard_html,
@@ -614,6 +914,11 @@ def _build_chart_html_sections(result: Any) -> dict[str, str]:
         "rolling_metrics_html": rolling_metrics_html,
         "trades_dist_html": trades_dist_html,
         "pnl_duration_html": pnl_duration_html,
+        "risk_reject_ratio_html": risk_reject_ratio_html,
+        "risk_reason_ratio_html": risk_reason_ratio_html,
+        "risk_reject_trend_html": risk_reject_trend_html,
+        "risk_reject_trend_by_strategy_html": risk_reject_trend_by_strategy_html,
+        "risk_reason_trend_html": risk_reason_trend_html,
     }
 
 
@@ -731,10 +1036,128 @@ def _build_analysis_table_sections(
     else:
         attribution_summary_html = "<div>暂无归因数据</div>"
 
+    orders_by_strategy_df = (
+        result.orders_by_strategy()
+        if hasattr(result, "orders_by_strategy")
+        else pd.DataFrame()
+    )
+    if not orders_by_strategy_df.empty:
+        cols = [
+            "owner_strategy_id",
+            "order_count",
+            "filled_order_count",
+            "filled_quantity",
+            "filled_value",
+            "fill_rate_qty",
+        ]
+        cols = [c for c in cols if c in orders_by_strategy_df.columns]
+        orders_by_strategy_view = _rename_table_columns(
+            orders_by_strategy_df[cols],
+            {
+                "owner_strategy_id": "策略ID (Strategy ID)",
+                "order_count": "订单数 (Orders)",
+                "filled_order_count": "已成交订单数 (Filled Orders)",
+                "filled_quantity": "成交数量 (Filled Qty)",
+                "filled_value": "成交额 (Filled Value)",
+                "fill_rate_qty": "数量成交率 (Fill Rate Qty)",
+            },
+        )
+        orders_by_strategy_html = _format_table(
+            orders_by_strategy_view,
+            max_rows=20,
+            percentage_columns={"数量成交率 (Fill Rate Qty)"},
+            compact_currency_columns={"成交额 (Filled Value)"},
+            compact_currency=compact_currency,
+        )
+    else:
+        orders_by_strategy_html = "<div>暂无策略归属订单聚合数据</div>"
+
+    executions_by_strategy_df = (
+        result.executions_by_strategy()
+        if hasattr(result, "executions_by_strategy")
+        else pd.DataFrame()
+    )
+    if not executions_by_strategy_df.empty:
+        cols = [
+            "owner_strategy_id",
+            "execution_count",
+            "total_quantity",
+            "total_notional",
+            "total_commission",
+            "avg_fill_price",
+        ]
+        cols = [c for c in cols if c in executions_by_strategy_df.columns]
+        executions_by_strategy_view = _rename_table_columns(
+            executions_by_strategy_df[cols],
+            {
+                "owner_strategy_id": "策略ID (Strategy ID)",
+                "execution_count": "成交笔数 (Executions)",
+                "total_quantity": "总成交数量 (Total Qty)",
+                "total_notional": "总成交额 (Total Notional)",
+                "total_commission": "总手续费 (Total Commission)",
+                "avg_fill_price": "平均成交价 (Avg Fill Price)",
+            },
+        )
+        executions_by_strategy_html = _format_table(
+            executions_by_strategy_view,
+            max_rows=20,
+            compact_currency_columns={
+                "总成交额 (Total Notional)",
+                "总手续费 (Total Commission)",
+            },
+            compact_currency=compact_currency,
+        )
+    else:
+        executions_by_strategy_html = "<div>暂无策略归属成交聚合数据</div>"
+
+    risk_by_strategy_df = (
+        result.risk_rejections_by_strategy()
+        if hasattr(result, "risk_rejections_by_strategy")
+        else pd.DataFrame()
+    )
+    if not risk_by_strategy_df.empty:
+        cols = [
+            "owner_strategy_id",
+            "risk_reject_count",
+            "daily_loss_reject_count",
+            "drawdown_reject_count",
+            "reduce_only_reject_count",
+            "strategy_risk_budget_reject_count",
+            "portfolio_risk_budget_reject_count",
+            "other_risk_reject_count",
+        ]
+        cols = [c for c in cols if c in risk_by_strategy_df.columns]
+        risk_by_strategy_view = _rename_table_columns(
+            risk_by_strategy_df[cols],
+            {
+                "owner_strategy_id": "策略ID (Strategy ID)",
+                "risk_reject_count": "风险拒单总数 (Risk Rejects)",
+                "daily_loss_reject_count": "日损拒单数 (Daily Loss Rejects)",
+                "drawdown_reject_count": "回撤拒单数 (Drawdown Rejects)",
+                "reduce_only_reject_count": "仅平仓拒单数 (Reduce-Only Rejects)",
+                "strategy_risk_budget_reject_count": (
+                    "策略预算拒单数 (Strategy Budget Rejects)"
+                ),
+                "portfolio_risk_budget_reject_count": (
+                    "组合预算拒单数 (Portfolio Budget Rejects)"
+                ),
+                "other_risk_reject_count": "其他拒单数 (Other Rejects)",
+            },
+        )
+        risk_by_strategy_html = _format_table(
+            risk_by_strategy_view,
+            max_rows=20,
+        )
+    else:
+        risk_by_strategy_html = "<div>暂无策略归属风控拒单聚合数据</div>"
+
     return {
         "exposure_summary_html": exposure_summary_html,
         "capacity_summary_html": capacity_summary_html,
         "attribution_summary_html": attribution_summary_html,
+        "orders_by_strategy_html": orders_by_strategy_html,
+        "executions_by_strategy_html": executions_by_strategy_html,
+        "risk_by_strategy_html": risk_by_strategy_html,
     }
 
 
@@ -787,9 +1210,19 @@ def plot_report(
         rolling_metrics_html=chart_sections["rolling_metrics_html"],
         trades_dist_html=chart_sections["trades_dist_html"],
         pnl_duration_html=chart_sections["pnl_duration_html"],
+        risk_reject_ratio_html=chart_sections["risk_reject_ratio_html"],
+        risk_reason_ratio_html=chart_sections["risk_reason_ratio_html"],
+        risk_reject_trend_html=chart_sections["risk_reject_trend_html"],
+        risk_reject_trend_by_strategy_html=chart_sections[
+            "risk_reject_trend_by_strategy_html"
+        ],
+        risk_reason_trend_html=chart_sections["risk_reason_trend_html"],
         exposure_summary_html=analysis_sections["exposure_summary_html"],
         capacity_summary_html=analysis_sections["capacity_summary_html"],
         attribution_summary_html=analysis_sections["attribution_summary_html"],
+        orders_by_strategy_html=analysis_sections["orders_by_strategy_html"],
+        executions_by_strategy_html=analysis_sections["executions_by_strategy_html"],
+        risk_by_strategy_html=analysis_sections["risk_by_strategy_html"],
     )
 
     # 5. Save File

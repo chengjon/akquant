@@ -226,4 +226,9 @@ exposure = result.exposure_df()  # net/gross exposure and leverage
 attr_by_symbol = result.attribution_df(by="symbol")
 attr_by_tag = result.attribution_df(by="tag")
 capacity = result.capacity_df()  # order count, fill rates, turnover
+orders_by_strategy = result.orders_by_strategy()  # strategy-level order summary
+exec_by_strategy = result.executions_by_strategy()  # strategy-level execution summary
+risk_by_strategy = result.risk_rejections_by_strategy()  # strategy-level risk rejection summary
+risk_trend = result.risk_rejections_trend(freq="D")  # daily trend of risk rejections
+risk_trend_by_strategy = result.risk_rejections_trend_by_strategy(freq="D")
 ```

@@ -22,7 +22,6 @@ from akquant import (
     InstrumentConfig,
     StrategyConfig,
     run_backtest,
-    run_backtest_stream,
 )
 from akquant.backtest.result import BacktestResult
 
@@ -328,7 +327,7 @@ def run_stream_consistency_test(
 
     normal_result = run_backtest(**run_kwargs)
     events: List[BacktestStreamEvent] = []
-    stream_result = run_backtest_stream(
+    stream_result = run_backtest(
         **run_kwargs,
         on_event=events.append,
         stream_progress_interval=8,

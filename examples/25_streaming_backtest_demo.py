@@ -52,7 +52,7 @@ def run_continue_mode(data: list[Bar]) -> None:
             raise RuntimeError("demo callback error")
         events.append(event)
 
-    aq.run_backtest_stream(
+    aq.run_backtest(
         data=data,
         strategy=StreamDemoStrategy,
         symbol="STREAM",
@@ -79,7 +79,7 @@ def run_fail_fast_mode(data: list[Bar]) -> None:
         raise RuntimeError("demo callback error")
 
     try:
-        aq.run_backtest_stream(
+        aq.run_backtest(
             data=data,
             strategy=StreamDemoStrategy,
             symbol="STREAM",

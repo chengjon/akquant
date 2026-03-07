@@ -35,6 +35,7 @@
 - [22_strategy_runtime_config_demo.py](./22_strategy_runtime_config_demo.py): 策略运行时配置示例。
 - [23_functional_callbacks_demo.py](./23_functional_callbacks_demo.py): 函数式回调示例。
 - [24_functional_tick_simulation_demo.py](./24_functional_tick_simulation_demo.py): 函数式 Tick 回调示例。
+- [34_multi_strategy_migration_demo.py](./34_multi_strategy_migration_demo.py): 单策略到多策略迁移对照示例。
 
 ## 流式回测与实时报告
 

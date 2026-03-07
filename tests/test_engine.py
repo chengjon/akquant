@@ -45,6 +45,74 @@ class NoopStrategy(akquant.Strategy):
         return
 
 
+class SingleBuyStrategy(akquant.Strategy):
+    """Place a single buy order on first bar only."""
+
+    def __init__(self) -> None:
+        """Initialize one-shot state."""
+        super().__init__()
+        self._submitted = False
+
+    def on_bar(self, bar: akquant.Bar) -> None:
+        """Submit first-bar buy only once."""
+        if self._submitted:
+            return
+        self.buy(symbol=bar.symbol, quantity=10)
+        self._submitted = True
+
+
+class DualBuyStrategy(akquant.Strategy):
+    """Place two buy orders on first two bars."""
+
+    def __init__(self) -> None:
+        """Initialize counter state."""
+        super().__init__()
+        self._step = 0
+
+    def on_bar(self, bar: akquant.Bar) -> None:
+        """Submit a buy order on first two bars."""
+        if self._step < 2:
+            self.buy(symbol=bar.symbol, quantity=10)
+        self._step += 1
+
+
+class BuyBuySellBuyStrategy(akquant.Strategy):
+    """Buy, buy, sell, then buy for reduce-only transition checks."""
+
+    def __init__(self) -> None:
+        """Initialize step counter."""
+        super().__init__()
+        self._step = 0
+
+    def on_bar(self, bar: akquant.Bar) -> None:
+        """Submit deterministic sequence for reduce-only verification."""
+        if self._step == 0:
+            self.buy(symbol=bar.symbol, quantity=10)
+        elif self._step == 1:
+            self.buy(symbol=bar.symbol, quantity=10)
+        elif self._step == 2:
+            self.sell(symbol=bar.symbol, quantity=5)
+        elif self._step == 3:
+            self.buy(symbol=bar.symbol, quantity=5)
+        self._step += 1
+
+
+class ContinuousBuyStrategy(akquant.Strategy):
+    """Submit a buy order on every bar."""
+
+    def on_bar(self, bar: akquant.Bar) -> None:
+        """Submit deterministic repeated buy orders."""
+        self.buy(symbol=bar.symbol, quantity=10)
+
+
+class ContinuousSmallBuyStrategy(akquant.Strategy):
+    """Submit a small buy order on every bar."""
+
+    def on_bar(self, bar: akquant.Bar) -> None:
+        """Submit deterministic repeated small buy orders."""
+        self.buy(symbol=bar.symbol, quantity=5)
+
+
 def _ns(dt: datetime) -> int:
     """
     Convert a datetime to nanoseconds since epoch.
@@ -69,6 +137,32 @@ def _build_regression_bars(symbol: str) -> list[akquant.Bar]:
         akquant.Bar(day1, 10.0, 10.0, 10.0, 10.0, 1000.0, symbol),
         akquant.Bar(day2, 12.0, 12.0, 12.0, 12.0, 1000.0, symbol),
         akquant.Bar(day3, 11.0, 11.0, 11.0, 11.0, 1000.0, symbol),
+    ]
+
+
+def _build_daily_loss_bars(symbol: str) -> list[akquant.Bar]:
+    """Build bars where the second bar marks down unrealized PnL."""
+    day1 = _ns(datetime(2023, 1, 2, 15, 0, tzinfo=timezone.utc))
+    day2 = _ns(datetime(2023, 1, 3, 15, 0, tzinfo=timezone.utc))
+    day3 = _ns(datetime(2023, 1, 4, 15, 0, tzinfo=timezone.utc))
+    return [
+        akquant.Bar(day1, 10.0, 10.0, 10.0, 10.0, 1000.0, symbol),
+        akquant.Bar(day2, 8.0, 8.0, 8.0, 8.0, 1000.0, symbol),
+        akquant.Bar(day3, 8.0, 8.0, 8.0, 8.0, 1000.0, symbol),
+    ]
+
+
+def _build_reduce_only_bars(symbol: str) -> list[akquant.Bar]:
+    """Build 4 bars used to validate reduce-only fallback behavior."""
+    day1 = _ns(datetime(2023, 1, 2, 15, 0, tzinfo=timezone.utc))
+    day2 = _ns(datetime(2023, 1, 3, 15, 0, tzinfo=timezone.utc))
+    day3 = _ns(datetime(2023, 1, 4, 15, 0, tzinfo=timezone.utc))
+    day4 = _ns(datetime(2023, 1, 5, 15, 0, tzinfo=timezone.utc))
+    return [
+        akquant.Bar(day1, 10.0, 10.0, 10.0, 10.0, 1000.0, symbol),
+        akquant.Bar(day2, 8.0, 8.0, 8.0, 8.0, 1000.0, symbol),
+        akquant.Bar(day3, 8.0, 8.0, 8.0, 8.0, 1000.0, symbol),
+        akquant.Bar(day4, 8.0, 8.0, 8.0, 8.0, 1000.0, symbol),
     ]
 
 
@@ -116,6 +210,64 @@ def test_engine_set_cash() -> None:
     engine = akquant.Engine()
     engine.set_cash(50000.0)
     assert engine.portfolio.cash == 50000.0
+
+
+def test_engine_single_strategy_slot_defaults_and_update() -> None:
+    """Engine should keep single-slot metadata consistent in phase 1."""
+    engine = akquant.Engine()
+    if not hasattr(engine, "get_strategy_slot_ids"):
+        pytest.skip("Engine binary does not expose slot metadata methods")
+    slot_ids = cast(list[str], cast(Any, engine).get_strategy_slot_ids())
+    assert slot_ids == ["_default"]
+    assert cast(int, cast(Any, engine).get_active_strategy_slot()) == 0
+
+    cast(Any, engine).set_default_strategy_id("alpha_slot")
+    updated_slot_ids = cast(list[str], cast(Any, engine).get_strategy_slot_ids())
+    assert updated_slot_ids == ["alpha_slot"]
+    assert cast(str, cast(Any, engine).get_default_strategy_id()) == "alpha_slot"
+
+
+def test_engine_strategy_slot_configuration_api() -> None:
+    """Engine should support configuring multi-slot metadata."""
+    engine = akquant.Engine()
+    if not hasattr(engine, "set_strategy_slots"):
+        pytest.skip("Engine binary does not expose slot configuration methods")
+
+    cast(Any, engine).set_strategy_slots(["alpha", "beta"])
+    slot_ids = cast(list[str], cast(Any, engine).get_strategy_slot_ids())
+    assert slot_ids == ["alpha", "beta"]
+    assert cast(str, cast(Any, engine).get_default_strategy_id()) == "alpha"
+
+
+def test_engine_run_with_configured_slot_strategy() -> None:
+    """Engine should run when secondary slot strategy is configured."""
+    engine = akquant.Engine()
+    if not hasattr(engine, "set_strategy_for_slot"):
+        pytest.skip("Engine binary does not expose slot strategy methods")
+
+    symbol = "SLOT_RUN"
+    engine.use_simple_market(0.0)
+    engine.set_force_session_continuous(True)
+    engine.set_execution_mode(akquant.ExecutionMode.CurrentClose)
+    engine.set_cash(100000.0)
+    engine.set_stock_fee_rules(0.0, 0.0, 0.0, 0.0)
+
+    instr = akquant.Instrument(
+        symbol=symbol,
+        asset_type=akquant.AssetType.Stock,
+        multiplier=1.0,
+        margin_ratio=1.0,
+        tick_size=0.01,
+        lot_size=1.0,
+    )
+    engine.add_instrument(instr)
+    engine.add_bars(_build_regression_bars(symbol))
+
+    cast(Any, engine).set_strategy_slots(["slot_0", "slot_1"])
+    cast(Any, engine).set_strategy_for_slot(1, NoopStrategy())
+    engine.run(NoopStrategy(), show_progress=False)
+    result = engine.get_results()
+    assert result.metrics.initial_market_value == pytest.approx(100000.0, rel=1e-9)
 
 
 def test_backtest_regression_baseline() -> None:
@@ -201,7 +353,7 @@ def test_backtest_performance_baseline() -> None:
     assert result.metrics.initial_market_value == pytest.approx(100000.0, rel=1e-9)
 
 
-def test_run_backtest_stream_emits_ordered_events() -> None:
+def test_run_backtest_on_event_emits_ordered_events() -> None:
     """Stream API should emit ordered lifecycle events."""
     data = _build_benchmark_data(n=20, symbol="STREAM")
     events: list[akquant.BacktestStreamEvent] = []
@@ -209,7 +361,7 @@ def test_run_backtest_stream_emits_ordered_events() -> None:
     def on_event(event: akquant.BacktestStreamEvent) -> None:
         events.append(event)
 
-    result = akquant.run_backtest_stream(
+    result = akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
         symbol="STREAM",
@@ -249,14 +401,14 @@ def test_run_backtest_stream_emits_ordered_events() -> None:
         {"stream_max_buffer": 0},
     ],
 )
-def test_run_backtest_stream_rejects_non_positive_stream_options(
+def test_run_backtest_on_event_rejects_non_positive_stream_options(
     kwargs: dict[str, Any],
 ) -> None:
     """Stream API should reject non-positive option values."""
     data = _build_benchmark_data(n=5, symbol="STREAM_OPT")
 
     with pytest.raises(ValueError):
-        akquant.run_backtest_stream(
+        akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
             symbol="STREAM_OPT",
@@ -266,7 +418,7 @@ def test_run_backtest_stream_rejects_non_positive_stream_options(
         )
 
 
-def test_run_backtest_stream_matches_run_backtest_result() -> None:
+def test_run_backtest_on_event_matches_run_backtest_result() -> None:
     """Stream run should keep the same backtest result semantics."""
     data = _build_benchmark_data(n=120, symbol="CONSIST")
     common_args: dict[str, Any] = dict(
@@ -285,7 +437,7 @@ def test_run_backtest_stream_matches_run_backtest_result() -> None:
 
     normal = akquant.run_backtest(**common_args)
     stream_events: list[akquant.BacktestStreamEvent] = []
-    stream = akquant.run_backtest_stream(
+    stream = akquant.run_backtest(
         **common_args,
         on_event=stream_events.append,
         stream_progress_interval=8,
@@ -304,6 +456,35 @@ def test_run_backtest_stream_matches_run_backtest_result() -> None:
     )
     assert stream_events[0]["event_type"] == "started"
     assert stream_events[-1]["event_type"] == "finished"
+
+
+def test_run_backtest_on_event_emits_owner_strategy_id_for_trade_events() -> None:
+    """Stream trade events should include owner strategy id in payload."""
+    bars = _build_regression_bars("STREAM_OWNER")
+    events: list[akquant.BacktestStreamEvent] = []
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=RegressionStrategy,
+        symbol="STREAM_OWNER",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        on_event=events.append,
+        strategy_id="stream_alpha",
+    )
+    trade_events = [event for event in events if event.get("event_type") == "trade"]
+    assert trade_events
+    owner_ids = {
+        str(event.get("payload", {}).get("owner_strategy_id", ""))
+        for event in trade_events
+    }
+    assert owner_ids == {"stream_alpha"}
+    assert result.metrics.initial_market_value == pytest.approx(100000.0, rel=1e-9)
 
 
 def test_run_backtest_without_on_event_keeps_legacy_semantics() -> None:
@@ -326,8 +507,657 @@ def test_run_backtest_without_on_event_keeps_legacy_semantics() -> None:
     assert len(result.equity_curve) == len(data)
 
 
+def test_run_backtest_strategy_id_propagates_to_orders() -> None:
+    """run_backtest should tag generated orders with owner strategy id."""
+    bars = _build_regression_bars("OWNER")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=RegressionStrategy,
+        symbol="OWNER",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+    )
+    orders_df = result.orders_df
+    assert not orders_df.empty
+    assert "owner_strategy_id" in orders_df.columns
+    assert set(orders_df["owner_strategy_id"].dropna().astype(str)) == {"alpha"}
+
+
+def test_run_backtest_accepts_strategies_by_slot() -> None:
+    """run_backtest should accept optional strategies_by_slot mapping."""
+    bars = _build_regression_bars("SLOT_MAP")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=NoopStrategy,
+        symbol="SLOT_MAP",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategies_by_slot={"beta": NoopStrategy},
+    )
+    assert result.trade_metrics.total_closed_trades == 0
+
+
+def test_run_backtest_multi_slot_owner_strategy_ids_mixed() -> None:
+    """run_backtest should expose mixed owner strategy ids across slots."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_slots") or not hasattr(
+        probe, "set_strategy_for_slot"
+    ):
+        pytest.skip("Engine binary does not expose multi-slot strategy methods")
+
+    bars = _build_regression_bars("SLOT_OWNER_MIX")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=RegressionStrategy,
+        symbol="SLOT_OWNER_MIX",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": RegressionStrategy},
+    )
+    orders_df = result.orders_df
+    executions_df = result.executions_df
+    assert not orders_df.empty
+    assert not executions_df.empty
+    assert "owner_strategy_id" in orders_df.columns
+    assert "owner_strategy_id" in executions_df.columns
+    order_owner_ids = set(orders_df["owner_strategy_id"].dropna().astype(str))
+    exec_owner_ids = set(executions_df["owner_strategy_id"].dropna().astype(str))
+    assert order_owner_ids == {"alpha", "beta"}
+    assert exec_owner_ids == {"alpha", "beta"}
+
+
+def test_run_backtest_strategy_max_order_value_by_slot() -> None:
+    """Per-strategy order value limit should reject only limited slot orders."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_value_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_regression_bars("SLOT_RISK_LIMIT")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="SLOT_RISK_LIMIT",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": SingleBuyStrategy},
+        strategy_max_order_value={"alpha": 50.0, "beta": 200.0},
+    )
+    orders_df = result.orders_df
+    assert not orders_df.empty
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    assert not alpha_rows.empty
+    assert not beta_rows.empty
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("exceeds strategy limit" in reason for reason in alpha_reject_reasons)
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert not any("exceeds strategy limit" in reason for reason in beta_reject_reasons)
+
+
+def test_run_backtest_strategy_max_order_size_by_slot() -> None:
+    """Per-strategy order size limit should reject only limited slot orders."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_regression_bars("SLOT_RISK_SIZE")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="SLOT_RISK_SIZE",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": SingleBuyStrategy},
+        strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+    )
+    orders_df = result.orders_df
+    assert not orders_df.empty
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("order quantity" in reason for reason in alpha_reject_reasons)
+    assert not any("order quantity" in reason for reason in beta_reject_reasons)
+
+
+def test_backtest_result_strategy_level_views() -> None:
+    """BacktestResult should provide strategy-level orders/executions views."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_slots") or not hasattr(
+        probe, "set_strategy_for_slot"
+    ):
+        pytest.skip("Engine binary does not expose multi-slot strategy methods")
+
+    bars = _build_regression_bars("SLOT_VIEW")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=RegressionStrategy,
+        symbol="SLOT_VIEW",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": RegressionStrategy},
+    )
+    orders_view = result.orders_by_strategy()
+    executions_view = result.executions_by_strategy()
+
+    assert set(orders_view["owner_strategy_id"].astype(str)) == {"alpha", "beta"}
+    assert set(executions_view["owner_strategy_id"].astype(str)) == {"alpha", "beta"}
+    assert int(orders_view["order_count"].sum()) == len(result.orders_df)
+    assert int(executions_view["execution_count"].sum()) == len(result.executions_df)
+
+
+def test_backtest_result_risk_rejections_by_strategy_view() -> None:
+    """BacktestResult should aggregate strategy-level risk rejections."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_reduce_only_after_risk"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_reduce_only_bars("SLOT_RISK_VIEW")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=BuyBuySellBuyStrategy,
+        symbol="SLOT_RISK_VIEW",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BuyBuySellBuyStrategy},
+        strategy_max_daily_loss={"alpha": 5.0, "beta": 50.0},
+        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+    )
+    risk_view = result.risk_rejections_by_strategy()
+    assert not risk_view.empty
+    assert "owner_strategy_id" in risk_view.columns
+    alpha = risk_view[risk_view["owner_strategy_id"].astype(str) == "alpha"]
+    assert not alpha.empty
+    alpha_row = alpha.iloc[0]
+    assert int(alpha_row["risk_reject_count"]) >= 2
+    assert int(alpha_row["daily_loss_reject_count"]) >= 1
+    assert int(alpha_row["reduce_only_reject_count"]) >= 1
+    assert "strategy_risk_budget_reject_count" in risk_view.columns
+    assert "portfolio_risk_budget_reject_count" in risk_view.columns
+
+
+def test_backtest_result_risk_rejections_trend_view() -> None:
+    """BacktestResult should provide daily trend for risk rejections."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_reduce_only_after_risk"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_reduce_only_bars("SLOT_RISK_TREND")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=BuyBuySellBuyStrategy,
+        symbol="SLOT_RISK_TREND",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BuyBuySellBuyStrategy},
+        strategy_max_daily_loss={"alpha": 5.0, "beta": 50.0},
+        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+    )
+    trend_view = result.risk_rejections_trend(freq="D")
+    assert not trend_view.empty
+    assert "date" in trend_view.columns
+    assert "risk_reject_count" in trend_view.columns
+    assert int(trend_view["risk_reject_count"].sum()) >= 2
+    assert int(trend_view["reduce_only_reject_count"].sum()) >= 1
+    assert "strategy_risk_budget_reject_count" in trend_view.columns
+    assert "portfolio_risk_budget_reject_count" in trend_view.columns
+
+
+def test_backtest_result_risk_rejections_trend_by_strategy_view() -> None:
+    """BacktestResult should provide strategy-split risk rejection trend."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_reduce_only_after_risk"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_reduce_only_bars("SLOT_RISK_TREND_BY_STRATEGY")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=BuyBuySellBuyStrategy,
+        symbol="SLOT_RISK_TREND_BY_STRATEGY",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BuyBuySellBuyStrategy},
+        strategy_max_daily_loss={"alpha": 5.0, "beta": 50.0},
+        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+    )
+    trend_by_strategy = result.risk_rejections_trend_by_strategy(freq="D")
+    assert not trend_by_strategy.empty
+    assert "date" in trend_by_strategy.columns
+    assert "owner_strategy_id" in trend_by_strategy.columns
+    assert "risk_reject_count" in trend_by_strategy.columns
+    assert "strategy_risk_budget_reject_count" in trend_by_strategy.columns
+    assert "portfolio_risk_budget_reject_count" in trend_by_strategy.columns
+    alpha = trend_by_strategy[
+        trend_by_strategy["owner_strategy_id"].astype(str) == "alpha"
+    ]
+    assert not alpha.empty
+    assert int(alpha["risk_reject_count"].sum()) >= 2
+
+
+def test_run_backtest_rejects_invalid_strategies_by_slot_type() -> None:
+    """run_backtest should validate strategies_by_slot type."""
+    bars = _build_regression_bars("SLOT_BAD")
+    with pytest.raises(TypeError, match="strategies_by_slot"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_BAD",
+            show_progress=False,
+            strategies_by_slot=cast(Any, ["bad"]),
+        )
+
+
+def test_run_backtest_rejects_unknown_strategy_max_order_value_key() -> None:
+    """Unknown strategy id in strategy_max_order_value should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_value_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+    bars = _build_regression_bars("SLOT_RISK_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_max_order_value={"beta": 100.0},
+        )
+
+
+def test_run_backtest_rejects_unknown_strategy_max_order_size_key() -> None:
+    """Unknown strategy id in strategy_max_order_size should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+    bars = _build_regression_bars("SLOT_RISK_SIZE_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_SIZE_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_max_order_size={"beta": 10.0},
+        )
+
+
+def test_run_backtest_strategy_max_position_size_by_slot() -> None:
+    """Per-strategy position limit should reject only limited slot orders."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_position_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_regression_bars("SLOT_RISK_POSITION")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=DualBuyStrategy,
+        symbol="SLOT_RISK_POSITION",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": DualBuyStrategy},
+        strategy_max_position_size={"alpha": 15.0, "beta": 30.0},
+    )
+    orders_df = result.orders_df
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("projected position" in reason for reason in alpha_reject_reasons)
+    assert not any("projected position" in reason for reason in beta_reject_reasons)
+
+
+def test_run_backtest_rejects_unknown_strategy_max_position_size_key() -> None:
+    """Unknown strategy id in strategy_max_position_size should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_position_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+    bars = _build_regression_bars("SLOT_RISK_POSITION_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_POSITION_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_max_position_size={"beta": 10.0},
+        )
+
+
+def test_run_backtest_strategy_max_daily_loss_by_slot() -> None:
+    """Per-strategy daily loss limit should reject only limited slot orders."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_daily_loss_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_daily_loss_bars("SLOT_RISK_DAILY_LOSS")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=DualBuyStrategy,
+        symbol="SLOT_RISK_DAILY_LOSS",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": DualBuyStrategy},
+        strategy_max_daily_loss={"alpha": 5.0, "beta": 50.0},
+    )
+    orders_df = result.orders_df
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("daily loss" in reason for reason in alpha_reject_reasons)
+    assert not any("daily loss" in reason for reason in beta_reject_reasons)
+
+
+def test_run_backtest_rejects_unknown_strategy_max_daily_loss_key() -> None:
+    """Unknown strategy id in strategy_max_daily_loss should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_daily_loss_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+    bars = _build_regression_bars("SLOT_RISK_DAILY_LOSS_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_DAILY_LOSS_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_max_daily_loss={"beta": 10.0},
+        )
+
+
+def test_run_backtest_strategy_max_drawdown_by_slot() -> None:
+    """Per-strategy drawdown limit should reject only limited slot orders."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_drawdown_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_daily_loss_bars("SLOT_RISK_DRAWDOWN")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=DualBuyStrategy,
+        symbol="SLOT_RISK_DRAWDOWN",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": DualBuyStrategy},
+        strategy_max_drawdown={"alpha": 5.0, "beta": 50.0},
+    )
+    orders_df = result.orders_df
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("drawdown" in reason for reason in alpha_reject_reasons)
+    assert not any("drawdown" in reason for reason in beta_reject_reasons)
+
+
+def test_run_backtest_rejects_unknown_strategy_max_drawdown_key() -> None:
+    """Unknown strategy id in strategy_max_drawdown should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_drawdown_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+    bars = _build_regression_bars("SLOT_RISK_DRAWDOWN_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_DRAWDOWN_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_max_drawdown={"beta": 10.0},
+        )
+
+
+def test_run_backtest_reduce_only_after_risk_allows_only_closing_orders() -> None:
+    """Reduce-only mode after risk should reject reopen orders."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_reduce_only_after_risk"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_reduce_only_bars("SLOT_RISK_REDUCE_ONLY")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=BuyBuySellBuyStrategy,
+        symbol="SLOT_RISK_REDUCE_ONLY",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BuyBuySellBuyStrategy},
+        strategy_max_daily_loss={"alpha": 5.0, "beta": 50.0},
+        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+    )
+    orders_df = result.orders_df
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("daily loss" in reason for reason in alpha_reject_reasons)
+    assert any("reduce_only mode" in reason for reason in alpha_reject_reasons)
+
+
+def test_run_backtest_strategy_risk_cooldown_blocks_orders() -> None:
+    """Risk-triggered cooldown should reject subsequent orders for configured bars."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_risk_cooldown_bars"):
+        pytest.skip("Engine binary does not expose strategy cooldown methods")
+
+    bars = _build_reduce_only_bars("SLOT_RISK_COOLDOWN")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=ContinuousBuyStrategy,
+        symbol="SLOT_RISK_COOLDOWN",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategy_max_order_size={"alpha": 5.0},
+        strategy_risk_cooldown_bars={"alpha": 2},
+    )
+    orders_df = result.orders_df
+    assert not orders_df.empty
+    reject_reasons = orders_df["reject_reason"].fillna("").astype(str).tolist()
+    assert any("order quantity" in reason for reason in reject_reasons)
+    assert any("cooldown" in reason for reason in reject_reasons)
+
+
+def test_run_backtest_rejects_unknown_strategy_reduce_only_after_risk_key() -> None:
+    """Unknown strategy id in reduce-only map should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_reduce_only_after_risk"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+    bars = _build_regression_bars("SLOT_RISK_REDUCE_ONLY_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_REDUCE_ONLY_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_reduce_only_after_risk={"beta": True},
+        )
+
+
+def test_run_backtest_rejects_unknown_strategy_risk_cooldown_bars_key() -> None:
+    """Unknown strategy id in strategy_risk_cooldown_bars should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_risk_cooldown_bars"):
+        pytest.skip("Engine binary does not expose strategy cooldown methods")
+    bars = _build_regression_bars("SLOT_RISK_COOLDOWN_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_COOLDOWN_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_risk_cooldown_bars={"beta": 2},
+        )
+
+
+def test_run_backtest_rejects_unknown_strategy_priority_key() -> None:
+    """Unknown strategy id in strategy_priority should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_priorities"):
+        pytest.skip("Engine binary does not expose strategy priority methods")
+    bars = _build_regression_bars("SLOT_PRIORITY_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_PRIORITY_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_priority={"beta": 100},
+        )
+
+
+def test_run_backtest_rejects_unknown_strategy_risk_budget_key() -> None:
+    """Unknown strategy id in strategy_risk_budget should fail fast."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_risk_budget_limits"):
+        pytest.skip("Engine binary does not expose strategy risk budget methods")
+    bars = _build_regression_bars("SLOT_RISK_BUDGET_BAD")
+    with pytest.raises(ValueError, match="unknown strategy id"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_BUDGET_BAD",
+            show_progress=False,
+            strategy_id="alpha",
+            strategy_risk_budget={"beta": 100.0},
+        )
+
+
+def test_run_backtest_rejects_invalid_risk_budget_mode() -> None:
+    """Invalid risk_budget_mode should fail fast."""
+    bars = _build_regression_bars("SLOT_RISK_BUDGET_MODE_BAD")
+    with pytest.raises(ValueError, match="risk_budget_mode"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="SLOT_RISK_BUDGET_MODE_BAD",
+            show_progress=False,
+            risk_budget_mode=cast(Any, "bad_mode"),
+        )
+
+
+def test_run_backtest_strategy_id_propagates_to_executions_df() -> None:
+    """run_backtest should expose owner strategy id in executions dataframe."""
+    bars = _build_regression_bars("OWNER_EXEC")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=RegressionStrategy,
+        symbol="OWNER_EXEC",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha_exec",
+    )
+    executions_df = result.executions_df
+    assert not executions_df.empty
+    assert "owner_strategy_id" in executions_df.columns
+    owner_ids = set(executions_df["owner_strategy_id"].dropna().astype(str))
+    assert owner_ids == {"alpha_exec"}
+
+
 def test_run_backtest_with_on_event_matches_stream_entry() -> None:
-    """run_backtest with on_event should match run_backtest_stream semantics."""
+    """run_backtest with on_event should match unified stream semantics."""
     data = _build_benchmark_data(n=120, symbol="EVENT_EQ")
     common_args: dict[str, Any] = dict(
         data=data,
@@ -352,7 +1182,7 @@ def test_run_backtest_with_on_event_matches_stream_entry() -> None:
         stream_max_buffer=128,
     )
     stream_events: list[akquant.BacktestStreamEvent] = []
-    via_stream_entry = akquant.run_backtest_stream(
+    via_stream_entry = akquant.run_backtest(
         **common_args,
         on_event=stream_events.append,
         stream_progress_interval=8,
@@ -376,6 +1206,415 @@ def test_run_backtest_with_on_event_matches_stream_entry() -> None:
     )
 
 
+def test_run_backtest_on_event_multi_slot_owner_strategy_ids_mixed() -> None:
+    """run_backtest with on_event should emit mixed owner strategy ids across slots."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_slots") or not hasattr(
+        probe, "set_strategy_for_slot"
+    ):
+        pytest.skip("Engine binary does not expose multi-slot strategy methods")
+
+    bars = _build_regression_bars("STREAM_SLOT_OWNER")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=RegressionStrategy,
+        symbol="STREAM_SLOT_OWNER",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": RegressionStrategy},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+
+    owner_ids = {
+        str(event["payload"]["owner_strategy_id"])
+        for event in events
+        if event.get("event_type") in {"order", "trade", "risk"}
+        and "owner_strategy_id" in event.get("payload", {})
+    }
+    assert owner_ids == {"alpha", "beta"}
+
+
+def test_run_backtest_on_event_strategy_priority_orders_requests_by_priority() -> None:
+    """run_backtest with on_event should process higher-priority orders first."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_priorities"):
+        pytest.skip("Engine binary does not expose strategy priority methods")
+
+    bars = _build_regression_bars("STREAM_SLOT_PRIORITY")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="STREAM_SLOT_PRIORITY",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": SingleBuyStrategy},
+        strategy_priority={"alpha": 1, "beta": 10},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    submitted_owner_ids = [
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "order"
+        and str(event.get("payload", {}).get("status")) == "New"
+    ]
+    assert len(submitted_owner_ids) >= 2
+    assert submitted_owner_ids[0] == "beta"
+    assert submitted_owner_ids[1] == "alpha"
+
+
+def test_run_backtest_on_event_portfolio_risk_budget_respects_priority_order() -> None:
+    """Portfolio risk budget should reject lower-priority strategy."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_portfolio_risk_budget_limit"):
+        pytest.skip("Engine binary does not expose portfolio risk budget methods")
+
+    bars = _build_regression_bars("STREAM_SLOT_PORTFOLIO_BUDGET")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="STREAM_SLOT_PORTFOLIO_BUDGET",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": SingleBuyStrategy},
+        strategy_priority={"alpha": 1, "beta": 10},
+        portfolio_risk_budget=100.0,
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    accepted = [
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "order"
+        and str(event.get("payload", {}).get("status")) == "New"
+    ]
+    assert accepted == ["beta"]
+    rejected = [
+        (
+            str(event["payload"].get("owner_strategy_id")),
+            str(event["payload"].get("reason", "")),
+        )
+        for event in events
+        if event.get("event_type") == "risk"
+    ]
+    assert any(
+        owner_id == "alpha" and "portfolio risk budget" in reason.lower()
+        for owner_id, reason in rejected
+    )
+
+
+def test_run_backtest_trade_notional_budget_blocks_later_orders() -> None:
+    """Trade-notional budget mode should block later bars after accumulated fills."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_risk_budget_mode"):
+        pytest.skip("Engine binary does not expose risk budget mode methods")
+    bars = _build_regression_bars("SLOT_TRADE_NOTIONAL_BUDGET")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=ContinuousBuyStrategy,
+        symbol="SLOT_TRADE_NOTIONAL_BUDGET",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategy_risk_budget={"alpha": 100.0},
+        risk_budget_mode="trade_notional",
+    )
+    reasons = result.orders_df["reject_reason"].fillna("").astype(str).tolist()
+    assert any("risk budget" in reason.lower() for reason in reasons)
+
+
+def test_run_backtest_trade_notional_budget_resets_daily() -> None:
+    """Daily reset should allow next-day orders under trade-notional budget mode."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_risk_budget_reset_daily"):
+        pytest.skip("Engine binary does not expose risk budget reset methods")
+    bars = _build_regression_bars("SLOT_TRADE_NOTIONAL_RESET")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=ContinuousSmallBuyStrategy,
+        symbol="SLOT_TRADE_NOTIONAL_RESET",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategy_risk_budget={"alpha": 100.0},
+        risk_budget_mode="trade_notional",
+        risk_budget_reset_daily=True,
+    )
+    reasons = result.orders_df["reject_reason"].fillna("").astype(str).tolist()
+    assert not any("risk budget" in reason.lower() for reason in reasons)
+
+
+def test_run_backtest_on_event_strategy_max_order_value_by_slot() -> None:
+    """Per-strategy order value limit should reflect in stream risk events."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_value_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_regression_bars("STREAM_SLOT_RISK")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="STREAM_SLOT_RISK",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": SingleBuyStrategy},
+        strategy_max_order_value={"alpha": 50.0, "beta": 200.0},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    risk_owner_ids = {
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "risk"
+    }
+    assert risk_owner_ids == {"alpha"}
+
+
+def test_run_backtest_on_event_strategy_max_order_size_by_slot() -> None:
+    """Per-strategy order size limit should reflect in stream risk events."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_regression_bars("STREAM_SLOT_SIZE")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="STREAM_SLOT_SIZE",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": SingleBuyStrategy},
+        strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    risk_owner_ids = {
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "risk"
+    }
+    assert risk_owner_ids == {"alpha"}
+
+
+def test_run_backtest_on_event_strategy_max_position_size_by_slot() -> None:
+    """Per-strategy position limit should reflect in stream risk events."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_position_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_regression_bars("STREAM_SLOT_POSITION")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=DualBuyStrategy,
+        symbol="STREAM_SLOT_POSITION",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": DualBuyStrategy},
+        strategy_max_position_size={"alpha": 15.0, "beta": 30.0},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    risk_owner_ids = {
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "risk"
+    }
+    assert risk_owner_ids == {"alpha"}
+
+
+def test_run_backtest_on_event_strategy_max_daily_loss_by_slot() -> None:
+    """Per-strategy daily loss limit should reflect in stream risk events."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_daily_loss_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_daily_loss_bars("STREAM_SLOT_DAILY_LOSS")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=DualBuyStrategy,
+        symbol="STREAM_SLOT_DAILY_LOSS",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": DualBuyStrategy},
+        strategy_max_daily_loss={"alpha": 5.0, "beta": 50.0},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    risk_owner_ids = {
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "risk"
+    }
+    assert risk_owner_ids == {"alpha"}
+
+
+def test_run_backtest_on_event_strategy_max_drawdown_by_slot() -> None:
+    """Per-strategy drawdown limit should reflect in stream risk events."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_drawdown_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_daily_loss_bars("STREAM_SLOT_DRAWDOWN")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=DualBuyStrategy,
+        symbol="STREAM_SLOT_DRAWDOWN",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": DualBuyStrategy},
+        strategy_max_drawdown={"alpha": 5.0, "beta": 50.0},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    risk_owner_ids = {
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "risk"
+    }
+    assert risk_owner_ids == {"alpha"}
+
+
+def test_run_backtest_on_event_reduce_only_after_risk_by_slot() -> None:
+    """Stream risk events should include reduce-only rejections."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_reduce_only_after_risk"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    bars = _build_reduce_only_bars("STREAM_SLOT_REDUCE_ONLY")
+    events: list[akquant.BacktestStreamEvent] = []
+    akquant.run_backtest(
+        data=bars,
+        strategy=BuyBuySellBuyStrategy,
+        symbol="STREAM_SLOT_REDUCE_ONLY",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BuyBuySellBuyStrategy},
+        strategy_max_daily_loss={"alpha": 5.0, "beta": 50.0},
+        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+    )
+    alpha_reduce_only_events = [
+        event
+        for event in events
+        if event.get("event_type") == "risk"
+        and str(event.get("payload", {}).get("owner_strategy_id")) == "alpha"
+        and "reduce_only mode" in str(event.get("payload", {}).get("reason", ""))
+    ]
+    assert alpha_reduce_only_events
+
+
 def test_run_backtest_rejects_removed_engine_mode_option() -> None:
     """Removed internal _engine_mode option should raise fast."""
     data = _build_benchmark_data(n=10, symbol="BAD_MODE")
@@ -389,11 +1628,11 @@ def test_run_backtest_rejects_removed_engine_mode_option() -> None:
         )
 
 
-def test_run_backtest_stream_high_frequency_keeps_critical_events() -> None:
+def test_run_backtest_on_event_high_frequency_keeps_critical_events() -> None:
     """High-frequency stream should keep critical events and sampled updates."""
     data = _build_benchmark_data(n=2000, symbol="HF")
     events: list[akquant.BacktestStreamEvent] = []
-    akquant.run_backtest_stream(
+    akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
         symbol="HF",
@@ -429,7 +1668,7 @@ def test_run_backtest_stream_high_frequency_keeps_critical_events() -> None:
     assert int(str(finished_payload["dropped_event_count"])) >= 0
 
 
-def test_run_backtest_stream_callback_error_continue_mode() -> None:
+def test_run_backtest_on_event_callback_error_continue_mode() -> None:
     """Continue mode should survive callback exceptions."""
     data = _build_benchmark_data(n=40, symbol="CALLBACK_CONT")
     events: list[akquant.BacktestStreamEvent] = []
@@ -441,7 +1680,7 @@ def test_run_backtest_stream_callback_error_continue_mode() -> None:
             raise RuntimeError("callback boom")
         events.append(event)
 
-    result = akquant.run_backtest_stream(
+    result = akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
         symbol="CALLBACK_CONT",
@@ -457,11 +1696,11 @@ def test_run_backtest_stream_callback_error_continue_mode() -> None:
     assert result.metrics.initial_market_value == pytest.approx(1000000.0, rel=1e-9)
 
 
-def test_run_backtest_stream_reports_dropped_events_under_backpressure() -> None:
+def test_run_backtest_on_event_reports_dropped_events_under_backpressure() -> None:
     """Finished payload should report dropped events when buffer is constrained."""
     data = _build_benchmark_data(n=300, symbol="DROP")
     events: list[akquant.BacktestStreamEvent] = []
-    akquant.run_backtest_stream(
+    akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
         symbol="DROP",
@@ -482,11 +1721,11 @@ def test_run_backtest_stream_reports_dropped_events_under_backpressure() -> None
     assert dropped_by_type
 
 
-def test_run_backtest_stream_audit_mode_enforces_full_delivery() -> None:
+def test_run_backtest_on_event_audit_mode_enforces_full_delivery() -> None:
     """Audit mode should disable sampling and avoid dropping non-critical events."""
     data = _build_benchmark_data(n=300, symbol="AUDIT")
     events: list[akquant.BacktestStreamEvent] = []
-    akquant.run_backtest_stream(
+    akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
         symbol="AUDIT",
@@ -513,7 +1752,7 @@ def test_run_backtest_stream_audit_mode_enforces_full_delivery() -> None:
     assert str(payload.get("dropped_event_count_by_type", "")) == ""
 
 
-def test_run_backtest_stream_callback_error_fail_fast_mode() -> None:
+def test_run_backtest_on_event_callback_error_fail_fast_mode() -> None:
     """Fail-fast mode should raise once callback throws."""
     data = _build_benchmark_data(n=40, symbol="CALLBACK_FAIL")
 
@@ -521,7 +1760,7 @@ def test_run_backtest_stream_callback_error_fail_fast_mode() -> None:
         raise RuntimeError("callback boom")
 
     with pytest.raises(RuntimeError, match="stream callback failed in fail_fast mode"):
-        akquant.run_backtest_stream(
+        akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
             symbol="CALLBACK_FAIL",
@@ -531,11 +1770,11 @@ def test_run_backtest_stream_callback_error_fail_fast_mode() -> None:
         )
 
 
-def test_run_backtest_stream_rejects_invalid_error_mode() -> None:
+def test_run_backtest_on_event_rejects_invalid_error_mode() -> None:
     """Invalid stream error mode should be rejected."""
     data = _build_benchmark_data(n=5, symbol="CALLBACK_MODE")
     with pytest.raises(ValueError):
-        akquant.run_backtest_stream(
+        akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
             symbol="CALLBACK_MODE",
@@ -545,11 +1784,11 @@ def test_run_backtest_stream_rejects_invalid_error_mode() -> None:
         )
 
 
-def test_run_backtest_stream_rejects_invalid_stream_mode() -> None:
+def test_run_backtest_on_event_rejects_invalid_stream_mode() -> None:
     """Invalid stream mode should be rejected."""
     data = _build_benchmark_data(n=5, symbol="MODE_BAD")
     with pytest.raises(ValueError):
-        akquant.run_backtest_stream(
+        akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
             symbol="MODE_BAD",
@@ -559,7 +1798,7 @@ def test_run_backtest_stream_rejects_invalid_stream_mode() -> None:
         )
 
 
-def test_run_backtest_stream_audit_mode_latency_budget_benchmark() -> None:
+def test_run_backtest_on_event_audit_mode_latency_budget_benchmark() -> None:
     """Audit mode benchmark with fixed callback delays for budget baselining."""
     data = _build_benchmark_data(n=240, symbol="AUDIT_BUDGET")
     delay_ms_options = [0, 1, 5]
@@ -575,7 +1814,7 @@ def test_run_backtest_stream_audit_mode_latency_budget_benchmark() -> None:
                 time.sleep(delay_ms / 1000.0)
 
         start = time.perf_counter()
-        akquant.run_backtest_stream(
+        akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
             symbol="AUDIT_BUDGET",

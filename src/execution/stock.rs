@@ -45,6 +45,7 @@ mod tests {
             commission: Decimal::ZERO,
             tag: "".to_string(),
             reject_reason: "".to_string(),
+            owner_strategy_id: None,
         }
     }
 

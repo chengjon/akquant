@@ -17,7 +17,6 @@ from .backtest import (  # type: ignore
     BacktestResult,
     BacktestStreamEvent,
     run_backtest,
-    run_backtest_stream,
     run_warm_start,
 )
 from .checkpoint import save_snapshot, warm_start
@@ -50,7 +49,6 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "Indicator",
         "IndicatorSet",
         "run_backtest",
-        "run_backtest_stream",
         "run_warm_start",
         "plot_result",
         "BacktestResult",
@@ -88,7 +86,6 @@ else:
         "Indicator",
         "IndicatorSet",
         "run_backtest",
-        "run_backtest_stream",
         "run_warm_start",
         "plot_result",
         "BacktestResult",

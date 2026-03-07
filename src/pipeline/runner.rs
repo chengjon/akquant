@@ -13,6 +13,7 @@ impl Default for PipelineRunner {
 }
 
 impl PipelineRunner {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             processors: Vec::new(),

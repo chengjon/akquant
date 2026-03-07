@@ -78,6 +78,47 @@ class DummyResult:
             }
         )
 
+    def orders_by_strategy(self) -> pd.DataFrame:
+        """Return synthetic strategy-level order summary."""
+        return pd.DataFrame(
+            {
+                "owner_strategy_id": ["alpha"],
+                "order_count": [2],
+                "filled_order_count": [2],
+                "filled_quantity": [100.0],
+                "filled_value": [1000.0],
+                "fill_rate_qty": [1.0],
+            }
+        )
+
+    def executions_by_strategy(self) -> pd.DataFrame:
+        """Return synthetic strategy-level execution summary."""
+        return pd.DataFrame(
+            {
+                "owner_strategy_id": ["alpha"],
+                "execution_count": [2],
+                "total_quantity": [100.0],
+                "total_notional": [1000.0],
+                "total_commission": [0.0],
+                "avg_fill_price": [10.0],
+            }
+        )
+
+    def risk_rejections_by_strategy(self) -> pd.DataFrame:
+        """Return synthetic strategy-level risk rejection summary."""
+        return pd.DataFrame(
+            {
+                "owner_strategy_id": ["alpha"],
+                "risk_reject_count": [2],
+                "daily_loss_reject_count": [1],
+                "drawdown_reject_count": [1],
+                "reduce_only_reject_count": [0],
+                "strategy_risk_budget_reject_count": [1],
+                "portfolio_risk_budget_reject_count": [0],
+                "other_risk_reject_count": [0],
+            }
+        )
+
 
 def test_build_summary_context_with_equity_data() -> None:
     """Summary context should render dates and final equity when equity exists."""
@@ -95,10 +136,18 @@ def test_build_analysis_table_sections_with_and_without_data() -> None:
     assert "平均换手率 (Avg Turnover)" in sections["capacity_summary_html"]
     assert "分组 (Group)" in sections["attribution_summary_html"]
     assert "TEST" in sections["attribution_summary_html"]
+    assert "策略ID (Strategy ID)" in sections["orders_by_strategy_html"]
+    assert "策略ID (Strategy ID)" in sections["executions_by_strategy_html"]
+    assert "风险拒单总数 (Risk Rejects)" in sections["risk_by_strategy_html"]
+    assert (
+        "策略预算拒单数 (Strategy Budget Rejects)" in sections["risk_by_strategy_html"]
+    )
     assert "10.000000%" in sections["exposure_summary_html"]
     assert "1.000000%" in sections["capacity_summary_html"]
     assert "100.000000%" in sections["attribution_summary_html"]
     assert "1.00K" in sections["capacity_summary_html"]
+    assert "1.00K" in sections["orders_by_strategy_html"]
+    assert "1.00K" in sections["executions_by_strategy_html"]
 
     sections_raw = _build_analysis_table_sections(result, compact_currency=False)
     assert "1,000.000000" in sections_raw["capacity_summary_html"]
@@ -116,10 +165,28 @@ def test_build_analysis_table_sections_with_and_without_data() -> None:
             _ = by
             return pd.DataFrame()
 
+        def orders_by_strategy(self) -> pd.DataFrame:
+            return pd.DataFrame()
+
+        def executions_by_strategy(self) -> pd.DataFrame:
+            return pd.DataFrame()
+
+        def risk_rejections_by_strategy(self) -> pd.DataFrame:
+            return pd.DataFrame()
+
     empty_sections = _build_analysis_table_sections(EmptyResult(with_data=False))
+    empty_orders_by_strategy_html = "<div>暂无策略归属订单聚合数据</div>"
+    empty_executions_by_strategy_html = "<div>暂无策略归属成交聚合数据</div>"
+    empty_risk_by_strategy_html = "<div>暂无策略归属风控拒单聚合数据</div>"
     assert empty_sections["exposure_summary_html"] == "<div>暂无暴露数据</div>"
     assert empty_sections["capacity_summary_html"] == "<div>暂无容量数据</div>"
     assert empty_sections["attribution_summary_html"] == "<div>暂无归因数据</div>"
+    assert empty_sections["orders_by_strategy_html"] == empty_orders_by_strategy_html
+    assert (
+        empty_sections["executions_by_strategy_html"]
+        == empty_executions_by_strategy_html
+    )
+    assert empty_sections["risk_by_strategy_html"] == empty_risk_by_strategy_html
 
 
 def test_build_metrics_html_contains_key_labels() -> None:

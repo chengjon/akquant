@@ -74,11 +74,11 @@ impl StatisticsManager {
 
             let price = last_prices
                 .get(symbol)
-                .cloned()
+                .copied()
                 .unwrap_or(Decimal::ZERO);
             let instr = instruments.get(symbol);
-            let multiplier = instr.map(|i| i.multiplier()).unwrap_or(Decimal::ONE);
-            let margin_ratio = instr.map(|i| i.margin_ratio()).unwrap_or(Decimal::ZERO);
+            let multiplier = instr.map_or(Decimal::ONE, Instrument::multiplier);
+            let margin_ratio = instr.map_or(Decimal::ZERO, Instrument::margin_ratio);
 
             // Convert to f64 for snapshot
             let qty_f64 = qty.to_f64().unwrap_or(0.0);
@@ -141,17 +141,17 @@ impl StatisticsManager {
             let equity = portfolio.calculate_equity(last_prices, instruments);
 
             // Append final equity point if not present
-            if equity_curve.last().map(|(t, _)| *t != ts).unwrap_or(true) {
+            if equity_curve.last().is_none_or(|(t, _)| *t != ts) {
                 equity_curve.push((ts, equity));
             }
 
             // Append final cash point if not present
-            if cash_curve.last().map(|(t, _)| *t != ts).unwrap_or(true) {
+            if cash_curve.last().is_none_or(|(t, _)| *t != ts) {
                 cash_curve.push((ts, portfolio.cash));
             }
 
             // Append final position snapshot if not present
-            if snapshots.last().map(|(t, _)| *t != ts).unwrap_or(true) {
+            if snapshots.last().is_none_or(|(t, _)| *t != ts) {
                 let snap = Self::create_snapshot(
                     portfolio,
                     instruments,

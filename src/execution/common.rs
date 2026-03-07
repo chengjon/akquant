@@ -236,6 +236,7 @@ impl CommonMatcher {
                             commission: Decimal::ZERO,
                             timestamp: bar.timestamp,
                             bar_index,
+                            owner_strategy_id: order.owner_strategy_id.clone(),
                         };
                         return Some(Event::ExecutionReport(order.clone(), Some(trade)));
                     }
@@ -306,6 +307,7 @@ impl CommonMatcher {
                             commission: Decimal::ZERO,
                             timestamp: tick.timestamp,
                             bar_index,
+                            owner_strategy_id: order.owner_strategy_id.clone(),
                         };
                         return Some(Event::ExecutionReport(order.clone(), Some(trade)));
                       }

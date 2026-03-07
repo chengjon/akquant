@@ -200,6 +200,13 @@ attr_by_tag = result.attribution_df(by="tag")
 
 # 3) 容量代理指标（订单数、成交率、换手）
 capacity = result.capacity_df()
+
+# 4) 按策略归属聚合（适用于多 slot / 多策略场景）
+orders_by_strategy = result.orders_by_strategy()
+executions_by_strategy = result.executions_by_strategy()
+risk_by_strategy = result.risk_rejections_by_strategy()
+risk_trend = result.risk_rejections_trend(freq="D")
+risk_trend_by_strategy = result.risk_rejections_trend_by_strategy(freq="D")
 ```
 
 或者使用 `plot` 方法快速预览特定图表：

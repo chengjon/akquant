@@ -406,6 +406,7 @@ impl BacktestResult {
         let mut time_in_force = Vec::with_capacity(n);
         let mut tags = Vec::with_capacity(n);
         let mut reject_reasons = Vec::with_capacity(n);
+        let mut owner_strategy_ids = Vec::with_capacity(n);
 
         for o in &self.orders {
             ids.push(o.id.clone());
@@ -436,6 +437,7 @@ impl BacktestResult {
             time_in_force.push(format!("{:?}", o.time_in_force).to_lowercase());
             tags.push(o.tag.clone());
             reject_reasons.push(o.reject_reason.clone());
+            owner_strategy_ids.push(o.owner_strategy_id.clone());
         }
 
         let dict = pyo3::types::PyDict::new(py);
@@ -455,6 +457,7 @@ impl BacktestResult {
         dict.set_item("updated_at", updated_dates)?;
         dict.set_item("tag", tags)?;
         dict.set_item("reject_reason", reject_reasons)?;
+        dict.set_item("owner_strategy_id", owner_strategy_ids)?;
 
         Ok(dict.into())
     }

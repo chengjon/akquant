@@ -35,6 +35,7 @@ def run_backtest(
     instruments_config: Optional[Union[List[InstrumentConfig], Dict[str, InstrumentConfig]]] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
     risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
+    strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     **kwargs: Any,
 ) -> BacktestResult
@@ -59,12 +60,13 @@ def run_backtest(
 *   `lot_size`: 最小交易单位。如果是 `int`，应用于所有标的；如果是字典，按标的匹配。
 *   `custom_matchers`: 自定义撮合器字典。
 *   `risk_config`: 风控配置。支持字典 (e.g., `{"max_position_pct": 0.1}`) 或 `RiskConfig` 对象。如果同时提供了 `config.strategy_config.risk`，此参数将覆盖其中的同名字段。
+*   `strategies_by_slot`: 可选多策略映射。键为 slot id，值为策略类/实例/函数式 on_bar 回调；用于启用 slot 迭代执行。
 *   `on_event`: 可选事件回调。不传时内部使用 no-op 回调并保持阻塞返回语义；传入时可实时消费事件。
 
 **兼容与迁移说明:**
 
 *   推荐逐步将实时 UI / 日志 / 告警接入迁移到 `run_backtest(..., on_event=...)`。
-*   `run_backtest_stream` 继续保留，用于显式表达“必须消费流式事件”的调用语义。
+*   流式场景统一使用 `run_backtest(..., on_event=...)`。
 *   阶段 5 后不再提供运行时参数级回滚开关；如需回滚请使用版本级回滚策略。
 *   阶段 4 观察窗口与推进门槛请参考：[流式统一内核观察清单](../advanced/stream_observability.md)。
 
@@ -74,23 +76,7 @@ def run_backtest(
 *   `run_backtest` 是否仍可不传 `on_event`？可以，不传时仍返回同样的结果对象语义。
 *   线上出现问题如何回退？使用版本级回滚，不再支持 `_engine_mode` 参数级回切。
 
-### `akquant.run_backtest_stream`
-
-流式回测入口。与 `run_backtest` 返回语义一致，但支持在运行期间通过回调接收事件。
-
-```python
-def run_backtest_stream(
-    data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]]] = None,
-    strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
-    on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
-    stream_progress_interval: int = 1,
-    stream_equity_interval: int = 1,
-    stream_batch_size: int = 1,
-    stream_max_buffer: int = 1024,
-    stream_error_mode: Literal["continue", "fail_fast"] = "continue",
-    **kwargs: Any,
-) -> BacktestResult
-```
+### 流式参数与事件 (`run_backtest`)
 
 **关键参数:**
 
@@ -105,6 +91,7 @@ def run_backtest_stream(
 *   `stream_mode`: 流式模式。
     *   `"observability"`: 观测模式，允许采样与非关键事件背压丢弃。
     *   `"audit"`: 审计模式，禁用采样并采用阻塞背压（不丢弃非关键事件）。
+*   `strategy_id`（通过 `**kwargs` 透传）: 为交易相关事件与结果打上策略归属，默认 `_default`。
 
 **事件结构 (`BacktestStreamEvent`):**
 
@@ -123,6 +110,18 @@ def run_backtest_stream(
 *   交易相关: `order`, `trade`, `risk`
 *   运行异常: `error`
 *   行情流: `tick`
+
+**交易事件 payload 常用字段 (`order`/`trade`/`risk`):**
+
+*   `owner_strategy_id`: 策略归属 ID（默认 `_default`）。
+*   `order_id`: 订单 ID（`order`/`trade`/`risk`）。
+*   `symbol`: 标的代码（`order`/`risk`）。
+*   `status`: 订单状态（`order`）。
+*   `filled_qty`: 订单已成交量（`order`）。
+*   `trade_id`: 成交 ID（`trade`）。
+*   `price`: 成交价格（`trade`）。
+*   `quantity`: 成交数量（`trade`）。
+*   `reason`: 风控拒绝原因（`risk`）。
 
 **`finished.payload` 常用字段:**
 
@@ -504,3 +503,26 @@ class RiskConfig:
 *   `trades`: `ClosedTrade` 对象列表。
 *   `executions`: `Trade` 对象列表 (所有成交流水)。
 *   `snapshots`: 每日 `PositionSnapshot` 列表。
+
+**分析方法:**
+
+*   `exposure_df(freq="D")`: 组合暴露分解（净暴露、总暴露、杠杆）。
+*   `attribution_df(by="symbol", use_net=True, top_n=None)`: 按 symbol/tag 做归因汇总。
+*   `capacity_df(freq="D")`: 容量代理指标（订单数、成交率、换手）。
+*   `orders_by_strategy()`: 按 `owner_strategy_id` 聚合订单统计。
+*   `executions_by_strategy()`: 按 `owner_strategy_id` 聚合成交流水统计。
+
+```python
+orders_by_strategy = result.orders_by_strategy()
+executions_by_strategy = result.executions_by_strategy()
+
+# 常用字段示例
+# orders_by_strategy:
+# - owner_strategy_id, order_count, filled_order_count,
+#   ordered_quantity, filled_quantity, ordered_value, filled_value,
+#   fill_rate_qty, fill_rate_value
+#
+# executions_by_strategy:
+# - owner_strategy_id, execution_count, total_quantity,
+#   total_notional, total_commission, avg_fill_price
+```

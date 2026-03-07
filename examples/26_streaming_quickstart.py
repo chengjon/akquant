@@ -66,7 +66,7 @@ def main() -> None:
     backtest_config = BacktestConfig(strategy_config=strategy_config)
 
     events: list[aq.BacktestStreamEvent] = []
-    result = aq.run_backtest_stream(
+    result = aq.run_backtest(
         strategy=MyStreamStrategy,
         data=data,
         initial_cash=5000000,
@@ -87,6 +87,7 @@ def main() -> None:
         stream_batch_size=32,
         stream_max_buffer=256,
         stream_error_mode="continue",
+        strategy_id="quickstart_alpha",
     )
 
     print(result)
@@ -103,6 +104,16 @@ def main() -> None:
         if events and events[-1].get("event_type") == "finished"
         else {}
     )
+    owner_counter: dict[str, int] = {}
+    for event in events:
+        event_type = str(event.get("event_type", ""))
+        if event_type not in {"order", "trade", "risk"}:
+            continue
+        payload = event.get("payload", {})
+        owner = "_default"
+        if isinstance(payload, dict):
+            owner = str(payload.get("owner_strategy_id", "_default"))
+        owner_counter[owner] = owner_counter.get(owner, 0) + 1
     print(f"stream_started={started}")
     print(f"stream_finished={finished}")
     print(f"stream_progress={progress}")
@@ -112,6 +123,7 @@ def main() -> None:
         "stream_callback_error_count="
         f"{finished_payload.get('callback_error_count', '0')}"
     )
+    print(f"stream_owner_event_counts={owner_counter}")
     print("done_streaming_quickstart")
 
 

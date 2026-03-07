@@ -61,6 +61,8 @@ def main() -> None:
     attribution_by_symbol = result.attribution_df(by="symbol")
     attribution_by_tag = result.attribution_df(by="tag")
     capacity = result.capacity_df()
+    orders_by_strategy = result.orders_by_strategy()
+    executions_by_strategy = result.executions_by_strategy()
 
     print(result)
     print(f"report_html={report_path}")
@@ -68,6 +70,8 @@ def main() -> None:
     print(f"attribution_symbol_rows={len(attribution_by_symbol)}")
     print(f"attribution_tag_rows={len(attribution_by_tag)}")
     print(f"capacity_rows={len(capacity)}")
+    print(f"orders_by_strategy_rows={len(orders_by_strategy)}")
+    print(f"executions_by_strategy_rows={len(executions_by_strategy)}")
     print("done_report_and_analysis_outputs")
 
 

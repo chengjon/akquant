@@ -256,6 +256,8 @@ exposure = result.exposure_df()
 attr_by_symbol = result.attribution_df(by="symbol")
 attr_by_tag = result.attribution_df(by="tag")
 capacity = result.capacity_df()
+orders_by_strategy = result.orders_by_strategy()
+executions_by_strategy = result.executions_by_strategy()
 ```
 
 ## 3. 进阶学习
@@ -273,10 +275,10 @@ capacity = result.capacity_df()
 ## 4. 流式回测
 
 如果你希望在回测过程中实时接收事件（进度、权益、订单、成交、结束状态），可以使用
-`run_backtest_stream`。
+`run_backtest` 并传入 `on_event`。
 
 ```python
-from akquant import run_backtest_stream
+from akquant import run_backtest
 
 def on_event(event):
     if event["event_type"] == "finished":
@@ -284,7 +286,7 @@ def on_event(event):
         print("status:", payload.get("status"))
         print("callback_error_count:", payload.get("callback_error_count"))
 
-result = run_backtest_stream(
+result = run_backtest(
     data=df,
     strategy=MyStrategy,
     symbol="sh600000",

@@ -156,6 +156,7 @@ run_backtest(strategy=MyStrategy, data=df, symbol="600000")
 
 *   快速查看迁移 FAQ（快速开始）：[快速开始中的阶段 5 迁移 FAQ](start/quickstart.md#阶段-5-迁移-faq)
 *   查看完整兼容说明（API 参考）：[API 兼容与迁移说明](reference/api.md#兼容与迁移说明)
+*   多策略迁移清单（进阶专题）：[多策略迁移指南](advanced/multi_strategy_migration.md)
 
 ## 策略实战入口
 

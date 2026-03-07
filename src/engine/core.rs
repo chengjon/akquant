@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::*;
 use rust_decimal::prelude::*;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
@@ -20,7 +20,7 @@ use crate::history::HistoryBuffer;
 use crate::market::corporate_action::CorporateActionManager;
 use crate::market::manager::MarketManager;
 use crate::model::{
-    ExecutionMode, Instrument, Order, Timer, Trade,
+    ExecutionMode, Instrument, Order, OrderSide, Timer, Trade,
 };
 use crate::pipeline::stages::{
     ChannelProcessor, CleanupProcessor, DataProcessor, ExecutionPhase, ExecutionProcessor,
@@ -32,6 +32,11 @@ use crate::settlement::SettlementManager;
 use crate::statistics::StatisticsManager;
 
 use super::state::SharedState;
+
+#[derive(Debug, Clone)]
+pub struct StrategySlot {
+    pub(crate) strategy_id: String,
+}
 
 /// 主回测引擎.
 ///
@@ -66,7 +71,34 @@ pub struct Engine {
     pub(crate) current_event: Option<Event>,
     pub(crate) bar_count: usize,
     pub(crate) progress_bar: Option<ProgressBar>,
-    pub(crate) strategy_context: Option<Py<StrategyContext>>,
+    pub(crate) strategy_contexts: Vec<Option<Py<StrategyContext>>>,
+    pub(crate) strategy_slot_strategies: Vec<Option<Py<PyAny>>>,
+    pub(crate) strategy_slots: Vec<StrategySlot>,
+    pub(crate) active_strategy_slot: usize,
+    pub(crate) default_strategy_id: Option<String>,
+    pub(crate) strategy_priorities: HashMap<String, i32>,
+    pub(crate) strategy_risk_budget_limits: HashMap<String, Decimal>,
+    pub(crate) portfolio_risk_budget_limit: Option<Decimal>,
+    pub(crate) strategy_risk_budget_used: HashMap<String, Decimal>,
+    pub(crate) portfolio_risk_budget_used: Decimal,
+    pub(crate) risk_budget_mode: String,
+    pub(crate) risk_budget_reset_daily: bool,
+    pub(crate) risk_budget_usage_day: Option<NaiveDate>,
+    pub(crate) strategy_max_order_value_limits: HashMap<String, Decimal>,
+    pub(crate) strategy_max_order_size_limits: HashMap<String, Decimal>,
+    pub(crate) strategy_max_position_size_limits: HashMap<String, Decimal>,
+    pub(crate) strategy_max_daily_loss_limits: HashMap<String, Decimal>,
+    pub(crate) strategy_max_drawdown_limits: HashMap<String, Decimal>,
+    pub(crate) strategy_risk_cooldown_bars: HashMap<String, usize>,
+    pub(crate) strategy_risk_cooldown_until_bar: HashMap<String, usize>,
+    pub(crate) strategy_reduce_only_after_risk: HashSet<String>,
+    pub(crate) strategy_positions: HashMap<String, HashMap<String, Decimal>>,
+    pub(crate) strategy_cashflows: HashMap<String, Decimal>,
+    pub(crate) strategy_daily_loss_day: HashMap<String, NaiveDate>,
+    pub(crate) strategy_daily_loss_baseline_pnl: HashMap<String, Decimal>,
+    pub(crate) strategy_last_pnl: HashMap<String, Decimal>,
+    pub(crate) strategy_peak_pnl: HashMap<String, Decimal>,
+    pub(crate) strategy_reduce_only_active: HashSet<String>,
     pub(crate) snapshot_time: i64,
     pub(crate) stream_callback: Option<Py<PyAny>>,
     pub(crate) stream_run_id: Option<String>,
@@ -96,6 +128,478 @@ pub(crate) struct PendingStreamEvent {
 
 // Internal implementation of Engine (not exposed to Python)
 impl Engine {
+    pub(crate) fn normalized_order_strategy_id(
+        order: &Order,
+    ) -> Option<String> {
+        order
+            .owner_strategy_id
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
+    pub(crate) fn ensure_strategy_slot_exists(&mut self) {
+        if self.strategy_slots.is_empty() {
+            let strategy_id = self
+                .default_strategy_id
+                .clone()
+                .unwrap_or_else(|| "_default".to_string());
+            self.strategy_slots.push(StrategySlot { strategy_id });
+        }
+        if self.active_strategy_slot >= self.strategy_slots.len() {
+            self.active_strategy_slot = 0;
+        }
+    }
+
+    pub(crate) fn strategy_priority_for_order(&self, order: &Order) -> i32 {
+        let strategy_id = Self::normalized_order_strategy_id(order)
+            .unwrap_or_else(|| "_default".to_string());
+        self.strategy_priorities
+            .get(&strategy_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn order_estimated_notional(
+        &self,
+        order: &Order,
+    ) -> Option<Decimal> {
+        let price = if let Some(p) = order.price {
+            Some(p)
+        } else {
+            self.last_prices.get(&order.symbol).copied()
+        }?;
+        Some((price * order.quantity).abs())
+    }
+
+    pub(crate) fn trade_notional(&self, trade: &Trade) -> Decimal {
+        (trade.price * trade.quantity).abs()
+    }
+
+    pub(crate) fn maybe_reset_risk_budget_usage(&mut self, current_time: i64) {
+        if !self.risk_budget_reset_daily {
+            return;
+        }
+        let current_day = Self::local_datetime_from_ns(current_time, self.timezone_offset)
+            .date_naive();
+        if self.risk_budget_usage_day == Some(current_day) {
+            return;
+        }
+        self.strategy_risk_budget_used.clear();
+        self.portfolio_risk_budget_used = Decimal::ZERO;
+        self.risk_budget_usage_day = Some(current_day);
+    }
+
+    pub(crate) fn risk_budget_use_trade_mode(&self) -> bool {
+        self.risk_budget_mode == "trade_notional"
+    }
+
+    pub(crate) fn check_strategy_risk_budget_limit(
+        &self,
+        order: &Order,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let budget = self.strategy_risk_budget_limits.get(&strategy_id).copied()?;
+        let used = self
+            .strategy_risk_budget_used
+            .get(&strategy_id)
+            .copied()
+            .unwrap_or(Decimal::ZERO);
+        let projected = used + self.order_estimated_notional(order)?;
+        if projected > budget {
+            return Some(format!(
+                "Risk: Strategy {} risk budget {} exceeds strategy budget {}",
+                strategy_id, projected, budget
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn check_portfolio_risk_budget_limit(
+        &self,
+        order: &Order,
+    ) -> Option<String> {
+        let budget = self.portfolio_risk_budget_limit?;
+        let projected = self.portfolio_risk_budget_used + self.order_estimated_notional(order)?;
+        if projected > budget {
+            return Some(format!(
+                "Risk: Portfolio risk budget {} exceeds portfolio budget {}",
+                projected, budget
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn apply_risk_budget_usage(
+        &mut self,
+        order: &Order,
+    ) {
+        let Some(notional) = self.order_estimated_notional(order) else {
+            return;
+        };
+        if let Some(strategy_id) = Self::normalized_order_strategy_id(order)
+            && self.strategy_risk_budget_limits.contains_key(&strategy_id) {
+                let entry = self
+                    .strategy_risk_budget_used
+                    .entry(strategy_id)
+                    .or_insert(Decimal::ZERO);
+                *entry += notional;
+            }
+        if self.portfolio_risk_budget_limit.is_some() {
+            self.portfolio_risk_budget_used += notional;
+        }
+    }
+
+    pub(crate) fn apply_risk_budget_usage_from_trade(
+        &mut self,
+        trade: &Trade,
+    ) {
+        let notional = self.trade_notional(trade);
+        if let Some(strategy_id) = trade
+            .owner_strategy_id
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            && self.strategy_risk_budget_limits.contains_key(&strategy_id) {
+                let entry = self
+                    .strategy_risk_budget_used
+                    .entry(strategy_id)
+                    .or_insert(Decimal::ZERO);
+                *entry += notional;
+            }
+        if self.portfolio_risk_budget_limit.is_some() {
+            self.portfolio_risk_budget_used += notional;
+        }
+    }
+
+    pub(crate) fn check_strategy_order_value_limit(
+        &self,
+        order: &Order,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let max_value = self.strategy_max_order_value_limits.get(&strategy_id)?;
+        let price = if let Some(p) = order.price {
+            Some(p)
+        } else {
+            self.last_prices.get(&order.symbol).copied()
+        }?;
+        let value = price * order.quantity;
+        if value > *max_value {
+            return Some(format!(
+                "Risk: Strategy {} order value {} exceeds strategy limit {}",
+                strategy_id, value, max_value
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn check_strategy_order_size_limit(
+        &self,
+        order: &Order,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let max_size = self.strategy_max_order_size_limits.get(&strategy_id)?;
+        if order.quantity > *max_size {
+            return Some(format!(
+                "Risk: Strategy {} order quantity {} exceeds strategy limit {}",
+                strategy_id, order.quantity, max_size
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn check_strategy_position_size_limit(
+        &self,
+        order: &Order,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let max_size = self.strategy_max_position_size_limits.get(&strategy_id)?;
+        let strategy_positions = self.strategy_positions.get(&strategy_id);
+        let current_qty = strategy_positions
+            .and_then(|positions| positions.get(&order.symbol).copied())
+            .unwrap_or(Decimal::ZERO);
+        let delta = match order.side {
+            OrderSide::Buy => order.quantity,
+            OrderSide::Sell => -order.quantity,
+        };
+        let projected_qty = current_qty + delta;
+        if projected_qty.abs() > *max_size {
+            return Some(format!(
+                "Risk: Strategy {} projected position {} exceeds strategy position limit {}",
+                strategy_id, projected_qty, max_size
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn apply_strategy_trade_position(&mut self, trade: &Trade) {
+        let strategy_id = trade
+            .owner_strategy_id
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let Some(strategy_key) = strategy_id else {
+            return;
+        };
+        let strategy_key_for_position = strategy_key.clone();
+        let entry = self
+            .strategy_positions
+            .entry(strategy_key_for_position)
+            .or_default()
+            .entry(trade.symbol.clone())
+            .or_insert(Decimal::ZERO);
+        match trade.side {
+            OrderSide::Buy => *entry += trade.quantity,
+            OrderSide::Sell => *entry -= trade.quantity,
+        }
+        let cashflow_entry = self
+            .strategy_cashflows
+            .entry(strategy_key)
+            .or_insert(Decimal::ZERO);
+        match trade.side {
+            OrderSide::Buy => *cashflow_entry -= trade.price * trade.quantity,
+            OrderSide::Sell => *cashflow_entry += trade.price * trade.quantity,
+        }
+        *cashflow_entry -= trade.commission;
+    }
+
+    pub(crate) fn current_strategy_pnl(&self, strategy_id: &str) -> Decimal {
+        let cashflow = self
+            .strategy_cashflows
+            .get(strategy_id)
+            .copied()
+            .unwrap_or(Decimal::ZERO);
+        let mark_to_market = self
+            .strategy_positions
+            .get(strategy_id)
+            .map(|positions| {
+                positions
+                    .iter()
+                    .map(|(symbol, qty)| {
+                        let price = self.last_prices.get(symbol).copied().unwrap_or(Decimal::ZERO);
+                        *qty * price
+                    })
+                    .sum::<Decimal>()
+            })
+            .unwrap_or(Decimal::ZERO);
+        cashflow + mark_to_market
+    }
+
+    pub(crate) fn check_strategy_daily_loss_limit(
+        &mut self,
+        order: &Order,
+        current_time: i64,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let max_daily_loss = self
+            .strategy_max_daily_loss_limits
+            .get(&strategy_id)
+            .copied()?;
+        let current_day = Self::local_datetime_from_ns(current_time, self.timezone_offset)
+            .date_naive();
+        let current_pnl = self.current_strategy_pnl(&strategy_id);
+        let needs_reset = self
+            .strategy_daily_loss_day
+            .get(&strategy_id)
+            .map(|day| *day != current_day)
+            .unwrap_or(true);
+        if needs_reset {
+            let reset_baseline = if self.strategy_daily_loss_day.contains_key(&strategy_id) {
+                self.strategy_last_pnl
+                    .get(&strategy_id)
+                    .copied()
+                    .unwrap_or(current_pnl)
+            } else {
+                current_pnl
+            };
+            self.strategy_daily_loss_day
+                .insert(strategy_id.clone(), current_day);
+            self.strategy_daily_loss_baseline_pnl
+                .insert(strategy_id.clone(), reset_baseline);
+        }
+        let baseline = self
+            .strategy_daily_loss_baseline_pnl
+            .get(&strategy_id)
+            .copied()
+            .unwrap_or(current_pnl);
+        self.strategy_last_pnl
+            .insert(strategy_id.clone(), current_pnl);
+        let loss = baseline - current_pnl;
+        if loss > max_daily_loss {
+            return Some(format!(
+                "Risk: Strategy {} daily loss {} exceeds strategy limit {}",
+                strategy_id, loss, max_daily_loss
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn check_strategy_drawdown_limit(
+        &mut self,
+        order: &Order,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let max_drawdown = self
+            .strategy_max_drawdown_limits
+            .get(&strategy_id)
+            .copied()?;
+        let current_pnl = self.current_strategy_pnl(&strategy_id);
+        let peak = self
+            .strategy_peak_pnl
+            .get(&strategy_id)
+            .copied()
+            .unwrap_or(current_pnl);
+        let updated_peak = if current_pnl > peak { current_pnl } else { peak };
+        self.strategy_peak_pnl
+            .insert(strategy_id.clone(), updated_peak);
+        let drawdown = updated_peak - current_pnl;
+        if drawdown > max_drawdown {
+            return Some(format!(
+                "Risk: Strategy {} drawdown {} exceeds strategy limit {}",
+                strategy_id, drawdown, max_drawdown
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn activate_strategy_reduce_only_if_configured(
+        &mut self,
+        order: &Order,
+    ) {
+        if let Some(strategy_id) = Self::normalized_order_strategy_id(order)
+            && self.strategy_reduce_only_after_risk.contains(&strategy_id) {
+                self.strategy_reduce_only_active.insert(strategy_id);
+            }
+    }
+
+    pub(crate) fn check_strategy_reduce_only_mode(
+        &self,
+        order: &Order,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        if !self.strategy_reduce_only_active.contains(&strategy_id) {
+            return None;
+        }
+        let current_qty = self
+            .strategy_positions
+            .get(&strategy_id)
+            .and_then(|positions| positions.get(&order.symbol).copied())
+            .unwrap_or(Decimal::ZERO);
+        let allowed = if current_qty > Decimal::ZERO {
+            order.side == OrderSide::Sell && order.quantity <= current_qty
+        } else if current_qty < Decimal::ZERO {
+            order.side == OrderSide::Buy && order.quantity <= current_qty.abs()
+        } else {
+            false
+        };
+        if !allowed {
+            return Some(format!(
+                "Risk: Strategy {} is in reduce_only mode and cannot open/increase position",
+                strategy_id
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn activate_strategy_risk_cooldown_if_configured(
+        &mut self,
+        order: &Order,
+    ) {
+        let Some(strategy_id) = Self::normalized_order_strategy_id(order) else {
+            return;
+        };
+        let Some(cooldown_bars) = self
+            .strategy_risk_cooldown_bars
+            .get(&strategy_id)
+            .copied() else {
+                return;
+            };
+        if cooldown_bars == 0 {
+            return;
+        }
+        let until_bar = self.bar_count.saturating_add(cooldown_bars);
+        self.strategy_risk_cooldown_until_bar
+            .insert(strategy_id, until_bar);
+    }
+
+    pub(crate) fn check_strategy_risk_cooldown_mode(
+        &mut self,
+        order: &Order,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let until_bar = self
+            .strategy_risk_cooldown_until_bar
+            .get(&strategy_id)
+            .copied()?;
+        if self.bar_count > until_bar {
+            self.strategy_risk_cooldown_until_bar.remove(&strategy_id);
+            return None;
+        }
+        let bars_remaining = until_bar.saturating_sub(self.bar_count);
+        Some(format!(
+            "Risk: Strategy {} is in cooldown for {} more bar(s)",
+            strategy_id, bars_remaining
+        ))
+    }
+
+    pub(crate) fn ensure_strategy_context_capacity(&mut self) {
+        self.ensure_strategy_slot_exists();
+        while self.strategy_contexts.len() < self.strategy_slots.len() {
+            self.strategy_contexts.push(None);
+        }
+        while self.strategy_slot_strategies.len() < self.strategy_slots.len() {
+            self.strategy_slot_strategies.push(None);
+        }
+    }
+
+    pub(crate) fn get_or_create_strategy_context(
+        &mut self,
+        slot_index: usize,
+        active_orders: Arc<Vec<Order>>,
+        step_trades: Vec<Trade>,
+    ) -> PyResult<Py<StrategyContext>> {
+        self.ensure_strategy_context_capacity();
+        if let Some(existing_ctx) = self
+            .strategy_contexts
+            .get(slot_index)
+            .and_then(|ctx| ctx.as_ref())
+        {
+            return Python::attach(|py| {
+                let py_ctx = existing_ctx.clone_ref(py);
+                {
+                    let mut ctx_mut = py_ctx.borrow_mut(py);
+                    ctx_mut.update_state(crate::context::ContextUpdate {
+                        cash: self.state.portfolio.cash,
+                        positions: self.state.portfolio.positions.clone(),
+                        available_positions: self.state.portfolio.available_positions.clone(),
+                        session: self.clock.session,
+                        current_time: self.clock.timestamp().unwrap_or(0),
+                        active_orders,
+                        recent_trades: step_trades,
+                    });
+                }
+                Ok::<_, PyErr>(py_ctx)
+            });
+        }
+
+        let strategy_id = self
+            .strategy_slots
+            .get(slot_index)
+            .map(|slot| slot.strategy_id.clone());
+        let ctx = self.create_context(active_orders, step_trades, strategy_id);
+        let (py_ctx, persistent_ref) = Python::attach(|py| {
+            let py_ctx = Py::new(py, ctx).unwrap();
+            Ok::<_, PyErr>((py_ctx.clone_ref(py), py_ctx.clone_ref(py)))
+        })?;
+        if let Some(slot_ctx) = self.strategy_contexts.get_mut(slot_index) {
+            *slot_ctx = Some(persistent_ref);
+        }
+        Ok(py_ctx)
+    }
+
     pub(crate) fn set_stream_callback_internal(&mut self, callback: Option<Py<PyAny>>) {
         self.stream_callback = callback;
         self.stream_run_id = None;
@@ -177,13 +681,13 @@ impl Engine {
 
         if self.stream_sampling_enabled
             && event_type == "progress"
-            && self.bar_count % self.stream_progress_interval != 0
+            && !self.bar_count.is_multiple_of(self.stream_progress_interval)
         {
             return;
         }
         if self.stream_sampling_enabled
             && event_type == "equity"
-            && self.bar_count % self.stream_equity_interval != 0
+            && !self.bar_count.is_multiple_of(self.stream_equity_interval)
         {
             return;
         }
@@ -370,6 +874,7 @@ impl Engine {
         &self,
         active_orders: Arc<Vec<Order>>,
         step_trades: Vec<Trade>,
+        strategy_id: Option<String>,
     ) -> StrategyContext {
         // Create a temporary context for the strategy to use
         StrategyContext::new(crate::context::ContextInit {
@@ -384,6 +889,7 @@ impl Engine {
             history_buffer: Some(self.history_buffer.clone()),
             event_tx: Some(self.event_manager.sender()),
             risk_config: self.risk_manager.config.clone(),
+            strategy_id,
         })
     }
 
@@ -413,48 +919,23 @@ impl Engine {
         )))
     }
 
-    pub(crate) fn call_strategy(
+    pub(crate) fn call_strategy_for_slot(
         &mut self,
         strategy: &Bound<'_, PyAny>,
         event: &Event,
+        slot_index: usize,
+        active_orders: Arc<Vec<Order>>,
+        step_trades: Vec<Trade>,
     ) -> PyResult<(Vec<Order>, Vec<Timer>, Vec<String>)> {
-        // Update Last Price and Trigger Strategy
+        self.active_strategy_slot = slot_index;
         match event {
             Event::Bar(b) => {
                 self.last_prices.insert(b.symbol.clone(), b.close);
-                let step_trades = std::mem::take(&mut self.state.order_manager.current_step_trades);
-                // Share active orders via Arc
-                let active_orders = Arc::new(self.state.order_manager.active_orders.clone());
-
-                // Reuse or create StrategyContext
-                let py_ctx = if let Some(ref ctx) = self.strategy_context {
-                    // Reuse existing context
-                    Python::attach(|py| {
-                        let py_ctx = ctx.clone_ref(py);
-                        {
-                            let mut ctx_mut = py_ctx.borrow_mut(py);
-                            ctx_mut.update_state(crate::context::ContextUpdate {
-                                cash: self.state.portfolio.cash,
-                                positions: self.state.portfolio.positions.clone(),
-                                available_positions: self.state.portfolio.available_positions.clone(),
-                                session: self.clock.session,
-                                current_time: self.clock.timestamp().unwrap_or(0),
-                                active_orders,
-                                recent_trades: step_trades,
-                            });
-                        }
-                        Ok::<_, PyErr>(py_ctx)
-                    })?
-                } else {
-                    // Create new context (first time)
-                    let ctx = self.create_context(active_orders, step_trades);
-                    let (py_ctx, persistent_ref) = Python::attach(|py| {
-                        let py_ctx = Py::new(py, ctx).unwrap();
-                        Ok::<_, PyErr>((py_ctx.clone_ref(py), py_ctx.clone_ref(py)))
-                    })?;
-                    self.strategy_context = Some(persistent_ref);
-                    py_ctx
-                };
+                let py_ctx = self.get_or_create_strategy_context(
+                    slot_index,
+                    active_orders,
+                    step_trades,
+                )?;
 
                 let args = Python::attach(|py| {
                      let bar = b.clone();
@@ -484,38 +965,11 @@ impl Engine {
             }
             Event::Tick(t) => {
                 self.last_prices.insert(t.symbol.clone(), t.price);
-                let step_trades = std::mem::take(&mut self.state.order_manager.current_step_trades);
-                let active_orders = Arc::new(self.state.order_manager.active_orders.clone());
-
-                 // Reuse or create StrategyContext
-                let py_ctx = if let Some(ref ctx) = self.strategy_context {
-                    // Reuse existing context
-                    Python::attach(|py| {
-                        let py_ctx = ctx.clone_ref(py);
-                        {
-                            let mut ctx_mut = py_ctx.borrow_mut(py);
-                            ctx_mut.update_state(crate::context::ContextUpdate {
-                                cash: self.state.portfolio.cash,
-                                positions: self.state.portfolio.positions.clone(),
-                                available_positions: self.state.portfolio.available_positions.clone(),
-                                session: self.clock.session,
-                                current_time: self.clock.timestamp().unwrap_or(0),
-                                active_orders,
-                                recent_trades: step_trades,
-                            });
-                        }
-                        Ok::<_, PyErr>(py_ctx)
-                    })?
-                } else {
-                    // Create new context (first time)
-                    let ctx = self.create_context(active_orders, step_trades);
-                    let (py_ctx, persistent_ref) = Python::attach(|py| {
-                        let py_ctx = Py::new(py, ctx).unwrap();
-                        Ok::<_, PyErr>((py_ctx.clone_ref(py), py_ctx.clone_ref(py)))
-                    })?;
-                    self.strategy_context = Some(persistent_ref);
-                    py_ctx
-                };
+                let py_ctx = self.get_or_create_strategy_context(
+                    slot_index,
+                    active_orders,
+                    step_trades,
+                )?;
 
                 let args = Python::attach(|py| {
                      let tick = t.clone();
@@ -543,38 +997,11 @@ impl Engine {
                 Ok((new_orders, new_timers, canceled_ids))
             }
             Event::Timer(timer) => {
-                let step_trades = std::mem::take(&mut self.state.order_manager.current_step_trades);
-                let active_orders = Arc::new(self.state.order_manager.active_orders.clone());
-
-                 // Reuse or create StrategyContext
-                let py_ctx = if let Some(ref ctx) = self.strategy_context {
-                    // Reuse existing context
-                    Python::attach(|py| {
-                        let py_ctx = ctx.clone_ref(py);
-                        {
-                            let mut ctx_mut = py_ctx.borrow_mut(py);
-                            ctx_mut.update_state(crate::context::ContextUpdate {
-                                cash: self.state.portfolio.cash,
-                                positions: self.state.portfolio.positions.clone(),
-                                available_positions: self.state.portfolio.available_positions.clone(),
-                                session: self.clock.session,
-                                current_time: self.clock.timestamp().unwrap_or(0),
-                                active_orders,
-                                recent_trades: step_trades,
-                            });
-                        }
-                        Ok::<_, PyErr>(py_ctx)
-                    })?
-                } else {
-                    // Create new context (first time)
-                    let ctx = self.create_context(active_orders, step_trades);
-                    let (py_ctx, persistent_ref) = Python::attach(|py| {
-                        let py_ctx = Py::new(py, ctx).unwrap();
-                        Ok::<_, PyErr>((py_ctx.clone_ref(py), py_ctx.clone_ref(py)))
-                    })?;
-                    self.strategy_context = Some(persistent_ref);
-                    py_ctx
-                };
+                let py_ctx = self.get_or_create_strategy_context(
+                    slot_index,
+                    active_orders,
+                    step_trades,
+                )?;
 
                 let args = Python::attach(|py| {
                      let payload = timer.payload.as_str();

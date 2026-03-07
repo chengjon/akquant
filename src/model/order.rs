@@ -49,6 +49,9 @@ pub struct Order {
     pub tag: String,
     #[pyo3(get)]
     pub reject_reason: String,
+    #[pyo3(get)]
+    #[serde(default)]
+    pub owner_strategy_id: Option<String>,
 }
 
 #[gen_stub_pymethods]
@@ -67,7 +70,7 @@ impl Order {
     /// :param created_at: 创建时间戳 (可选，默认 0)
     /// :param tag: 订单标签 (可选，默认 "")
     #[new]
-    #[pyo3(signature = (id, symbol, side, order_type, quantity, price=None, time_in_force=None, trigger_price=None, created_at=None, tag=None))]
+    #[pyo3(signature = (id, symbol, side, order_type, quantity, price=None, time_in_force=None, trigger_price=None, created_at=None, tag=None, owner_strategy_id=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
@@ -80,6 +83,7 @@ impl Order {
         trigger_price: Option<&Bound<'_, PyAny>>,
         created_at: Option<i64>,
         tag: Option<String>,
+        owner_strategy_id: Option<String>,
     ) -> PyResult<Self> {
         let created_at_ts = created_at.unwrap_or(0);
         Ok(Order {
@@ -105,6 +109,7 @@ impl Order {
             commission: Decimal::ZERO,
             tag: tag.unwrap_or_default(),
             reject_reason: String::new(),
+            owner_strategy_id,
         })
     }
 
@@ -213,6 +218,9 @@ pub struct Trade {
     pub timestamp: i64,
     #[pyo3(get)]
     pub bar_index: usize,
+    #[pyo3(get)]
+    #[serde(default)]
+    pub owner_strategy_id: Option<String>,
 }
 
 #[gen_stub_pymethods]
@@ -241,6 +249,7 @@ impl Trade {
         commission: &Bound<'_, PyAny>,
         timestamp: i64,
         bar_index: usize,
+        owner_strategy_id: Option<String>,
     ) -> PyResult<Self> {
         Ok(Trade {
             id,
@@ -252,6 +261,7 @@ impl Trade {
             commission: extract_decimal(commission)?,
             timestamp,
             bar_index,
+            owner_strategy_id,
         })
     }
 
@@ -288,5 +298,88 @@ impl Trade {
             self.timestamp,
             self.bar_index
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Serialize)]
+    struct LegacyOrder {
+        id: String,
+        symbol: String,
+        side: OrderSide,
+        order_type: OrderType,
+        quantity: Decimal,
+        price: Option<Decimal>,
+        time_in_force: TimeInForce,
+        trigger_price: Option<Decimal>,
+        status: OrderStatus,
+        filled_quantity: Decimal,
+        average_filled_price: Option<Decimal>,
+        created_at: i64,
+        updated_at: i64,
+        commission: Decimal,
+        tag: String,
+        reject_reason: String,
+    }
+
+    #[derive(Serialize)]
+    struct LegacyTrade {
+        id: String,
+        order_id: String,
+        symbol: String,
+        side: OrderSide,
+        quantity: Decimal,
+        price: Decimal,
+        commission: Decimal,
+        timestamp: i64,
+        bar_index: usize,
+    }
+
+    #[test]
+    fn test_order_deserialize_legacy_without_owner_strategy_id() {
+        let legacy = LegacyOrder {
+            id: "o1".to_string(),
+            symbol: "AAPL".to_string(),
+            side: OrderSide::Buy,
+            order_type: OrderType::Limit,
+            quantity: Decimal::from(10),
+            price: Some(Decimal::from(100)),
+            time_in_force: TimeInForce::Day,
+            trigger_price: None,
+            status: OrderStatus::New,
+            filled_quantity: Decimal::ZERO,
+            average_filled_price: None,
+            created_at: 1,
+            updated_at: 1,
+            commission: Decimal::ZERO,
+            tag: String::new(),
+            reject_reason: String::new(),
+        };
+        let bytes = rmp_serde::to_vec(&legacy).expect("serialize legacy order");
+        let order: Order =
+            rmp_serde::from_slice(&bytes).expect("deserialize order from legacy payload");
+        assert!(order.owner_strategy_id.is_none());
+    }
+
+    #[test]
+    fn test_trade_deserialize_legacy_without_owner_strategy_id() {
+        let legacy = LegacyTrade {
+            id: "t1".to_string(),
+            order_id: "o1".to_string(),
+            symbol: "AAPL".to_string(),
+            side: OrderSide::Buy,
+            quantity: Decimal::from(10),
+            price: Decimal::from(100),
+            commission: Decimal::ZERO,
+            timestamp: 1,
+            bar_index: 0,
+        };
+        let bytes = rmp_serde::to_vec(&legacy).expect("serialize legacy trade");
+        let trade: Trade =
+            rmp_serde::from_slice(&bytes).expect("deserialize trade from legacy payload");
+        assert!(trade.owner_strategy_id.is_none());
     }
 }

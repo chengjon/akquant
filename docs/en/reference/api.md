@@ -35,6 +35,7 @@ def run_backtest(
     instruments_config: Optional[Union[List[InstrumentConfig], Dict[str, InstrumentConfig]]] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
     risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
+    strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     **kwargs: Any,
 ) -> BacktestResult
@@ -58,12 +59,13 @@ def run_backtest(
 *   `instruments_config`: Instrument configuration. Used to set parameters for non-stock assets like futures/options (e.g., multiplier, margin ratio).
     *   Accepts `List[InstrumentConfig]` or `{symbol: InstrumentConfig}`.
 *   `risk_config`: Risk configuration. Supports dict (e.g., `{"max_position_pct": 0.1}`) or `RiskConfig` object. Overrides fields in `config.strategy_config.risk` if both are provided.
+*   `strategies_by_slot`: Optional multi-strategy mapping. Keys are slot ids and values are strategy class/instance/functional callback used by slot-iterative execution.
 *   `on_event`: Optional stream callback. When omitted, an internal no-op callback keeps legacy blocking return semantics; when provided, runtime events are emitted.
 
 **Compatibility & Migration Notes:**
 
 *   Prefer migrating realtime UI/logging/alerting to `run_backtest(..., on_event=...)`.
-*   `run_backtest_stream` remains available to keep explicit “stream callback required” semantics.
+*   Stream use cases are unified under `run_backtest(..., on_event=...)`.
 *   Since Phase 5, runtime rollback flags are removed; use release-level rollback when needed.
 *   Phase-4 observation window and go/no-go gates are documented in [Unified Stream Core Checklist](../advanced/stream_observability.md).
 
@@ -73,24 +75,7 @@ def run_backtest(
 *   Can `run_backtest` still be called without `on_event`? Yes, and result-return semantics stay the same.
 *   How do we roll back in production? Use release-level rollback; `_engine_mode` runtime fallback is removed.
 
-### `akquant.run_backtest_stream`
-
-Streaming backtest entry. It preserves the same return semantics as `run_backtest`,
-while emitting runtime events via callback.
-
-```python
-def run_backtest_stream(
-    data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]]] = None,
-    strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
-    on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
-    stream_progress_interval: int = 1,
-    stream_equity_interval: int = 1,
-    stream_batch_size: int = 1,
-    stream_max_buffer: int = 1024,
-    stream_error_mode: Literal["continue", "fail_fast"] = "continue",
-    **kwargs: Any,
-) -> BacktestResult
-```
+### Stream Parameters & Events (`run_backtest`)
 
 **Key Parameters:**
 
@@ -106,6 +91,7 @@ def run_backtest_stream(
 *   `stream_mode`: Stream mode.
     *   `"observability"`: observability-oriented mode with sampling and non-critical dropping under backpressure.
     *   `"audit"`: audit-oriented mode with sampling disabled and blocking backpressure for non-critical events.
+*   `strategy_id` (forwarded via `**kwargs`): Tags trading events and results with strategy ownership. Default is `_default`.
 
 **Event Schema (`BacktestStreamEvent`):**
 
@@ -124,6 +110,18 @@ def run_backtest_stream(
 *   Trading: `order`, `trade`, `risk`
 *   Runtime failure: `error`
 *   Market data: `tick`
+
+**Common trading payload fields (`order`/`trade`/`risk`):**
+
+*   `owner_strategy_id`: Strategy ownership id (default `_default`).
+*   `order_id`: Order id (`order`/`trade`/`risk`).
+*   `symbol`: Symbol (`order`/`risk`).
+*   `status`: Order status (`order`).
+*   `filled_qty`: Filled quantity (`order`).
+*   `trade_id`: Trade id (`trade`).
+*   `price`: Fill price (`trade`).
+*   `quantity`: Fill quantity (`trade`).
+*   `reason`: Risk rejection reason (`risk`).
 
 **Common `finished.payload` fields:**
 
@@ -494,3 +492,26 @@ Backtest result object.
 *   `positions_df`: Daily position details.
 *   `equity_curve`: Equity curve.
 *   `cash_curve`: Cash curve.
+
+**Analysis Methods:**
+
+*   `exposure_df(freq="D")`: Portfolio exposure decomposition (net/gross/leverage).
+*   `attribution_df(by="symbol", use_net=True, top_n=None)`: Grouped attribution by symbol/tag.
+*   `capacity_df(freq="D")`: Capacity proxy metrics (order count, fill rates, turnover).
+*   `orders_by_strategy()`: Strategy-ownership order aggregation by `owner_strategy_id`.
+*   `executions_by_strategy()`: Strategy-ownership execution aggregation by `owner_strategy_id`.
+
+```python
+orders_by_strategy = result.orders_by_strategy()
+executions_by_strategy = result.executions_by_strategy()
+
+# Common columns
+# orders_by_strategy:
+# - owner_strategy_id, order_count, filled_order_count,
+#   ordered_quantity, filled_quantity, ordered_value, filled_value,
+#   fill_rate_qty, fill_rate_value
+#
+# executions_by_strategy:
+# - owner_strategy_id, execution_count, total_quantity,
+#   total_notional, total_commission, avg_fill_price
+```

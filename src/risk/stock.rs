@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 
 use super::rule::{RiskRule, RiskCheckContext};
 
-/// Check available position for selling (T+1 rule usually implied by available_positions)
+/// Check available position for selling (T+1 rule usually implied by `available_positions`)
 #[derive(Debug, Clone)]
 pub struct StockAvailablePositionRule;
 
@@ -22,7 +22,7 @@ impl RiskRule for StockAvailablePositionRule {
             let available = ctx.portfolio
                 .available_positions
                 .get(&order.symbol)
-                .cloned()
+                .copied()
                 .unwrap_or(Decimal::ZERO);
 
             let pending_sell: Decimal = ctx.active_orders

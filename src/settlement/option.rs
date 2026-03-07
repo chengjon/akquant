@@ -22,7 +22,8 @@ impl SettlementHandler for OptionSettlementHandler {
         let mut tasks = Vec::new();
 
         // Convert NaiveDate to YYYYMMDD u32 for comparison
-        let current_date_int = (date.year() as u32) * 10000
+        let (_, year_ce) = date.year_ce();
+        let current_date_int = year_ce * 10000
             + date.month() * 100
             + date.day();
 
@@ -39,7 +40,7 @@ impl SettlementHandler for OptionSettlementHandler {
                             // Calculate Payoff
                             let strike = instr.strike_price().unwrap_or(Decimal::ZERO);
                             let underlying_price = if let Some(us) = instr.underlying_symbol() {
-                                last_prices.get(us.as_str()).cloned().unwrap_or(Decimal::ZERO)
+                                last_prices.get(us.as_str()).copied().unwrap_or(Decimal::ZERO)
                             } else {
                                 Decimal::ZERO
                             };
@@ -70,7 +71,7 @@ impl SettlementHandler for OptionSettlementHandler {
                                 symbol: symbol.clone(),
                                 quantity: *qty, // Full position quantity to close
                                 cash_flow,
-                                description: format!("Option Expiry for {}", symbol),
+                                description: format!("Option Expiry for {symbol}"),
                             });
                         }
         }

@@ -150,7 +150,7 @@ min_margin_level                        68.587671
 
 ## 流式回测 (Streaming)
 
-如果你希望在回测执行过程中实时消费事件，可使用 `run_backtest_stream`：
+如果你希望在回测执行过程中实时消费事件，可直接使用 `run_backtest` 并传入 `on_event`：
 
 ```python
 def on_event(event):
@@ -159,7 +159,7 @@ def on_event(event):
         print("status:", payload.get("status"))
         print("callback_error_count:", payload.get("callback_error_count"))
 
-result = aq.run_backtest_stream(
+result = aq.run_backtest(
     data=df,
     strategy=MyStrategy,
     symbol="sh600000",
@@ -217,6 +217,8 @@ exposure = result.exposure_df()             # 暴露分解（净暴露/总暴露
 attr_by_symbol = result.attribution_df(by="symbol")
 attr_by_tag = result.attribution_df(by="tag")
 capacity = result.capacity_df()             # 容量代理（成交率/换手等）
+orders_by_strategy = result.orders_by_strategy()         # 按策略归属聚合订单
+executions_by_strategy = result.executions_by_strategy() # 按策略归属聚合成交
 ```
 
 <p align="center">
@@ -249,7 +251,10 @@ pip install -e ".[dev]"
 # 2. 运行所有测试
 pytest
 
-# 3. 仅运行黄金测试
+# 3. 运行 Rust 核心测试（自动处理 macOS + conda 动态库路径）
+./scripts/cargo-test.sh -q
+
+# 4. 仅运行黄金测试
 pytest tests/golden/test_golden.py
 ```
 

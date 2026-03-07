@@ -45,6 +45,7 @@ pub struct ContextInit {
     pub history_buffer: Option<Arc<RwLock<HistoryBuffer>>>,
     pub event_tx: Option<Sender<Event>>,
     pub risk_config: RiskConfig,
+    pub strategy_id: Option<String>,
 }
 
 pub struct ContextUpdate {
@@ -150,6 +151,8 @@ pub struct StrategyContext {
     pub event_tx: Option<Sender<Event>>,
     #[pyo3(get)]
     pub risk_config: RiskConfig,
+    #[pyo3(get)]
+    pub strategy_id: Option<String>,
 }
 
 impl StrategyContext {
@@ -173,6 +176,7 @@ impl StrategyContext {
             history_buffer: init.history_buffer,
             event_tx: init.event_tx,
             risk_config: init.risk_config,
+            strategy_id: init.strategy_id,
         }
     }
 }
@@ -203,6 +207,7 @@ impl StrategyContext {
         closed_trades: Option<Vec<ClosedTrade>>,
         recent_trades: Option<Vec<Trade>>,
         risk_config: Option<RiskConfig>,
+        strategy_id: Option<String>,
     ) -> PyResult<Self> {
         let pos_dec: HashMap<String, Decimal> = positions
             .into_iter()
@@ -232,6 +237,7 @@ impl StrategyContext {
             history_buffer: None,
             event_tx: None,
             risk_config: risk_config.unwrap_or_default(),
+            strategy_id,
         })
     }
 
@@ -396,6 +402,7 @@ impl StrategyContext {
             commission: Decimal::ZERO,
             tag: tag.unwrap_or_default(),
             reject_reason: String::new(),
+            owner_strategy_id: self.strategy_id.clone(),
         };
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(Event::OrderRequest(order));
@@ -459,6 +466,7 @@ impl StrategyContext {
             commission: Decimal::ZERO,
             tag: tag.unwrap_or_default(),
             reject_reason: String::new(),
+            owner_strategy_id: self.strategy_id.clone(),
         };
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(Event::OrderRequest(order));

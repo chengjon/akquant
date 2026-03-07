@@ -256,15 +256,17 @@ exposure = result.exposure_df()
 attr_by_symbol = result.attribution_df(by="symbol")
 attr_by_tag = result.attribution_df(by="tag")
 capacity = result.capacity_df()
+orders_by_strategy = result.orders_by_strategy()
+executions_by_strategy = result.executions_by_strategy()
 ```
 
 ## 3. Streaming Backtest
 
 If you want real-time events during a backtest (progress, equity, orders, trades,
-and final status), use `run_backtest_stream`.
+and final status), use `run_backtest` with `on_event`.
 
 ```python
-from akquant import run_backtest_stream
+from akquant import run_backtest
 
 def on_event(event):
     if event["event_type"] == "finished":
@@ -272,7 +274,7 @@ def on_event(event):
         print("status:", payload.get("status"))
         print("callback_error_count:", payload.get("callback_error_count"))
 
-result = run_backtest_stream(
+result = run_backtest(
     data=df,
     strategy=MyStrategy,
     symbol="sh600000",

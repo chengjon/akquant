@@ -25,7 +25,7 @@ use crate::risk::{RiskConfig, RiskManager};
 use crate::settlement::SettlementManager;
 use crate::statistics::StatisticsManager;
 
-use super::core::Engine;
+use super::core::{Engine, StrategySlot};
 use super::state::SharedState;
 
 #[gen_stub_pymethods]
@@ -98,6 +98,356 @@ impl Engine {
         );
     }
 
+    fn set_default_strategy_id(&mut self, strategy_id: Option<String>) {
+        let effective_id = strategy_id.unwrap_or_else(|| "_default".to_string());
+        self.default_strategy_id = Some(effective_id.clone());
+        self.ensure_strategy_slot_exists();
+        self.active_strategy_slot = 0;
+        if let Some(slot) = self.strategy_slots.get_mut(0) {
+            slot.strategy_id = effective_id;
+        }
+        self.ensure_strategy_context_capacity();
+        if let Some(slot_ctx) = self.strategy_contexts.get_mut(0) {
+            *slot_ctx = None;
+        }
+    }
+
+    fn get_default_strategy_id(&self) -> Option<String> {
+        self.default_strategy_id.clone()
+    }
+
+    fn get_strategy_slot_ids(&self) -> Vec<String> {
+        self.strategy_slots
+            .iter()
+            .map(|slot| slot.strategy_id.clone())
+            .collect()
+    }
+
+    fn get_active_strategy_slot(&self) -> usize {
+        self.active_strategy_slot
+    }
+
+    fn set_strategy_slots(&mut self, slot_ids: Vec<String>) -> PyResult<()> {
+        if slot_ids.is_empty() {
+            return Err(PyValueError::new_err("slot_ids cannot be empty"));
+        }
+        let mut normalized = Vec::with_capacity(slot_ids.len());
+        for id in slot_ids {
+            let trimmed = id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("slot id cannot be empty"));
+            }
+            if normalized.iter().any(|v: &String| v == trimmed) {
+                return Err(PyValueError::new_err(format!(
+                    "duplicated slot id: {}",
+                    trimmed
+                )));
+            }
+            normalized.push(trimmed.to_string());
+        }
+        self.strategy_slots = normalized
+            .into_iter()
+            .map(|strategy_id| StrategySlot { strategy_id })
+            .collect();
+        self.active_strategy_slot = 0;
+        self.default_strategy_id = self
+            .strategy_slots
+            .first()
+            .map(|slot| slot.strategy_id.clone());
+        self.strategy_contexts = (0..self.strategy_slots.len()).map(|_| None).collect();
+        self.strategy_slot_strategies =
+            (0..self.strategy_slots.len()).map(|_| None).collect();
+        Ok(())
+    }
+
+    fn set_strategy_for_slot(
+        &mut self,
+        py: Python<'_>,
+        slot_index: usize,
+        strategy: Py<PyAny>,
+    ) -> PyResult<()> {
+        self.ensure_strategy_context_capacity();
+        if slot_index >= self.strategy_slots.len() {
+            return Err(PyValueError::new_err(format!(
+                "slot_index out of range: {}",
+                slot_index
+            )));
+        }
+        self.strategy_slot_strategies[slot_index] = Some(strategy.clone_ref(py));
+        self.strategy_contexts[slot_index] = None;
+        Ok(())
+    }
+
+    fn clear_strategy_for_slot(&mut self, slot_index: usize) -> PyResult<()> {
+        self.ensure_strategy_context_capacity();
+        if slot_index >= self.strategy_slots.len() {
+            return Err(PyValueError::new_err(format!(
+                "slot_index out of range: {}",
+                slot_index
+            )));
+        }
+        self.strategy_slot_strategies[slot_index] = None;
+        self.strategy_contexts[slot_index] = None;
+        Ok(())
+    }
+
+    fn set_strategy_max_order_value_limits(
+        &mut self,
+        limits: HashMap<String, f64>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, value) in limits {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            if !value.is_finite() || value < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max order value for strategy {}: {}",
+                    trimmed, value
+                )));
+            }
+            let Some(decimal_value) = Decimal::from_f64(value) else {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max order value for strategy {}: {}",
+                    trimmed, value
+                )));
+            };
+            normalized.insert(trimmed.to_string(), decimal_value);
+        }
+        self.strategy_max_order_value_limits = normalized;
+        Ok(())
+    }
+
+    fn set_strategy_max_order_size_limits(
+        &mut self,
+        limits: HashMap<String, f64>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, value) in limits {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            if !value.is_finite() || value < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max order size for strategy {}: {}",
+                    trimmed, value
+                )));
+            }
+            let Some(decimal_value) = Decimal::from_f64(value) else {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max order size for strategy {}: {}",
+                    trimmed, value
+                )));
+            };
+            normalized.insert(trimmed.to_string(), decimal_value);
+        }
+        self.strategy_max_order_size_limits = normalized;
+        Ok(())
+    }
+
+    fn set_strategy_max_position_size_limits(
+        &mut self,
+        limits: HashMap<String, f64>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, value) in limits {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            if !value.is_finite() || value < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max position size for strategy {}: {}",
+                    trimmed, value
+                )));
+            }
+            let Some(decimal_value) = Decimal::from_f64(value) else {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max position size for strategy {}: {}",
+                    trimmed, value
+                )));
+            };
+            normalized.insert(trimmed.to_string(), decimal_value);
+        }
+        self.strategy_max_position_size_limits = normalized;
+        Ok(())
+    }
+
+    fn set_strategy_max_daily_loss_limits(
+        &mut self,
+        limits: HashMap<String, f64>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, value) in limits {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            if !value.is_finite() || value < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max daily loss for strategy {}: {}",
+                    trimmed, value
+                )));
+            }
+            let Some(decimal_value) = Decimal::from_f64(value) else {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max daily loss for strategy {}: {}",
+                    trimmed, value
+                )));
+            };
+            normalized.insert(trimmed.to_string(), decimal_value);
+        }
+        self.strategy_max_daily_loss_limits = normalized;
+        Ok(())
+    }
+
+    fn set_strategy_max_drawdown_limits(
+        &mut self,
+        limits: HashMap<String, f64>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, value) in limits {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            if !value.is_finite() || value < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max drawdown for strategy {}: {}",
+                    trimmed, value
+                )));
+            }
+            let Some(decimal_value) = Decimal::from_f64(value) else {
+                return Err(PyValueError::new_err(format!(
+                    "invalid max drawdown for strategy {}: {}",
+                    trimmed, value
+                )));
+            };
+            normalized.insert(trimmed.to_string(), decimal_value);
+        }
+        self.strategy_max_drawdown_limits = normalized;
+        Ok(())
+    }
+
+    fn set_strategy_reduce_only_after_risk(
+        &mut self,
+        flags: HashMap<String, bool>,
+    ) -> PyResult<()> {
+        let mut enabled = std::collections::HashSet::new();
+        for (strategy_id, flag) in flags {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            if flag {
+                enabled.insert(trimmed.to_string());
+            }
+        }
+        self.strategy_reduce_only_after_risk = enabled;
+        Ok(())
+    }
+
+    fn set_strategy_risk_cooldown_bars(
+        &mut self,
+        bars: HashMap<String, usize>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, cooldown_bars) in bars {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            normalized.insert(trimmed.to_string(), cooldown_bars);
+        }
+        self.strategy_risk_cooldown_bars = normalized;
+        Ok(())
+    }
+
+    fn set_strategy_priorities(
+        &mut self,
+        priorities: HashMap<String, i32>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, priority) in priorities {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            normalized.insert(trimmed.to_string(), priority);
+        }
+        self.strategy_priorities = normalized;
+        Ok(())
+    }
+
+    fn set_strategy_risk_budget_limits(
+        &mut self,
+        limits: HashMap<String, f64>,
+    ) -> PyResult<()> {
+        let mut normalized = HashMap::new();
+        for (strategy_id, value) in limits {
+            let trimmed = strategy_id.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err("strategy id cannot be empty"));
+            }
+            if !value.is_finite() || value < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "invalid risk budget for strategy {}: {}",
+                    trimmed, value
+                )));
+            }
+            let Some(decimal_value) = Decimal::from_f64(value) else {
+                return Err(PyValueError::new_err(format!(
+                    "invalid risk budget for strategy {}: {}",
+                    trimmed, value
+                )));
+            };
+            normalized.insert(trimmed.to_string(), decimal_value);
+        }
+        self.strategy_risk_budget_limits = normalized;
+        Ok(())
+    }
+
+    fn set_portfolio_risk_budget_limit(
+        &mut self,
+        limit: Option<f64>,
+    ) -> PyResult<()> {
+        if let Some(value) = limit {
+            if !value.is_finite() || value < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "invalid portfolio risk budget: {}",
+                    value
+                )));
+            }
+            let Some(decimal_value) = Decimal::from_f64(value) else {
+                return Err(PyValueError::new_err(format!(
+                    "invalid portfolio risk budget: {}",
+                    value
+                )));
+            };
+            self.portfolio_risk_budget_limit = Some(decimal_value);
+            return Ok(());
+        }
+        self.portfolio_risk_budget_limit = None;
+        Ok(())
+    }
+
+    fn set_risk_budget_mode(&mut self, mode: &str) -> PyResult<()> {
+        let normalized = mode.trim().to_ascii_lowercase();
+        if normalized != "order_notional" && normalized != "trade_notional" {
+            return Err(PyValueError::new_err(
+                "risk budget mode must be order_notional or trade_notional",
+            ));
+        }
+        self.risk_budget_mode = normalized;
+        Ok(())
+    }
+
+    fn set_risk_budget_reset_daily(&mut self, enabled: bool) {
+        self.risk_budget_reset_daily = enabled;
+    }
+
     /// 初始化回测引擎.
     ///
     /// :return: Engine 实例
@@ -126,7 +476,36 @@ impl Engine {
             current_event: None,
             bar_count: 0,
             progress_bar: None,
-            strategy_context: None,
+            strategy_contexts: vec![None],
+            strategy_slot_strategies: vec![None],
+            strategy_slots: vec![StrategySlot {
+                strategy_id: "_default".to_string(),
+            }],
+            active_strategy_slot: 0,
+            default_strategy_id: Some("_default".to_string()),
+            strategy_priorities: HashMap::new(),
+            strategy_risk_budget_limits: HashMap::new(),
+            portfolio_risk_budget_limit: None,
+            strategy_risk_budget_used: HashMap::new(),
+            portfolio_risk_budget_used: Decimal::ZERO,
+            risk_budget_mode: "order_notional".to_string(),
+            risk_budget_reset_daily: false,
+            risk_budget_usage_day: None,
+            strategy_max_order_value_limits: HashMap::new(),
+            strategy_max_order_size_limits: HashMap::new(),
+            strategy_max_position_size_limits: HashMap::new(),
+            strategy_max_daily_loss_limits: HashMap::new(),
+            strategy_max_drawdown_limits: HashMap::new(),
+            strategy_risk_cooldown_bars: HashMap::new(),
+            strategy_risk_cooldown_until_bar: HashMap::new(),
+            strategy_reduce_only_after_risk: std::collections::HashSet::new(),
+            strategy_positions: HashMap::new(),
+            strategy_cashflows: HashMap::new(),
+            strategy_daily_loss_day: HashMap::new(),
+            strategy_daily_loss_baseline_pnl: HashMap::new(),
+            strategy_last_pnl: HashMap::new(),
+            strategy_peak_pnl: HashMap::new(),
+            strategy_reduce_only_active: std::collections::HashSet::new(),
             snapshot_time: 0,
             stream_callback: None,
             stream_run_id: None,
@@ -154,6 +533,54 @@ impl Engine {
             current_time: self.clock.timestamp().unwrap_or(0),
             portfolio: self.state.portfolio.clone(),
             order_manager: self.state.order_manager.clone(),
+            strategy_risk_state: crate::engine::state::StrategyRiskStateSnapshot {
+                default_strategy_id: self.default_strategy_id.clone(),
+                strategy_slots: self
+                    .strategy_slots
+                    .iter()
+                    .map(|slot| slot.strategy_id.clone())
+                    .collect(),
+                active_strategy_slot: self.active_strategy_slot,
+                strategy_priorities: self.strategy_priorities.clone(),
+                strategy_risk_budget_limits: self.strategy_risk_budget_limits.clone(),
+                portfolio_risk_budget_limit: self.portfolio_risk_budget_limit,
+                strategy_risk_budget_used: self.strategy_risk_budget_used.clone(),
+                portfolio_risk_budget_used: self.portfolio_risk_budget_used,
+                risk_budget_mode: self.risk_budget_mode.clone(),
+                risk_budget_reset_daily: self.risk_budget_reset_daily,
+                risk_budget_usage_day: self.risk_budget_usage_day,
+                strategy_max_order_value_limits: self
+                    .strategy_max_order_value_limits
+                    .clone(),
+                strategy_max_order_size_limits: self
+                    .strategy_max_order_size_limits
+                    .clone(),
+                strategy_max_position_size_limits: self
+                    .strategy_max_position_size_limits
+                    .clone(),
+                strategy_max_daily_loss_limits: self
+                    .strategy_max_daily_loss_limits
+                    .clone(),
+                strategy_max_drawdown_limits: self
+                    .strategy_max_drawdown_limits
+                    .clone(),
+                strategy_risk_cooldown_bars: self.strategy_risk_cooldown_bars.clone(),
+                strategy_risk_cooldown_until_bar: self
+                    .strategy_risk_cooldown_until_bar
+                    .clone(),
+                strategy_reduce_only_after_risk: self
+                    .strategy_reduce_only_after_risk
+                    .clone(),
+                strategy_positions: self.strategy_positions.clone(),
+                strategy_cashflows: self.strategy_cashflows.clone(),
+                strategy_daily_loss_day: self.strategy_daily_loss_day.clone(),
+                strategy_daily_loss_baseline_pnl: self
+                    .strategy_daily_loss_baseline_pnl
+                    .clone(),
+                strategy_last_pnl: self.strategy_last_pnl.clone(),
+                strategy_peak_pnl: self.strategy_peak_pnl.clone(),
+                strategy_reduce_only_active: self.strategy_reduce_only_active.clone(),
+            },
         };
         let bytes = rmp_serde::to_vec(&snapshot).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyBytes::new(py, &bytes))
@@ -168,6 +595,66 @@ impl Engine {
         self.state.portfolio = snapshot.portfolio;
         self.state.order_manager = snapshot.order_manager;
         self.snapshot_time = snapshot.current_time;
+        self.default_strategy_id = snapshot.strategy_risk_state.default_strategy_id;
+        self.strategy_slots = snapshot
+            .strategy_risk_state
+            .strategy_slots
+            .into_iter()
+            .map(|strategy_id| StrategySlot { strategy_id })
+            .collect();
+        self.active_strategy_slot = snapshot.strategy_risk_state.active_strategy_slot;
+        self.strategy_priorities = snapshot.strategy_risk_state.strategy_priorities;
+        self.strategy_risk_budget_limits = snapshot
+            .strategy_risk_state
+            .strategy_risk_budget_limits;
+        self.portfolio_risk_budget_limit = snapshot
+            .strategy_risk_state
+            .portfolio_risk_budget_limit;
+        self.strategy_risk_budget_used = snapshot
+            .strategy_risk_state
+            .strategy_risk_budget_used;
+        self.portfolio_risk_budget_used = snapshot
+            .strategy_risk_state
+            .portfolio_risk_budget_used;
+        self.risk_budget_mode = snapshot.strategy_risk_state.risk_budget_mode;
+        self.risk_budget_reset_daily = snapshot.strategy_risk_state.risk_budget_reset_daily;
+        self.risk_budget_usage_day = snapshot.strategy_risk_state.risk_budget_usage_day;
+        self.strategy_max_order_value_limits = snapshot
+            .strategy_risk_state
+            .strategy_max_order_value_limits;
+        self.strategy_max_order_size_limits = snapshot
+            .strategy_risk_state
+            .strategy_max_order_size_limits;
+        self.strategy_max_position_size_limits = snapshot
+            .strategy_risk_state
+            .strategy_max_position_size_limits;
+        self.strategy_max_daily_loss_limits = snapshot
+            .strategy_risk_state
+            .strategy_max_daily_loss_limits;
+        self.strategy_max_drawdown_limits = snapshot
+            .strategy_risk_state
+            .strategy_max_drawdown_limits;
+        self.strategy_risk_cooldown_bars = snapshot
+            .strategy_risk_state
+            .strategy_risk_cooldown_bars;
+        self.strategy_risk_cooldown_until_bar = snapshot
+            .strategy_risk_state
+            .strategy_risk_cooldown_until_bar;
+        self.strategy_reduce_only_after_risk = snapshot
+            .strategy_risk_state
+            .strategy_reduce_only_after_risk;
+        self.strategy_positions = snapshot.strategy_risk_state.strategy_positions;
+        self.strategy_cashflows = snapshot.strategy_risk_state.strategy_cashflows;
+        self.strategy_daily_loss_day = snapshot.strategy_risk_state.strategy_daily_loss_day;
+        self.strategy_daily_loss_baseline_pnl = snapshot
+            .strategy_risk_state
+            .strategy_daily_loss_baseline_pnl;
+        self.strategy_last_pnl = snapshot.strategy_risk_state.strategy_last_pnl;
+        self.strategy_peak_pnl = snapshot.strategy_risk_state.strategy_peak_pnl;
+        self.strategy_reduce_only_active = snapshot
+            .strategy_risk_state
+            .strategy_reduce_only_active;
+        self.ensure_strategy_slot_exists();
 
         Ok(())
     }

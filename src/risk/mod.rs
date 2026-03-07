@@ -40,8 +40,9 @@ mod tests {
             created_at: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
             updated_at: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
             commission: Decimal::ZERO,
-            tag: "".to_string(),
-            reject_reason: "".to_string(),
+            tag: String::new(),
+            reject_reason: String::new(),
+            owner_strategy_id: None,
         }
     }
 

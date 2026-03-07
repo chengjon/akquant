@@ -15,6 +15,7 @@ from ..akquant import (
 from ..akquant import (
     ClosedTrade,
     Order,
+    Trade,
 )
 
 
@@ -467,6 +468,11 @@ class BacktestResult:
             # Calculate duration (存续时长)
             df["duration"] = df["updated_at"] - df["created_at"]
 
+        if "owner_strategy_id" not in df.columns:
+            owner_strategy_id = getattr(self, "_owner_strategy_id", None)
+            if owner_strategy_id is not None:
+                df["owner_strategy_id"] = owner_strategy_id
+
         # Sort by creation time for better readability
         if "created_at" in df.columns:
             df.sort_values(by="created_at", inplace=True)
@@ -581,6 +587,40 @@ class BacktestResult:
         if "duration" in df.columns:
             df["duration"] = pd.to_timedelta(df["duration"], unit="ns")
 
+        return df
+
+    @cached_property
+    def executions_df(self) -> pd.DataFrame:
+        """Get execution reports (fills) as a Pandas DataFrame."""
+        executions = cast(List[Trade], getattr(self._raw, "executions", []))
+        if not executions:
+            return pd.DataFrame()
+
+        rows: list[dict[str, Any]] = []
+        fallback_owner_strategy_id = getattr(self, "_owner_strategy_id", None)
+        for t in executions:
+            rows.append(
+                {
+                    "id": t.id,
+                    "order_id": t.order_id,
+                    "symbol": t.symbol,
+                    "side": str(t.side).lower(),
+                    "quantity": float(t.quantity),
+                    "price": float(t.price),
+                    "commission": float(t.commission),
+                    "timestamp": t.timestamp,
+                    "bar_index": t.bar_index,
+                    "owner_strategy_id": getattr(
+                        t, "owner_strategy_id", fallback_owner_strategy_id
+                    ),
+                }
+            )
+
+        df = pd.DataFrame(rows)
+        if "timestamp" in df.columns and pd.api.types.is_numeric_dtype(df["timestamp"]):
+            df["timestamp"] = pd.to_datetime(
+                df["timestamp"], unit="ns", utc=True
+            ).dt.tz_convert(self._timezone)
         return df
 
     def exposure_df(self, freq: Optional[str] = "D") -> pd.DataFrame:
@@ -778,6 +818,365 @@ class BacktestResult:
         grouped["turnover"] = (grouped["filled_value"] / safe_equity).fillna(0.0)
 
         grouped = grouped.reset_index()
+        return cast(pd.DataFrame, grouped[columns])
+
+    def orders_by_strategy(self) -> pd.DataFrame:
+        """Get strategy-level order aggregation table."""
+        orders = self.orders_df.copy()
+        columns = [
+            "owner_strategy_id",
+            "order_count",
+            "filled_order_count",
+            "ordered_quantity",
+            "filled_quantity",
+            "ordered_value",
+            "filled_value",
+            "fill_rate_qty",
+            "fill_rate_value",
+        ]
+        if orders.empty:
+            return pd.DataFrame(columns=columns)
+
+        if "owner_strategy_id" not in orders.columns:
+            orders["owner_strategy_id"] = "_default"
+        orders["owner_strategy_id"] = (
+            orders["owner_strategy_id"].fillna("_default").astype(str)
+        )
+
+        for col in [
+            "quantity",
+            "filled_quantity",
+            "avg_price",
+            "limit_price",
+            "filled_value",
+        ]:
+            if col not in orders.columns:
+                orders[col] = 0.0
+        quantity = pd.to_numeric(orders["quantity"], errors="coerce").fillna(0.0)
+        filled_quantity = pd.to_numeric(
+            orders["filled_quantity"], errors="coerce"
+        ).fillna(0.0)
+        avg_price = pd.to_numeric(orders["avg_price"], errors="coerce").fillna(0.0)
+        limit_price = pd.to_numeric(orders["limit_price"], errors="coerce").fillna(0.0)
+        filled_value = pd.to_numeric(orders["filled_value"], errors="coerce").fillna(
+            0.0
+        )
+        ordered_price = limit_price.where(limit_price > 0.0, avg_price)
+        ordered_value = quantity * ordered_price.fillna(0.0)
+        is_filled = (filled_quantity > 0.0).astype(int)
+
+        frame = pd.DataFrame(
+            {
+                "owner_strategy_id": orders["owner_strategy_id"],
+                "order_count": 1,
+                "filled_order_count": is_filled,
+                "ordered_quantity": quantity,
+                "filled_quantity": filled_quantity,
+                "ordered_value": ordered_value,
+                "filled_value": filled_value,
+            }
+        )
+        grouped = frame.groupby("owner_strategy_id", as_index=False).sum()
+        safe_ordered_qty = grouped["ordered_quantity"].replace(0.0, pd.NA)
+        safe_ordered_value = grouped["ordered_value"].replace(0.0, pd.NA)
+        grouped["fill_rate_qty"] = (
+            grouped["filled_quantity"] / safe_ordered_qty
+        ).fillna(0.0)
+        grouped["fill_rate_value"] = (
+            grouped["filled_value"] / safe_ordered_value
+        ).fillna(0.0)
+        grouped = grouped.sort_values("owner_strategy_id").reset_index(drop=True)
+        return cast(pd.DataFrame, grouped[columns])
+
+    def executions_by_strategy(self) -> pd.DataFrame:
+        """Get strategy-level execution aggregation table."""
+        executions = self.executions_df.copy()
+        columns = [
+            "owner_strategy_id",
+            "execution_count",
+            "total_quantity",
+            "total_notional",
+            "total_commission",
+            "avg_fill_price",
+        ]
+        if executions.empty:
+            return pd.DataFrame(columns=columns)
+
+        if "owner_strategy_id" not in executions.columns:
+            executions["owner_strategy_id"] = "_default"
+        executions["owner_strategy_id"] = (
+            executions["owner_strategy_id"].fillna("_default").astype(str)
+        )
+
+        for col in ["quantity", "price", "commission"]:
+            if col not in executions.columns:
+                executions[col] = 0.0
+        quantity = pd.to_numeric(executions["quantity"], errors="coerce").fillna(0.0)
+        price = pd.to_numeric(executions["price"], errors="coerce").fillna(0.0)
+        commission = pd.to_numeric(executions["commission"], errors="coerce").fillna(
+            0.0
+        )
+        notional = quantity * price
+
+        frame = pd.DataFrame(
+            {
+                "owner_strategy_id": executions["owner_strategy_id"],
+                "execution_count": 1,
+                "total_quantity": quantity,
+                "total_notional": notional,
+                "total_commission": commission,
+            }
+        )
+        grouped = frame.groupby("owner_strategy_id", as_index=False).sum()
+        safe_quantity = grouped["total_quantity"].replace(0.0, pd.NA)
+        grouped["avg_fill_price"] = (grouped["total_notional"] / safe_quantity).fillna(
+            0.0
+        )
+        grouped = grouped.sort_values("owner_strategy_id").reset_index(drop=True)
+        return cast(pd.DataFrame, grouped[columns])
+
+    def _risk_reason_masks(self, rejected: pd.DataFrame) -> dict[str, pd.Series]:
+        reason_lower = rejected["reject_reason"].fillna("").astype(str).str.lower()
+        daily_loss_mask = reason_lower.str.contains("daily loss", regex=False)
+        drawdown_mask = reason_lower.str.contains("drawdown", regex=False)
+        reduce_only_mask = reason_lower.str.contains("reduce_only mode", regex=False)
+        position_limit_mask = reason_lower.str.contains(
+            "projected position", regex=False
+        )
+        order_size_mask = reason_lower.str.contains("order quantity", regex=False)
+        order_value_mask = reason_lower.str.contains("order value", regex=False)
+        strategy_budget_mask = reason_lower.str.contains(
+            "risk budget", regex=False
+        ) & reason_lower.str.contains("strategy", regex=False)
+        portfolio_budget_mask = reason_lower.str.contains(
+            "portfolio risk budget", regex=False
+        )
+        known_mask = (
+            daily_loss_mask
+            | drawdown_mask
+            | reduce_only_mask
+            | position_limit_mask
+            | order_size_mask
+            | order_value_mask
+            | strategy_budget_mask
+            | portfolio_budget_mask
+        )
+        return {
+            "daily_loss_reject_count": daily_loss_mask.astype(int),
+            "drawdown_reject_count": drawdown_mask.astype(int),
+            "reduce_only_reject_count": reduce_only_mask.astype(int),
+            "position_limit_reject_count": position_limit_mask.astype(int),
+            "order_size_limit_reject_count": order_size_mask.astype(int),
+            "order_value_limit_reject_count": order_value_mask.astype(int),
+            "strategy_risk_budget_reject_count": strategy_budget_mask.astype(int),
+            "portfolio_risk_budget_reject_count": portfolio_budget_mask.astype(int),
+            "other_risk_reject_count": (~known_mask).astype(int),
+        }
+
+    def risk_rejections_by_strategy(self) -> pd.DataFrame:
+        """Get strategy-level risk rejection breakdown table."""
+        orders = self.orders_df.copy()
+        columns = [
+            "owner_strategy_id",
+            "risk_reject_count",
+            "daily_loss_reject_count",
+            "drawdown_reject_count",
+            "reduce_only_reject_count",
+            "position_limit_reject_count",
+            "order_size_limit_reject_count",
+            "order_value_limit_reject_count",
+            "strategy_risk_budget_reject_count",
+            "portfolio_risk_budget_reject_count",
+            "other_risk_reject_count",
+        ]
+        if orders.empty:
+            return pd.DataFrame(columns=columns)
+
+        if "owner_strategy_id" not in orders.columns:
+            orders["owner_strategy_id"] = "_default"
+        orders["owner_strategy_id"] = (
+            orders["owner_strategy_id"].fillna("_default").astype(str)
+        )
+        if "reject_reason" not in orders.columns:
+            orders["reject_reason"] = ""
+        if "status" not in orders.columns:
+            orders["status"] = ""
+        reject_reason = orders["reject_reason"].fillna("").astype(str)
+        status = orders["status"].fillna("").astype(str)
+        rejected_mask = (reject_reason.str.len() > 0) | status.str.contains(
+            "Rejected", case=False, regex=False
+        )
+        rejected = orders.loc[rejected_mask].copy()
+        if rejected.empty:
+            return pd.DataFrame(columns=columns)
+        masks = self._risk_reason_masks(rejected)
+
+        frame = pd.DataFrame(
+            {
+                "owner_strategy_id": rejected["owner_strategy_id"],
+                "risk_reject_count": 1,
+                "daily_loss_reject_count": masks["daily_loss_reject_count"],
+                "drawdown_reject_count": masks["drawdown_reject_count"],
+                "reduce_only_reject_count": masks["reduce_only_reject_count"],
+                "position_limit_reject_count": masks["position_limit_reject_count"],
+                "order_size_limit_reject_count": masks["order_size_limit_reject_count"],
+                "order_value_limit_reject_count": masks[
+                    "order_value_limit_reject_count"
+                ],
+                "strategy_risk_budget_reject_count": masks[
+                    "strategy_risk_budget_reject_count"
+                ],
+                "portfolio_risk_budget_reject_count": masks[
+                    "portfolio_risk_budget_reject_count"
+                ],
+                "other_risk_reject_count": masks["other_risk_reject_count"],
+            }
+        )
+        grouped = frame.groupby("owner_strategy_id", as_index=False).sum()
+        grouped = grouped.sort_values("owner_strategy_id").reset_index(drop=True)
+        return cast(pd.DataFrame, grouped[columns])
+
+    def risk_rejections_trend(self, freq: str = "D") -> pd.DataFrame:
+        """Get time-series trend of risk rejections."""
+        orders = self.orders_df.copy()
+        columns = [
+            "date",
+            "risk_reject_count",
+            "daily_loss_reject_count",
+            "drawdown_reject_count",
+            "reduce_only_reject_count",
+            "position_limit_reject_count",
+            "order_size_limit_reject_count",
+            "order_value_limit_reject_count",
+            "strategy_risk_budget_reject_count",
+            "portfolio_risk_budget_reject_count",
+            "other_risk_reject_count",
+        ]
+        if orders.empty:
+            return pd.DataFrame(columns=columns)
+
+        ts_col = "updated_at" if "updated_at" in orders.columns else "created_at"
+        if ts_col not in orders.columns:
+            return pd.DataFrame(columns=columns)
+        if "reject_reason" not in orders.columns:
+            orders["reject_reason"] = ""
+        if "status" not in orders.columns:
+            orders["status"] = ""
+        reject_reason = orders["reject_reason"].fillna("").astype(str)
+        status = orders["status"].fillna("").astype(str)
+        rejected_mask = (reject_reason.str.len() > 0) | status.str.contains(
+            "Rejected", case=False, regex=False
+        )
+        rejected = orders.loc[rejected_mask].copy()
+        if rejected.empty:
+            return pd.DataFrame(columns=columns)
+
+        ts = pd.to_datetime(rejected[ts_col], errors="coerce")
+        rejected = rejected.loc[ts.notna()].copy()
+        if rejected.empty:
+            return pd.DataFrame(columns=columns)
+        rejected["date"] = cast(pd.Series, ts.loc[ts.notna()]).dt.floor(freq)
+
+        masks = self._risk_reason_masks(rejected)
+        frame = pd.DataFrame(
+            {
+                "date": rejected["date"],
+                "risk_reject_count": 1,
+                "daily_loss_reject_count": masks["daily_loss_reject_count"],
+                "drawdown_reject_count": masks["drawdown_reject_count"],
+                "reduce_only_reject_count": masks["reduce_only_reject_count"],
+                "position_limit_reject_count": masks["position_limit_reject_count"],
+                "order_size_limit_reject_count": masks["order_size_limit_reject_count"],
+                "order_value_limit_reject_count": masks[
+                    "order_value_limit_reject_count"
+                ],
+                "strategy_risk_budget_reject_count": masks[
+                    "strategy_risk_budget_reject_count"
+                ],
+                "portfolio_risk_budget_reject_count": masks[
+                    "portfolio_risk_budget_reject_count"
+                ],
+                "other_risk_reject_count": masks["other_risk_reject_count"],
+            }
+        )
+        grouped = frame.groupby("date", as_index=False).sum()
+        grouped = grouped.sort_values("date").reset_index(drop=True)
+        return cast(pd.DataFrame, grouped[columns])
+
+    def risk_rejections_trend_by_strategy(self, freq: str = "D") -> pd.DataFrame:
+        """Get time-series trend of risk rejections by strategy."""
+        orders = self.orders_df.copy()
+        columns = [
+            "date",
+            "owner_strategy_id",
+            "risk_reject_count",
+            "daily_loss_reject_count",
+            "drawdown_reject_count",
+            "reduce_only_reject_count",
+            "position_limit_reject_count",
+            "order_size_limit_reject_count",
+            "order_value_limit_reject_count",
+            "strategy_risk_budget_reject_count",
+            "portfolio_risk_budget_reject_count",
+            "other_risk_reject_count",
+        ]
+        if orders.empty:
+            return pd.DataFrame(columns=columns)
+
+        ts_col = "updated_at" if "updated_at" in orders.columns else "created_at"
+        if ts_col not in orders.columns:
+            return pd.DataFrame(columns=columns)
+        if "owner_strategy_id" not in orders.columns:
+            orders["owner_strategy_id"] = "_default"
+        orders["owner_strategy_id"] = (
+            orders["owner_strategy_id"].fillna("_default").astype(str)
+        )
+        if "reject_reason" not in orders.columns:
+            orders["reject_reason"] = ""
+        if "status" not in orders.columns:
+            orders["status"] = ""
+        reject_reason = orders["reject_reason"].fillna("").astype(str)
+        status = orders["status"].fillna("").astype(str)
+        rejected_mask = (reject_reason.str.len() > 0) | status.str.contains(
+            "Rejected", case=False, regex=False
+        )
+        rejected = orders.loc[rejected_mask].copy()
+        if rejected.empty:
+            return pd.DataFrame(columns=columns)
+
+        ts = pd.to_datetime(rejected[ts_col], errors="coerce")
+        rejected = rejected.loc[ts.notna()].copy()
+        if rejected.empty:
+            return pd.DataFrame(columns=columns)
+        rejected["date"] = cast(pd.Series, ts.loc[ts.notna()]).dt.floor(freq)
+
+        masks = self._risk_reason_masks(rejected)
+        frame = pd.DataFrame(
+            {
+                "date": rejected["date"],
+                "owner_strategy_id": rejected["owner_strategy_id"],
+                "risk_reject_count": 1,
+                "daily_loss_reject_count": masks["daily_loss_reject_count"],
+                "drawdown_reject_count": masks["drawdown_reject_count"],
+                "reduce_only_reject_count": masks["reduce_only_reject_count"],
+                "position_limit_reject_count": masks["position_limit_reject_count"],
+                "order_size_limit_reject_count": masks["order_size_limit_reject_count"],
+                "order_value_limit_reject_count": masks[
+                    "order_value_limit_reject_count"
+                ],
+                "strategy_risk_budget_reject_count": masks[
+                    "strategy_risk_budget_reject_count"
+                ],
+                "portfolio_risk_budget_reject_count": masks[
+                    "portfolio_risk_budget_reject_count"
+                ],
+                "other_risk_reject_count": masks["other_risk_reject_count"],
+            }
+        )
+        grouped = frame.groupby(["date", "owner_strategy_id"], as_index=False).sum()
+        grouped = grouped.sort_values(["date", "owner_strategy_id"]).reset_index(
+            drop=True
+        )
         return cast(pd.DataFrame, grouped[columns])
 
     def __getattr__(self, name: str) -> Any:

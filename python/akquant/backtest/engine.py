@@ -74,6 +74,43 @@ def _noop_stream_event_handler(_event: BacktestStreamEvent) -> None:
     return None
 
 
+def _build_strategy_instance(
+    strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None],
+    strategy_kwargs: Dict[str, Any],
+    logger: Any,
+    initialize: Optional[Callable[[Any], None]],
+    on_tick: Optional[Callable[[Any, Any], None]],
+    on_order: Optional[Callable[[Any, Any], None]],
+    on_trade: Optional[Callable[[Any, Any], None]],
+    on_timer: Optional[Callable[[Any, str], None]],
+    context: Optional[Dict[str, Any]],
+) -> Strategy:
+    if isinstance(strategy, type) and issubclass(strategy, Strategy):
+        try:
+            return cast(Strategy, strategy(**strategy_kwargs))
+        except TypeError as e:
+            logger.warning(
+                f"Failed to instantiate strategy with provided parameters: {e}. "
+                "Falling back to default constructor (no arguments)."
+            )
+            return cast(Strategy, strategy())
+    if isinstance(strategy, Strategy):
+        return strategy
+    if callable(strategy):
+        return FunctionalStrategy(
+            initialize,
+            cast(Callable[[Any, Bar], None], strategy),
+            on_tick=on_tick,
+            on_order=on_order,
+            on_trade=on_trade,
+            on_timer=on_timer,
+            context=context,
+        )
+    if strategy is None:
+        raise ValueError("Strategy must be provided.")
+    raise ValueError("Invalid strategy type")
+
+
 class FunctionalStrategy(Strategy):
     """内部策略包装器，用于支持函数式 API (Zipline 风格)."""
 
@@ -241,6 +278,22 @@ def run_backtest(
         Union[StrategyRuntimeConfig, Dict[str, Any]]
     ] = None,
     runtime_config_override: bool = True,
+    strategy_id: Optional[str] = None,
+    strategies_by_slot: Optional[
+        Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]
+    ] = None,
+    strategy_max_order_value: Optional[Dict[str, float]] = None,
+    strategy_max_order_size: Optional[Dict[str, float]] = None,
+    strategy_max_position_size: Optional[Dict[str, float]] = None,
+    strategy_max_daily_loss: Optional[Dict[str, float]] = None,
+    strategy_max_drawdown: Optional[Dict[str, float]] = None,
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None,
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None,
+    strategy_priority: Optional[Dict[str, int]] = None,
+    strategy_risk_budget: Optional[Dict[str, float]] = None,
+    portfolio_risk_budget: Optional[float] = None,
+    risk_budget_mode: str = "order_notional",
+    risk_budget_reset_daily: bool = False,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     **kwargs: Any,
 ) -> BacktestResult:
@@ -287,6 +340,27 @@ def run_backtest(
     :param config: BacktestConfig 配置对象 (可选)
     :param strategy_runtime_config: 策略运行时配置对象或字典 (可选)
     :param runtime_config_override: 是否覆盖策略实例内已有 runtime_config (默认 True)
+    :param strategy_id: 策略归属 ID（预留多策略归因字段，默认 "_default"）
+    :param strategies_by_slot: 可选 slot->策略映射，用于启用多策略 slot 迭代执行
+    :param strategy_max_order_value: 可选策略级单笔下单金额上限映射
+                                    （strategy_id->max_value）
+    :param strategy_max_order_size: 可选策略级单笔下单数量上限映射
+                                   （strategy_id->max_size）
+    :param strategy_max_position_size: 可选策略级净持仓数量上限映射
+                                       （strategy_id->max_abs_position）
+    :param strategy_max_daily_loss: 可选策略级日内亏损上限映射
+                                    （strategy_id->max_daily_loss）
+    :param strategy_max_drawdown: 可选策略级回撤上限映射
+                                  （strategy_id->max_drawdown）
+    :param strategy_reduce_only_after_risk: 可选策略级风控触发后仅平仓开关映射
+                                            （strategy_id->bool）
+    :param strategy_risk_cooldown_bars: 可选策略级风控触发后冷却 bars 映射
+                                        （strategy_id->cooldown_bars）
+    :param strategy_priority: 可选策略级执行优先级映射（strategy_id->priority）
+    :param strategy_risk_budget: 可选策略级累计风险预算映射（strategy_id->budget）
+    :param portfolio_risk_budget: 可选账户级累计风险预算上限
+    :param risk_budget_mode: 风险预算口径，支持 order_notional/trade_notional
+    :param risk_budget_reset_daily: 风险预算是否按交易日重置
     :param on_event: 可选流式事件回调。阶段 5 后 `run_backtest` 始终走统一事件内核；
                      不传时内部使用 no-op 回调并保持返回语义不变。
     故障速查可参考 docs/zh/advanced/runtime_config.md，
@@ -313,6 +387,50 @@ def run_backtest(
     """
     if "_engine_mode" in kwargs:
         raise TypeError("_engine_mode is no longer supported")
+    if strategies_by_slot is not None and not isinstance(strategies_by_slot, dict):
+        raise TypeError("strategies_by_slot must be a dict when provided")
+    if strategy_max_order_value is not None and not isinstance(
+        strategy_max_order_value, dict
+    ):
+        raise TypeError("strategy_max_order_value must be a dict when provided")
+    if strategy_max_order_size is not None and not isinstance(
+        strategy_max_order_size, dict
+    ):
+        raise TypeError("strategy_max_order_size must be a dict when provided")
+    if strategy_max_position_size is not None and not isinstance(
+        strategy_max_position_size, dict
+    ):
+        raise TypeError("strategy_max_position_size must be a dict when provided")
+    if strategy_max_daily_loss is not None and not isinstance(
+        strategy_max_daily_loss, dict
+    ):
+        raise TypeError("strategy_max_daily_loss must be a dict when provided")
+    if strategy_max_drawdown is not None and not isinstance(
+        strategy_max_drawdown, dict
+    ):
+        raise TypeError("strategy_max_drawdown must be a dict when provided")
+    if strategy_reduce_only_after_risk is not None and not isinstance(
+        strategy_reduce_only_after_risk, dict
+    ):
+        raise TypeError("strategy_reduce_only_after_risk must be a dict when provided")
+    if strategy_risk_cooldown_bars is not None and not isinstance(
+        strategy_risk_cooldown_bars, dict
+    ):
+        raise TypeError("strategy_risk_cooldown_bars must be a dict when provided")
+    if strategy_priority is not None and not isinstance(strategy_priority, dict):
+        raise TypeError("strategy_priority must be a dict when provided")
+    if strategy_risk_budget is not None and not isinstance(strategy_risk_budget, dict):
+        raise TypeError("strategy_risk_budget must be a dict when provided")
+    if portfolio_risk_budget is not None:
+        portfolio_risk_budget = float(portfolio_risk_budget)
+        if not pd.notna(portfolio_risk_budget) or portfolio_risk_budget < 0.0:
+            raise ValueError("portfolio_risk_budget must be >= 0")
+    risk_budget_mode = str(risk_budget_mode).strip().lower()
+    if risk_budget_mode not in {"order_notional", "trade_notional"}:
+        raise ValueError(
+            "risk_budget_mode must be 'order_notional' or 'trade_notional'"
+        )
+    risk_budget_reset_daily = bool(risk_budget_reset_daily)
     stream_on_event = on_event
     internal_stream_callback = kwargs.pop("_stream_on_event", None)
     if internal_stream_callback is not None and stream_on_event is not None:
@@ -323,6 +441,25 @@ def run_backtest(
         raise TypeError("on_event must be callable when provided")
     if stream_on_event is None:
         stream_on_event = _noop_stream_event_handler
+    effective_strategy_id = strategy_id or "_default"
+    original_stream_handler = stream_on_event
+
+    def wrapped_stream_on_event(event: BacktestStreamEvent) -> None:
+        event_type = str(event.get("event_type", ""))
+        if event_type in {"order", "trade", "risk"}:
+            payload_obj = event.get("payload", {})
+            if isinstance(payload_obj, dict):
+                owner_strategy_id = payload_obj.get("owner_strategy_id")
+                if owner_strategy_id is None or str(owner_strategy_id) == "":
+                    patched_event = dict(event)
+                    patched_payload = dict(payload_obj)
+                    patched_payload["owner_strategy_id"] = effective_strategy_id
+                    patched_event["payload"] = cast(Dict[str, str], patched_payload)
+                    original_stream_handler(cast(BacktestStreamEvent, patched_event))
+                    return
+        original_stream_handler(event)
+
+    stream_on_event = wrapped_stream_on_event
     stream_progress_interval = _parse_positive_int_option(
         "stream_progress_interval", kwargs.pop("stream_progress_interval", 1)
     )
@@ -455,45 +592,40 @@ def run_backtest(
     if strategy_runtime_config is None and "strategy_runtime_config" in kwargs:
         strategy_runtime_config = kwargs.pop("strategy_runtime_config")
 
-    # 2. 实例化策略 (提前实例化以获取订阅信息)
-    strategy_instance = None
-
-    if isinstance(strategy, type) and issubclass(strategy, Strategy):
-        try:
-            strategy_instance = strategy(**kwargs)
-        except TypeError as e:
-            # Try fallback only if explicit kwargs failed, but log warning
-            # However, if kwargs contained extra unused params, this failure is
-            # expected for strict init.
-            # But we should try to match params if possible, or just let it fail
-            # if user provided params that don't match?
-            # The original behavior was silent fallback. We should preserve it
-            # but try to be smarter?
-            # Or at least warn if strategy_params were provided but ignored.
-
-            # For now, keep the fallback but maybe inspect if it was due to
-            # strategy_params
-            logger.warning(
-                f"Failed to instantiate strategy with provided parameters: {e}. "
-                "Falling back to default constructor (no arguments)."
+    strategy_kwargs = dict(kwargs)
+    strategy_instance = _build_strategy_instance(
+        strategy,
+        strategy_kwargs,
+        logger,
+        initialize,
+        on_tick,
+        on_order,
+        on_trade,
+        on_timer,
+        context,
+    )
+    slot_strategy_instances: Dict[str, Strategy] = {}
+    if strategies_by_slot:
+        for slot_key, slot_strategy_input in strategies_by_slot.items():
+            slot_key_str = str(slot_key).strip()
+            if not slot_key_str:
+                raise ValueError("strategy slot id cannot be empty")
+            slot_strategy_instances[slot_key_str] = _build_strategy_instance(
+                slot_strategy_input,
+                dict(strategy_kwargs),
+                logger,
+                initialize,
+                on_tick,
+                on_order,
+                on_trade,
+                on_timer,
+                context,
             )
-            strategy_instance = strategy()
-    elif isinstance(strategy, Strategy):
-        strategy_instance = strategy
-    elif callable(strategy):
-        strategy_instance = FunctionalStrategy(
-            initialize,
-            cast(Callable[[Any, Bar], None], strategy),
-            on_tick=on_tick,
-            on_order=on_order,
-            on_trade=on_trade,
-            on_timer=on_timer,
-            context=context,
-        )
-    elif strategy is None:
-        raise ValueError("Strategy must be provided.")
-    else:
-        raise ValueError("Invalid strategy type")
+    all_strategy_instances = [strategy_instance, *slot_strategy_instances.values()]
+    configured_slot_ids = [effective_strategy_id]
+    for slot_key in slot_strategy_instances.keys():
+        if slot_key not in configured_slot_ids:
+            configured_slot_ids.append(slot_key)
 
     if strategy_runtime_config is not None and isinstance(strategy_instance, Strategy):
         _apply_strategy_runtime_config(
@@ -502,38 +634,46 @@ def run_backtest(
             runtime_config_override,
             logger,
         )
+        for slot_strategy in slot_strategy_instances.values():
+            _apply_strategy_runtime_config(
+                slot_strategy,
+                strategy_runtime_config,
+                runtime_config_override,
+                logger,
+            )
 
     # 注入 context
-    if context and hasattr(strategy_instance, "_context"):
-        pass
-    elif context and strategy_instance:
-        for k, v in context.items():
-            setattr(strategy_instance, k, v)
+    if context:
+        for current_strategy in all_strategy_instances:
+            if hasattr(current_strategy, "_context"):
+                continue
+            for k, v in context.items():
+                setattr(current_strategy, k, v)
 
     # 注入 Config 中的 Risk Config
     if config and config.strategy_config and config.strategy_config.risk:
-        # 如果策略支持 set_risk_config (假设我们添加它，或者直接注入属性)
-        if hasattr(strategy_instance, "risk_config"):
-            strategy_instance.risk_config = config.strategy_config.risk  # type: ignore
+        for current_strategy in all_strategy_instances:
+            if hasattr(current_strategy, "risk_config"):
+                current_strategy.risk_config = config.strategy_config.risk  # type: ignore
 
     # 注入费率配置到 Strategy 实例
-    if hasattr(strategy_instance, "commission_rate"):
-        strategy_instance.commission_rate = commission_rate
-    if hasattr(strategy_instance, "min_commission"):
-        strategy_instance.min_commission = min_commission
-    if hasattr(strategy_instance, "stamp_tax_rate"):
-        strategy_instance.stamp_tax_rate = stamp_tax_rate
-    if hasattr(strategy_instance, "transfer_fee_rate"):
-        strategy_instance.transfer_fee_rate = transfer_fee_rate
+    for current_strategy in all_strategy_instances:
+        if hasattr(current_strategy, "commission_rate"):
+            current_strategy.commission_rate = commission_rate
+        if hasattr(current_strategy, "min_commission"):
+            current_strategy.min_commission = min_commission
+        if hasattr(current_strategy, "stamp_tax_rate"):
+            current_strategy.stamp_tax_rate = stamp_tax_rate
+        if hasattr(current_strategy, "transfer_fee_rate"):
+            current_strategy.transfer_fee_rate = transfer_fee_rate
 
     # 注入 lot_size
     # lot_size 参数可能是 int 或 dict。
     # 如果是 dict，则 Strategy._calculate_max_buy_qty 会自动处理
-    if lot_size is not None and hasattr(strategy_instance, "lot_size"):
-        strategy_instance.lot_size = lot_size
-    elif lot_size is None and hasattr(strategy_instance, "lot_size"):
-        # 默认值已经在 Strategy.__new__ 中设置为 1
-        pass
+    if lot_size is not None:
+        for current_strategy in all_strategy_instances:
+            if hasattr(current_strategy, "lot_size"):
+                current_strategy.lot_size = lot_size
 
     # 调用 on_start 获取订阅
     # 注意：现在调用 _on_start_internal 来触发自动发现
@@ -541,6 +681,11 @@ def run_backtest(
         strategy_instance._on_start_internal()
     elif hasattr(strategy_instance, "on_start"):
         strategy_instance.on_start()
+    for slot_strategy in slot_strategy_instances.values():
+        if hasattr(slot_strategy, "_on_start_internal"):
+            slot_strategy._on_start_internal()
+        elif hasattr(slot_strategy, "on_start"):
+            slot_strategy.on_start()
 
     # 3. 准备数据源和 Symbol
     feed = DataFeed()
@@ -565,6 +710,11 @@ def run_backtest(
         for s in strategy_instance._subscriptions:
             if s not in symbols:
                 symbols.append(s)
+    for slot_strategy in slot_strategy_instances.values():
+        if hasattr(slot_strategy, "_subscriptions"):
+            for s in slot_strategy._subscriptions:
+                if s not in symbols:
+                    symbols.append(s)
 
     # Determine Data Loading Strategy
     if data is not None:
@@ -758,7 +908,8 @@ def run_backtest(
                 logger.warning("Failed to load data for all requested symbols.")
 
     # Inject timezone to strategy
-    strategy_instance.timezone = timezone
+    for current_strategy in all_strategy_instances:
+        current_strategy.timezone = timezone
 
     # Inject trading days to strategy (for add_daily_timer)
     if hasattr(strategy_instance, "_trading_days") and data_map_for_indicators:
@@ -782,23 +933,26 @@ def run_backtest(
                     else:
                         day_bounds[day_key] = (start_ns, end_ns)
 
-        if all_dates:
-            strategy_instance._trading_days = sorted(list(all_dates))
-        if hasattr(strategy_instance, "_trading_day_bounds"):
-            strategy_instance._trading_day_bounds = day_bounds
+        for current_strategy in all_strategy_instances:
+            if hasattr(current_strategy, "_trading_days") and all_dates:
+                current_strategy._trading_days = sorted(list(all_dates))
+            if hasattr(current_strategy, "_trading_day_bounds"):
+                current_strategy._trading_day_bounds = day_bounds
 
     # 3.5 Pre-calculate indicators
     # Inject data into indicators so they can be accessed in on_bar via get_value()
-    if hasattr(strategy_instance, "_indicators") and data_map_for_indicators:
-        for symbol_key, df_val in data_map_for_indicators.items():
-            for ind in strategy_instance._indicators:
-                try:
-                    ind(df_val, symbol_key)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to calculate indicator {ind.name} "
-                        f"for {symbol_key}: {e}"
-                    )
+    if data_map_for_indicators:
+        for current_strategy in all_strategy_instances:
+            if hasattr(current_strategy, "_indicators"):
+                for symbol_key, df_val in data_map_for_indicators.items():
+                    for ind in current_strategy._indicators:
+                        try:
+                            ind(df_val, symbol_key)
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to calculate indicator {ind.name} "
+                                f"for {symbol_key}: {e}"
+                            )
 
     # 4. 配置引擎
     engine = Engine()
@@ -809,6 +963,242 @@ def run_backtest(
     offset = int(offset_delta.total_seconds())
     engine.set_timezone(offset)
     engine.set_cash(initial_cash)
+    if hasattr(engine, "set_default_strategy_id"):
+        cast(Any, engine).set_default_strategy_id(effective_strategy_id)
+    if (
+        strategies_by_slot
+        and hasattr(engine, "set_strategy_slots")
+        and hasattr(engine, "set_strategy_for_slot")
+    ):
+        cast(Any, engine).set_strategy_slots(configured_slot_ids)
+        for slot_index, slot_id in enumerate(configured_slot_ids):
+            assigned_strategy: Optional[Strategy] = None
+            if slot_id == effective_strategy_id:
+                assigned_strategy = strategy_instance
+            else:
+                assigned_strategy = slot_strategy_instances.get(slot_id)
+            if assigned_strategy is not None:
+                cast(Any, engine).set_strategy_for_slot(slot_index, assigned_strategy)
+    if strategy_priority and hasattr(engine, "set_strategy_priorities"):
+        normalized_strategy_priority: Dict[str, int] = {}
+        for strategy_key, raw_priority in strategy_priority.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError("strategy_priority contains empty strategy id")
+            priority_value = int(raw_priority)
+            normalized_strategy_priority[strategy_key_str] = priority_value
+        unknown_keys = sorted(
+            set(normalized_strategy_priority.keys()).difference(
+                set(configured_slot_ids)
+            )
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_priority contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_priorities(normalized_strategy_priority)
+    if strategy_risk_budget and hasattr(engine, "set_strategy_risk_budget_limits"):
+        normalized_strategy_risk_budget: Dict[str, float] = {}
+        for strategy_key, raw_budget in strategy_risk_budget.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError("strategy_risk_budget contains empty strategy id")
+            budget_value = float(raw_budget)
+            if not pd.notna(budget_value) or budget_value < 0.0:
+                raise ValueError(
+                    f"strategy_risk_budget for {strategy_key_str} must be >= 0"
+                )
+            normalized_strategy_risk_budget[strategy_key_str] = budget_value
+        unknown_keys = sorted(
+            set(normalized_strategy_risk_budget.keys()).difference(
+                set(configured_slot_ids)
+            )
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_risk_budget contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_risk_budget_limits(
+            normalized_strategy_risk_budget
+        )
+    if hasattr(engine, "set_portfolio_risk_budget_limit"):
+        cast(Any, engine).set_portfolio_risk_budget_limit(portfolio_risk_budget)
+    if hasattr(engine, "set_risk_budget_mode"):
+        cast(Any, engine).set_risk_budget_mode(risk_budget_mode)
+    if hasattr(engine, "set_risk_budget_reset_daily"):
+        cast(Any, engine).set_risk_budget_reset_daily(risk_budget_reset_daily)
+    if strategy_max_order_value and hasattr(
+        engine, "set_strategy_max_order_value_limits"
+    ):
+        normalized_limits: Dict[str, float] = {}
+        for strategy_key, raw_limit in strategy_max_order_value.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError("strategy_max_order_value contains empty strategy id")
+            limit_value = float(raw_limit)
+            if not pd.notna(limit_value) or limit_value < 0.0:
+                raise ValueError(
+                    f"strategy_max_order_value for {strategy_key_str} must be >= 0"
+                )
+            normalized_limits[strategy_key_str] = limit_value
+        unknown_keys = sorted(
+            set(normalized_limits.keys()).difference(set(configured_slot_ids))
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_max_order_value contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_max_order_value_limits(normalized_limits)
+    if strategy_max_order_size and hasattr(
+        engine, "set_strategy_max_order_size_limits"
+    ):
+        normalized_limits_by_size: Dict[str, float] = {}
+        for strategy_key, raw_limit in strategy_max_order_size.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError("strategy_max_order_size contains empty strategy id")
+            limit_value = float(raw_limit)
+            if not pd.notna(limit_value) or limit_value < 0.0:
+                raise ValueError(
+                    f"strategy_max_order_size for {strategy_key_str} must be >= 0"
+                )
+            normalized_limits_by_size[strategy_key_str] = limit_value
+        unknown_keys = sorted(
+            set(normalized_limits_by_size.keys()).difference(set(configured_slot_ids))
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_max_order_size contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_max_order_size_limits(normalized_limits_by_size)
+    if strategy_max_position_size and hasattr(
+        engine, "set_strategy_max_position_size_limits"
+    ):
+        normalized_position_limits: Dict[str, float] = {}
+        for strategy_key, raw_limit in strategy_max_position_size.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError(
+                    "strategy_max_position_size contains empty strategy id"
+                )
+            limit_value = float(raw_limit)
+            if not pd.notna(limit_value) or limit_value < 0.0:
+                raise ValueError(
+                    f"strategy_max_position_size for {strategy_key_str} must be >= 0"
+                )
+            normalized_position_limits[strategy_key_str] = limit_value
+        unknown_keys = sorted(
+            set(normalized_position_limits.keys()).difference(set(configured_slot_ids))
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_max_position_size contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_max_position_size_limits(
+            normalized_position_limits
+        )
+    if strategy_max_daily_loss and hasattr(
+        engine, "set_strategy_max_daily_loss_limits"
+    ):
+        normalized_daily_loss_limits: Dict[str, float] = {}
+        for strategy_key, raw_limit in strategy_max_daily_loss.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError("strategy_max_daily_loss contains empty strategy id")
+            limit_value = float(raw_limit)
+            if not pd.notna(limit_value) or limit_value < 0.0:
+                raise ValueError(
+                    f"strategy_max_daily_loss for {strategy_key_str} must be >= 0"
+                )
+            normalized_daily_loss_limits[strategy_key_str] = limit_value
+        unknown_keys = sorted(
+            set(normalized_daily_loss_limits.keys()).difference(
+                set(configured_slot_ids)
+            )
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_max_daily_loss contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_max_daily_loss_limits(
+            normalized_daily_loss_limits
+        )
+    if strategy_max_drawdown and hasattr(engine, "set_strategy_max_drawdown_limits"):
+        normalized_drawdown_limits: Dict[str, float] = {}
+        for strategy_key, raw_limit in strategy_max_drawdown.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError("strategy_max_drawdown contains empty strategy id")
+            limit_value = float(raw_limit)
+            if not pd.notna(limit_value) or limit_value < 0.0:
+                raise ValueError(
+                    f"strategy_max_drawdown for {strategy_key_str} must be >= 0"
+                )
+            normalized_drawdown_limits[strategy_key_str] = limit_value
+        unknown_keys = sorted(
+            set(normalized_drawdown_limits.keys()).difference(set(configured_slot_ids))
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_max_drawdown contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_max_drawdown_limits(normalized_drawdown_limits)
+    if strategy_reduce_only_after_risk and hasattr(
+        engine, "set_strategy_reduce_only_after_risk"
+    ):
+        normalized_reduce_only_flags: Dict[str, bool] = {}
+        for strategy_key, raw_flag in strategy_reduce_only_after_risk.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError(
+                    "strategy_reduce_only_after_risk contains empty strategy id"
+                )
+            normalized_reduce_only_flags[strategy_key_str] = bool(raw_flag)
+        unknown_keys = sorted(
+            set(normalized_reduce_only_flags.keys()).difference(
+                set(configured_slot_ids)
+            )
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_reduce_only_after_risk contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_reduce_only_after_risk(
+            normalized_reduce_only_flags
+        )
+    if strategy_risk_cooldown_bars and hasattr(
+        engine, "set_strategy_risk_cooldown_bars"
+    ):
+        normalized_cooldown_bars: Dict[str, int] = {}
+        for strategy_key, raw_bars in strategy_risk_cooldown_bars.items():
+            strategy_key_str = str(strategy_key).strip()
+            if not strategy_key_str:
+                raise ValueError(
+                    "strategy_risk_cooldown_bars contains empty strategy id"
+                )
+            cooldown_bars = int(raw_bars)
+            if cooldown_bars < 0:
+                raise ValueError(
+                    f"strategy_risk_cooldown_bars for {strategy_key_str} must be >= 0"
+                )
+            normalized_cooldown_bars[strategy_key_str] = cooldown_bars
+        unknown_keys = sorted(
+            set(normalized_cooldown_bars.keys()).difference(set(configured_slot_ids))
+        )
+        if unknown_keys:
+            raise ValueError(
+                "strategy_risk_cooldown_bars contains unknown strategy id(s): "
+                + ",".join(unknown_keys)
+            )
+        cast(Any, engine).set_strategy_risk_cooldown_bars(normalized_cooldown_bars)
     if history_depth > 0:
         engine.set_history_depth(history_depth)
     if stream_on_event is not None:
@@ -1112,11 +1502,14 @@ def run_backtest(
     effective_depth = max(final_warmup, history_depth)
 
     if effective_depth > 0:
-        strategy_instance.set_history_depth(effective_depth)
+        for current_strategy in all_strategy_instances:
+            current_strategy.set_history_depth(effective_depth)
 
     # 7.5 Prepare Indicators (Vectorized Pre-calculation)
-    if hasattr(strategy_instance, "_prepare_indicators") and data_map_for_indicators:
-        strategy_instance._prepare_indicators(data_map_for_indicators)
+    if data_map_for_indicators:
+        for current_strategy in all_strategy_instances:
+            if hasattr(current_strategy, "_prepare_indicators"):
+                current_strategy._prepare_indicators(data_map_for_indicators)
 
     try:
         engine.run(strategy_instance, show_progress)
@@ -1139,45 +1532,27 @@ def run_backtest(
                 strategy_instance.on_stop()
             except Exception as e:
                 logger.error(f"Error in on_stop: {e}")
+        for slot_strategy in slot_strategy_instances.values():
+            if hasattr(slot_strategy, "_on_stop_internal"):
+                try:
+                    slot_strategy._on_stop_internal()
+                except Exception as e:
+                    logger.error(f"Error in slot on_stop: {e}")
+            elif hasattr(slot_strategy, "on_stop"):
+                try:
+                    slot_strategy.on_stop()
+                except Exception as e:
+                    logger.error(f"Error in slot on_stop: {e}")
 
-    return BacktestResult(
+    result = BacktestResult(
         engine.get_results(),
         timezone=timezone,
         initial_cash=initial_cash,
         strategy=strategy_instance,
         engine=engine,
     )
-
-
-def run_backtest_stream(
-    data: Optional[
-        Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed]
-    ] = None,
-    strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
-    on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
-    stream_progress_interval: int = 1,
-    stream_equity_interval: int = 1,
-    stream_batch_size: int = 1,
-    stream_max_buffer: int = 1024,
-    stream_error_mode: str = "continue",
-    stream_mode: str = "observability",
-    **kwargs: Any,
-) -> BacktestResult:
-    """Run backtest with realtime stream callback while keeping return semantics."""
-    if on_event is None:
-        raise ValueError("on_event must be provided for run_backtest_stream")
-    return run_backtest(
-        data=data,
-        strategy=strategy,
-        on_event=on_event,
-        stream_progress_interval=stream_progress_interval,
-        stream_equity_interval=stream_equity_interval,
-        stream_batch_size=stream_batch_size,
-        stream_max_buffer=stream_max_buffer,
-        stream_error_mode=stream_error_mode,
-        stream_mode=stream_mode,
-        **kwargs,
-    )
+    setattr(result, "_owner_strategy_id", effective_strategy_id)
+    return result
 
 
 def run_warm_start(
@@ -1279,6 +1654,35 @@ def run_warm_start(
     # 2. 恢复引擎和策略
     logger.info(f"Resuming from checkpoint: {checkpoint_path}")
     engine, strategy_instance = warm_start(checkpoint_path, feed)
+    restored_strategy_id = str(
+        getattr(strategy_instance, "_owner_strategy_id", "") or ""
+    ).strip()
+    restored_engine_strategy_id = ""
+    if hasattr(engine, "get_default_strategy_id"):
+        restored_engine_strategy_id = str(
+            cast(Any, engine).get_default_strategy_id() or ""
+        ).strip()
+    effective_strategy_id = (
+        restored_strategy_id or restored_engine_strategy_id or "_default"
+    )
+    setattr(strategy_instance, "_owner_strategy_id", effective_strategy_id)
+    restored_slot_ids: List[str] = []
+    if hasattr(engine, "get_strategy_slots"):
+        try:
+            slot_ids = cast(Any, engine).get_strategy_slots()
+            if isinstance(slot_ids, list):
+                restored_slot_ids = [
+                    str(slot_id).strip() for slot_id in slot_ids if str(slot_id).strip()
+                ]
+        except Exception:
+            restored_slot_ids = []
+    if restored_slot_ids and hasattr(engine, "set_strategy_slots"):
+        cast(Any, engine).set_strategy_slots(restored_slot_ids)
+    if hasattr(engine, "set_default_strategy_id"):
+        cast(Any, engine).set_default_strategy_id(effective_strategy_id)
+    if hasattr(engine, "set_strategy_for_slot"):
+        for slot_index in range(max(len(restored_slot_ids), 1)):
+            cast(Any, engine).set_strategy_for_slot(slot_index, strategy_instance)
 
     if strategy_runtime_config is None and "strategy_runtime_config" in kwargs:
         strategy_runtime_config = kwargs.pop("strategy_runtime_config")
@@ -1427,10 +1831,12 @@ def run_warm_start(
     # 注意：这里的 initial_cash 可能不准确，因为它使用的是当前 cash
     # 但对于 BacktestResult 来说，重要的是 equity curve 的连续性
     # 我们使用之前捕获的 restored_cash 作为 reference
-    return BacktestResult(
+    result = BacktestResult(
         engine.get_results(),
         timezone="UTC",  # TODO: Store timezone in snapshot
         initial_cash=float(restored_cash),
         strategy=strategy_instance,
         engine=engine,
     )
+    setattr(result, "_owner_strategy_id", effective_strategy_id)
+    return result

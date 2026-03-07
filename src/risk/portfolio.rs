@@ -37,7 +37,7 @@ impl RiskRule for MaxPositionPercentRule {
             .portfolio
             .positions
             .get(&order.symbol)
-            .cloned()
+            .copied()
             .unwrap_or(Decimal::ZERO);
 
         let multiplier = ctx.instrument.multiplier();
@@ -104,8 +104,9 @@ mod tests {
             created_at: 0,
             updated_at: 0,
             commission: Decimal::ZERO,
-            tag: "".to_string(),
-            reject_reason: "".to_string(),
+            tag: String::new(),
+            reject_reason: String::new(),
+            owner_strategy_id: None,
         }
     }
 
@@ -205,15 +206,13 @@ impl RiskRule for MaxLeverageRule {
                 continue;
             }
 
-            if !quantity.is_zero() {
-                if let Some(price) = ctx.current_prices.get(symbol) {
-                    let mult = if let Some(inst) = ctx.instruments.get(symbol) {
-                        inst.multiplier()
-                    } else {
-                        Decimal::ONE
-                    };
-                    total_exposure += (quantity * price * mult).abs();
-                }
+            if !quantity.is_zero() && let Some(price) = ctx.current_prices.get(symbol) {
+                let mult = if let Some(inst) = ctx.instruments.get(symbol) {
+                    inst.multiplier()
+                } else {
+                    Decimal::ONE
+                };
+                total_exposure += (quantity * price * mult).abs();
             }
         }
 
@@ -222,7 +221,7 @@ impl RiskRule for MaxLeverageRule {
             .portfolio
             .positions
             .get(&order.symbol)
-            .cloned()
+            .copied()
             .unwrap_or(Decimal::ZERO);
 
         let new_qty = match order.side {
@@ -309,9 +308,7 @@ impl RiskRule for SectorConcentrationRule {
         }
 
         // Identify sector of current order
-        let target_sector = if let Some(s) = self.sector_map.get(&order.symbol) {
-            s
-        } else {
+        let Some(target_sector) = self.sector_map.get(&order.symbol) else {
             // If symbol has no sector, skip check or fail?
             // Usually skip or classify as "Unknown".
             return Ok(());
@@ -325,17 +322,16 @@ impl RiskRule for SectorConcentrationRule {
                  continue; // Handle with new qty
              }
 
-             if let Some(s) = self.sector_map.get(symbol) {
-                 if s == target_sector {
-                     if let Some(price) = ctx.current_prices.get(symbol) {
-                        let mult = if let Some(inst) = ctx.instruments.get(symbol) {
-                            inst.multiplier()
-                        } else {
-                            Decimal::ONE
-                        };
-                        sector_exposure += (quantity * price * mult).abs();
-                     }
-                 }
+             if let Some(s) = self.sector_map.get(symbol)
+                 && s == target_sector
+                 && let Some(price) = ctx.current_prices.get(symbol)
+             {
+                let mult = if let Some(inst) = ctx.instruments.get(symbol) {
+                    inst.multiplier()
+                } else {
+                    Decimal::ONE
+                };
+                sector_exposure += (quantity * price * mult).abs();
              }
         }
 
@@ -344,7 +340,7 @@ impl RiskRule for SectorConcentrationRule {
             .portfolio
             .positions
             .get(&order.symbol)
-            .cloned()
+            .copied()
             .unwrap_or(Decimal::ZERO);
 
         let new_qty = match order.side {
@@ -546,8 +542,7 @@ impl RiskRule for StopLossRule {
 
         if equity < trigger_equity {
             return Err(AkQuantError::OrderError(format!(
-                "Risk: Equity {:.4} below stop-loss threshold {:.4}",
-                equity, trigger_equity,
+                "Risk: Equity {equity:.4} below stop-loss threshold {trigger_equity:.4}",
             )));
         }
         Ok(())

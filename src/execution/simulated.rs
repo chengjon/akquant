@@ -336,6 +336,7 @@ mod tests {
             commission: Decimal::ZERO,
             tag: String::new(),
             reject_reason: String::new(),
+            owner_strategy_id: None,
         }
     }
 
