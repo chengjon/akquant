@@ -289,9 +289,11 @@ class CrossSectionBucketStrategy(Strategy):
 
 AKQuant 提供了两种风格的策略开发接口：
 
+风格选择建议可参考：[策略风格决策指南](../advanced/strategy_style_decision.md)。
+
 | 特性 | 类风格 (推荐) | 函数风格 |
 | :--- | :--- | :--- |
-| **定义方式** | 继承 `akquant.Strategy` | 定义 `initialize` + `on_bar`（必选），可选 `on_tick` / `on_order` / `on_trade` / `on_timer` |
+| **定义方式** | 继承 `akquant.Strategy` | 定义 `initialize` + `on_bar`（必选），可选 `on_start` / `on_stop` / `on_tick` / `on_order` / `on_trade` / `on_timer` |
 | **适用场景** | 复杂策略、需要维护内部状态、生产环境 | 快速原型验证、迁移 Zipline/Backtrader 策略 |
 | **代码结构** | 面向对象，逻辑封装性好 | 脚本化，简单直观 |
 | **API 调用** | `self.buy()`, `self.ctx` | `ctx.buy()`, `ctx` 作为参数传递 |
@@ -301,6 +303,8 @@ AKQuant 提供了两种风格的策略开发接口：
 | 回调 | 触发前提 | 说明 |
 | :--- | :--- | :--- |
 | `on_bar(ctx, bar)` | 回测数据流产生 Bar 事件 | 函数式策略的必选主回调 |
+| `on_start(ctx)` | 回测启动时触发 | 对齐类策略 `on_start` 生命周期 |
+| `on_stop(ctx)` | 回测结束时触发 | 对齐类策略 `on_stop` 生命周期 |
 | `on_tick(ctx, tick)` | 回测数据流产生 Tick 事件 | 仅 Bar 数据集不会触发 Tick 回调 |
 | `on_order(ctx, order)` | 策略上下文中观察到订单状态变化 | 每轮事件循环中先于主事件回调触发 |
 | `on_trade(ctx, trade)` | `recent_trades` 中出现成交回报 | 框架会进行成交去重，避免重复触发 |
@@ -310,6 +314,10 @@ AKQuant 提供了两种风格的策略开发接口：
 
 *   函数式回调基础示例：`examples/23_functional_callbacks_demo.py`
 *   函数式 Tick 回调模拟示例：`examples/24_functional_tick_simulation_demo.py`
+*   LiveRunner 支持函数式入口与多 slot 编排：`LiveRunner(strategy_cls=on_bar, strategy_id="alpha", strategies_by_slot={"beta": OtherStrategy}, initialize=..., on_tick=..., on_order=..., on_trade=..., on_timer=...)`
+*   broker_live 函数式下单示例：`examples/39_live_broker_submit_order_demo.py`
+*   函数式多策略 slot + 风控示例：`examples/40_functional_multi_slot_risk_demo.py`
+*   LiveRunner 多策略 slot 编排示例：`examples/41_live_multi_slot_orchestration_demo.py`
 *   运行后可分别观察输出标记：
     *   `done_functional_callbacks_demo`
     *   `done_functional_tick_simulation_demo`
@@ -406,6 +414,77 @@ class MyStrategy(Strategy):
 *   **撤单 (Cancel Order)**:
     *   `self.cancel_order(order_id)`: 撤销指定订单。
     *   `self.cancel_all_orders()`: 撤销当前所有未成交订单。
+
+### 7.3 OCO 与 Bracket 助手
+
+AKQuant 提供了两组交易助手，减少策略中手写订单联动逻辑：
+
+*   `self.create_oco_order_group(first_order_id, second_order_id, group_id=None)`
+    *   把两个订单绑定为 OCO（One-Cancels-the-Other）。
+    *   任一订单成交后，另一订单会自动撤销。
+*   `self.place_bracket_order(symbol, quantity, entry_price=None, stop_trigger_price=None, take_profit_price=None, ...)`
+    *   一次性提交 Bracket 结构。
+    *   进场单成交后，自动挂出止损/止盈；当止损与止盈同时存在时自动绑定 OCO。
+
+```python
+from akquant import OrderStatus, Strategy
+
+class BracketHelperStrategy(Strategy):
+    def __init__(self):
+        self.entry_order_id = ""
+
+    def on_bar(self, bar):
+        if self.get_position(bar.symbol) > 0 or self.entry_order_id:
+            return
+
+        self.entry_order_id = self.place_bracket_order(
+            symbol=bar.symbol,
+            quantity=100,
+            stop_trigger_price=bar.close * 0.98,
+            take_profit_price=bar.close * 1.04,
+            entry_tag="entry",
+            stop_tag="stop",
+            take_profit_tag="take",
+        )
+
+    def on_order(self, order):
+        if order.id == self.entry_order_id and order.status in (
+            OrderStatus.Cancelled,
+            OrderStatus.Rejected,
+        ):
+            self.entry_order_id = ""
+```
+
+### 7.4 Trailing Stop 助手
+
+如果你需要在策略里直接表达“随价格移动的止损线”，可以使用以下助手：
+
+*   `self.place_trailing_stop(symbol, quantity, trail_offset, side="Sell", trail_reference_price=None, ...)`
+    *   触发后按市价执行（`StopTrail -> Market`）。
+*   `self.place_trailing_stop_limit(symbol, quantity, price, trail_offset, side="Sell", trail_reference_price=None, ...)`
+    *   触发后按限价执行（`StopTrailLimit -> Limit`）。
+
+```python
+from akquant import Strategy
+
+class TrailingHelperStrategy(Strategy):
+    def __init__(self):
+        self.trailing_order_id = ""
+
+    def on_bar(self, bar):
+        if self.get_position(bar.symbol) == 0:
+            self.buy(bar.symbol, 100)
+            self.trailing_order_id = self.place_trailing_stop(
+                symbol=bar.symbol,
+                quantity=100,
+                trail_offset=1.5,
+                side="Sell",
+                trail_reference_price=bar.close,
+                tag="trail-stop",
+            )
+```
+
+完整可运行脚本见：`examples/36_trailing_orders.py`。
 
 ### 6.3 市场规则与 T+1 (Market Rules)
 

@@ -13,6 +13,7 @@ __engine_rule_version__ = "1.0.0"  # Increment on behavior-changing updates
 from . import akquant as _akquant
 from .akquant import *  # noqa: F403
 from .akquant import ATR, EMA, MACD, RSI, SMA, BollingerBands
+from .analyzer_plugin import AnalyzerManager, AnalyzerTemplate
 from .backtest import (  # type: ignore
     BacktestResult,
     BacktestStreamEvent,
@@ -22,6 +23,14 @@ from .backtest import (  # type: ignore
 from .checkpoint import save_snapshot, warm_start
 from .config import BacktestConfig, InstrumentConfig, StrategyConfig, strategy_config
 from .data import DataLoader
+from .feed_adapter import (
+    CSVFeedAdapter,
+    DataFeedAdapter,
+    FeedSlice,
+    ParquetFeedAdapter,
+    ReplayFeedAdapter,
+    ResampledFeedAdapter,
+)
 from .indicator import Indicator, IndicatorSet
 from .log import get_logger, register_logger
 from .optimize import OptimizationResult, run_grid_search, run_walk_forward
@@ -43,6 +52,12 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "Strategy",
         "StrategyRuntimeConfig",
         "DataLoader",
+        "DataFeedAdapter",
+        "FeedSlice",
+        "CSVFeedAdapter",
+        "ParquetFeedAdapter",
+        "ResampledFeedAdapter",
+        "ReplayFeedAdapter",
         "get_logger",
         "register_logger",
         "strategy_config",
@@ -67,6 +82,8 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "RSI",
         "BollingerBands",
         "ATR",
+        "AnalyzerManager",
+        "AnalyzerTemplate",
     ]
 else:
     __all__ = [
@@ -80,6 +97,12 @@ else:
         "Strategy",
         "StrategyRuntimeConfig",
         "DataLoader",
+        "DataFeedAdapter",
+        "FeedSlice",
+        "CSVFeedAdapter",
+        "ParquetFeedAdapter",
+        "ResampledFeedAdapter",
+        "ReplayFeedAdapter",
         "get_logger",
         "register_logger",
         "strategy_config",
@@ -104,6 +127,8 @@ else:
         "RSI",
         "BollingerBands",
         "ATR",
+        "AnalyzerManager",
+        "AnalyzerTemplate",
     ]
 
 

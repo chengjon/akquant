@@ -24,6 +24,8 @@ def run_backtest(
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
     initialize: Optional[Callable[[Any], None]] = None,
+    on_start: Optional[Callable[[Any], None]] = None,
+    on_stop: Optional[Callable[[Any], None]] = None,
     context: Optional[Dict[str, Any]] = None,
     history_depth: Optional[int] = None,
     warmup_period: int = 0,
@@ -43,8 +45,9 @@ def run_backtest(
 
 **Key Parameters:**
 
-*   `data`: Backtest data. Supports a single DataFrame, or a `{symbol: DataFrame}` dictionary.
+*   `data`: Backtest data. Supports a single DataFrame, a `{symbol: DataFrame}` dictionary, `List[Bar]`, or any object implementing `DataFeedAdapter.load(request)`.
 *   `strategy`: Strategy class or instance. Also supports passing an `on_bar` function (functional style).
+*   `initialize` / `on_start` / `on_stop`: Functional-strategy lifecycle callbacks for initialization, start, and stop stages.
 *   `symbol`: Symbol or list of symbols.
 *   `initial_cash`: Initial cash (default 1,000,000.0).
 *   `execution_mode`: Execution mode.
@@ -60,7 +63,36 @@ def run_backtest(
     *   Accepts `List[InstrumentConfig]` or `{symbol: InstrumentConfig}`.
 *   `risk_config`: Risk configuration. Supports dict (e.g., `{"max_position_pct": 0.1}`) or `RiskConfig` object. Overrides fields in `config.strategy_config.risk` if both are provided.
 *   `strategies_by_slot`: Optional multi-strategy mapping. Keys are slot ids and values are strategy class/instance/functional callback used by slot-iterative execution.
+*   `analyzer_plugins`: Optional analyzer plugin list. Plugins receive `on_start/on_bar/on_trade/on_finish` callbacks and final outputs are stored in `result.analyzer_outputs`.
 *   `on_event`: Optional stream callback. When omitted, an internal no-op callback keeps legacy blocking return semantics; when provided, runtime events are emitted.
+
+**DataFeedAdapter Usage (Multi-Timeframe):**
+
+```python
+import akquant as aq
+
+base = aq.CSVFeedAdapter(path_template="/data/{symbol}.csv")
+
+feed_15m = base.resample(freq="15min", emit_partial=False)
+feed_replay = base.replay(
+    freq="1h",
+    align="session",            # session | day | global
+    day_mode="trading",         # effective only when align='day': trading | calendar
+    emit_partial=False,
+    session_windows=[("09:30", "11:30"), ("13:00", "15:00")],  # session only
+)
+
+result = aq.run_backtest(
+    data=feed_replay,
+    strategy=MyStrategy,
+    symbol="000001",
+    show_progress=False,
+)
+```
+
+*   `align="session"`: Partition by trading day, optionally with `session_windows`.
+*   `align="day"`: Partition by day without `session_windows`; `day_mode` supports `trading/calendar`.
+*   `align="global"`: Aggregate on the full timeline without day partitioning.
 
 **Compatibility & Migration Notes:**
 
@@ -361,11 +393,17 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `cover(symbol, quantity, price=None, ...)`: Buy to cover.
 *   `stop_buy(symbol, trigger_price, quantity, ...)`: Stop buy (Stop Market). Triggers a market buy order when price breaks above `trigger_price`.
 *   `stop_sell(symbol, trigger_price, quantity, ...)`: Stop sell (Stop Market). Triggers a market sell order when price drops below `trigger_price`.
+*   `submit_order(..., order_type="StopTrail", trail_offset=..., trail_reference_price=None)`: Submit a trailing stop order. `trail_offset` must be greater than 0.
+*   `submit_order(..., order_type="StopTrailLimit", price=..., trail_offset=..., trail_reference_price=None)`: Submit a trailing stop-limit order. `price` and `trail_offset` are required.
+*   `place_trailing_stop(symbol, quantity, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: Helper for trailing stop orders, promoted to market order when triggered.
+*   `place_trailing_stop_limit(symbol, quantity, price, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: Helper for trailing stop-limit orders, promoted to limit order when triggered.
 *   `order_target_value(target_value, symbol, price=None)`: Adjust position to target value.
 *   `order_target_percent(target_percent, symbol, price=None)`: Adjust position to target account percentage.
 *   `close_position(symbol)`: Close position for a specific instrument.
 *   `cancel_order(order_id: str)`: Cancel a specific order.
 *   `cancel_all_orders(symbol)`: Cancel all pending orders for a specific instrument. If `symbol` is omitted, cancels all orders.
+*   `create_oco_order_group(first_order_id, second_order_id, group_id=None) -> str`: Create an OCO order group. Once one order is filled, the peer order is canceled automatically.
+*   `place_bracket_order(symbol, quantity, entry_price=None, stop_trigger_price=None, take_profit_price=None, ...) -> str`: Create a bracket order. The entry order is submitted first, then stop-loss/take-profit exits are submitted after entry fill; if both exits exist, they are linked as OCO automatically.
 
 **Data & Utilities:**
 

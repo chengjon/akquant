@@ -112,6 +112,38 @@ df = df.rename(columns={"date": "date"}) # Ensure it is date
 df['symbol'] = "AAPL"
 ```
 
+### 2.4 Using DataFeedAdapter with Multi-Timeframe Aggregation
+
+If you want a single entry that combines data loading and timeframe transformation, use `DataFeedAdapter` directly:
+
+```python
+import akquant as aq
+
+base = aq.CSVFeedAdapter(path_template="/data/{symbol}.csv")
+
+feed_15m = base.resample(freq="15min", emit_partial=False)
+feed_1h = base.replay(
+    freq="1h",
+    align="session",            # session | day | global
+    day_mode="trading",         # effective only when align='day': trading | calendar
+    emit_partial=False,
+    session_windows=[("09:30", "11:30"), ("13:00", "15:00")],  # session only
+)
+
+result = aq.run_backtest(
+    data=feed_1h,
+    strategy=MyStrategy,
+    symbol="000001",
+    show_progress=False,
+)
+```
+
+Parameter semantics:
+
+*   `align="session"`: Partition by trading day, optionally with `session_windows`.
+*   `align="day"`: Partition by day without `session_windows`; `day_mode` supports `trading/calendar`.
+*   `align="global"`: Aggregate on the full timeline without day partitioning.
+
 ---
 
 ## 3. Multi-Symbol Data

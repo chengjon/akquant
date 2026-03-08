@@ -357,7 +357,8 @@ impl StrategyContext {
     /// :param trigger_price: 触发价格 (可选, 用于止损/止盈单)
     /// :param tag: 订单标签 (可选)
     /// :return: 订单 ID
-    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None))]
+    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None))]
+    #[allow(clippy::too_many_arguments)]
     fn buy(
         &mut self,
         symbol: String,
@@ -366,6 +367,9 @@ impl StrategyContext {
         time_in_force: Option<TimeInForce>,
         trigger_price: Option<&Bound<'_, PyAny>>,
         tag: Option<String>,
+        order_type: Option<OrderType>,
+        trail_offset: Option<&Bound<'_, PyAny>>,
+        trail_reference_price: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<String> {
         let qty_decimal = extract_decimal(quantity)?;
         let price_decimal = if let Some(p) = price {
@@ -378,22 +382,38 @@ impl StrategyContext {
         } else {
             None
         };
+        let trail_offset_decimal = if let Some(v) = trail_offset {
+            Some(extract_decimal(v)?)
+        } else {
+            None
+        };
+        let trail_reference_decimal = if let Some(v) = trail_reference_price {
+            Some(extract_decimal(v)?)
+        } else {
+            None
+        };
+        let resolved_order_type = order_type.unwrap_or(match (price.is_some(), trigger_price.is_some()) {
+            (true, true) => OrderType::StopLimit,
+            (false, true) => OrderType::StopMarket,
+            (true, false) => OrderType::Limit,
+            (false, false) => OrderType::Market,
+        });
 
         let id = Uuid::new_v4().to_string();
         let order = Order {
             id: id.clone(),
             symbol,
             side: OrderSide::Buy,
-            order_type: match (price.is_some(), trigger_price.is_some()) {
-                (true, true) => OrderType::StopLimit,
-                (false, true) => OrderType::StopMarket,
-                (true, false) => OrderType::Limit,
-                (false, false) => OrderType::Market,
-            },
+            order_type: resolved_order_type,
             quantity: qty_decimal,
             price: price_decimal,
             time_in_force: time_in_force.unwrap_or(TimeInForce::GTC),
             trigger_price: trigger_decimal,
+            trail_offset: trail_offset_decimal,
+            trail_reference_price: trail_reference_decimal,
+            graph_id: None,
+            parent_order_id: None,
+            order_role: crate::model::OrderRole::Standalone,
             status: crate::model::OrderStatus::New,
             filled_quantity: Decimal::ZERO,
             average_filled_price: None,
@@ -421,7 +441,8 @@ impl StrategyContext {
     /// :param trigger_price: 触发价格 (可选, 用于止损/止盈单)
     /// :param tag: 订单标签 (可选)
     /// :return: 订单 ID
-    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None))]
+    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None))]
+    #[allow(clippy::too_many_arguments)]
     fn sell(
         &mut self,
         symbol: String,
@@ -430,6 +451,9 @@ impl StrategyContext {
         time_in_force: Option<TimeInForce>,
         trigger_price: Option<&Bound<'_, PyAny>>,
         tag: Option<String>,
+        order_type: Option<OrderType>,
+        trail_offset: Option<&Bound<'_, PyAny>>,
+        trail_reference_price: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<String> {
         let qty_decimal = extract_decimal(quantity)?;
         let price_decimal = if let Some(p) = price {
@@ -442,22 +466,38 @@ impl StrategyContext {
         } else {
             None
         };
+        let trail_offset_decimal = if let Some(v) = trail_offset {
+            Some(extract_decimal(v)?)
+        } else {
+            None
+        };
+        let trail_reference_decimal = if let Some(v) = trail_reference_price {
+            Some(extract_decimal(v)?)
+        } else {
+            None
+        };
+        let resolved_order_type = order_type.unwrap_or(match (price.is_some(), trigger_price.is_some()) {
+            (true, true) => OrderType::StopLimit,
+            (false, true) => OrderType::StopMarket,
+            (true, false) => OrderType::Limit,
+            (false, false) => OrderType::Market,
+        });
 
         let id = Uuid::new_v4().to_string();
         let order = Order {
             id: id.clone(),
             symbol,
             side: OrderSide::Sell,
-            order_type: match (price.is_some(), trigger_price.is_some()) {
-                (true, true) => OrderType::StopLimit,
-                (false, true) => OrderType::StopMarket,
-                (true, false) => OrderType::Limit,
-                (false, false) => OrderType::Market,
-            },
+            order_type: resolved_order_type,
             quantity: qty_decimal,
             price: price_decimal,
             time_in_force: time_in_force.unwrap_or(TimeInForce::GTC),
             trigger_price: trigger_decimal,
+            trail_offset: trail_offset_decimal,
+            trail_reference_price: trail_reference_decimal,
+            graph_id: None,
+            parent_order_id: None,
+            order_role: crate::model::OrderRole::Standalone,
             status: crate::model::OrderStatus::New,
             filled_quantity: Decimal::ZERO,
             average_filled_price: None,

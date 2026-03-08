@@ -36,6 +36,11 @@ mod tests {
             quantity: dec!(100),
             price,
             trigger_price: stop,
+            trail_offset: None,
+            trail_reference_price: None,
+            graph_id: None,
+            parent_order_id: None,
+            order_role: crate::model::OrderRole::Standalone,
             status: OrderStatus::New,
             filled_quantity: Decimal::ZERO,
             average_filled_price: None,
@@ -57,6 +62,15 @@ mod tests {
                 lot_size: dec!(100),
                 tick_size: dec!(0.01),
             }),
+        }
+    }
+
+    fn create_tick(price: Decimal, timestamp: i64) -> crate::model::Tick {
+        crate::model::Tick {
+            timestamp,
+            price,
+            volume: dec!(100),
+            symbol: "AAPL".to_string(),
         }
     }
 
@@ -133,5 +147,120 @@ mod tests {
         );
 
         assert!(res.is_none());
+    }
+
+    #[test]
+    fn test_sell_stop_trail_updates_and_triggers_on_bar() {
+        let matcher = StockMatcher;
+        let mut order = create_order(OrderSide::Sell, OrderType::StopTrail, None, Some(dec!(95)));
+        order.trail_offset = Some(dec!(5));
+        let instr = create_instrument();
+
+        let first_bar = crate::model::Bar {
+            timestamp: 100,
+            symbol: "AAPL".to_string(),
+            open: dec!(108),
+            high: dec!(110),
+            low: dec!(106),
+            close: dec!(109),
+            volume: dec!(1000),
+            extra: Default::default(),
+        };
+        let first_event = Event::Bar(first_bar);
+        let first_ctx = MatchContext {
+            event: &first_event,
+            instrument: &instr,
+            execution_mode: ExecutionMode::NextOpen,
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 0,
+        };
+        let first_res = matcher.match_order(&mut order, &first_ctx);
+        assert!(first_res.is_none());
+        assert_eq!(order.trail_reference_price, Some(dec!(110)));
+        assert_eq!(order.trigger_price, Some(dec!(105)));
+
+        let second_bar = crate::model::Bar {
+            timestamp: 200,
+            symbol: "AAPL".to_string(),
+            open: dec!(110),
+            high: dec!(111),
+            low: dec!(106),
+            close: dec!(107),
+            volume: dec!(1000),
+            extra: Default::default(),
+        };
+        let second_event = Event::Bar(second_bar);
+        let second_ctx = MatchContext {
+            event: &second_event,
+            instrument: &instr,
+            execution_mode: ExecutionMode::NextOpen,
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 1,
+        };
+        let second_res = matcher.match_order(&mut order, &second_ctx);
+        assert!(second_res.is_some());
+        if let Some(Event::ExecutionReport(o, Some(t))) = second_res {
+            assert_eq!(o.status, OrderStatus::Filled);
+            assert_eq!(t.price, dec!(106));
+        } else {
+            panic!("Unexpected result");
+        }
+    }
+
+    #[test]
+    fn test_buy_stop_trail_limit_updates_and_triggers_on_tick() {
+        let matcher = StockMatcher;
+        let mut order = create_order(OrderSide::Buy, OrderType::StopTrailLimit, Some(dec!(101)), None);
+        order.trail_offset = Some(dec!(2));
+        let instr = create_instrument();
+
+        let first_tick_event = Event::Tick(create_tick(dec!(100), 100));
+        let first_ctx = MatchContext {
+            event: &first_tick_event,
+            instrument: &instr,
+            execution_mode: ExecutionMode::NextOpen,
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 0,
+        };
+        let first_res = matcher.match_order(&mut order, &first_ctx);
+        assert!(first_res.is_none());
+        assert_eq!(order.trail_reference_price, Some(dec!(100)));
+        assert_eq!(order.trigger_price, Some(dec!(102)));
+
+        let second_tick_event = Event::Tick(create_tick(dec!(98), 200));
+        let second_ctx = MatchContext {
+            event: &second_tick_event,
+            instrument: &instr,
+            execution_mode: ExecutionMode::NextOpen,
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 1,
+        };
+        let second_res = matcher.match_order(&mut order, &second_ctx);
+        assert!(second_res.is_none());
+        assert_eq!(order.trail_reference_price, Some(dec!(98)));
+        assert_eq!(order.trigger_price, Some(dec!(100)));
+
+        let third_tick_event = Event::Tick(create_tick(dec!(100), 300));
+        let third_ctx = MatchContext {
+            event: &third_tick_event,
+            instrument: &instr,
+            execution_mode: ExecutionMode::NextOpen,
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 2,
+        };
+        let third_res = matcher.match_order(&mut order, &third_ctx);
+        assert!(third_res.is_some());
+        if let Some(Event::ExecutionReport(o, Some(t))) = third_res {
+            assert_eq!(o.status, OrderStatus::Filled);
+            assert_eq!(o.order_type, OrderType::Limit);
+            assert_eq!(t.price, dec!(100));
+        } else {
+            panic!("Unexpected result");
+        }
     }
 }

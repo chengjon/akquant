@@ -1,16 +1,18 @@
 from datetime import timedelta
-from typing import List, cast
+from typing import List
 
 import akquant as aq
 import numpy as np
 import pandas as pd
 from akquant import InstrumentConfig
+from akquant.feed_adapter import BasePandasFeedAdapter, FeedSlice
 
 """
 Multi-Frequency Backtest Demo
 =============================
 
-This example demonstrates how to run a strategy with mixed frequencies:
+This example demonstrates how to run a strategy with mixed frequencies via
+DataFeedAdapter resample/replay views:
 1.  **STOCK_1D**: Daily bars, used for trend filtering (e.g., Moving Average).
 2.  **STOCK_1M**: 1-minute bars, used for signal execution.
 
@@ -83,45 +85,86 @@ def create_dummy_data_1m(symbol: str, start_date: str, days: int) -> pd.DataFram
         },
         index=timestamps,
     )
+    date_index = pd.DatetimeIndex(df.index)
+    if date_index.tz is None:
+        date_index = date_index.tz_localize("Asia/Shanghai")
+    df.index = date_index
     return df
 
 
-def create_dummy_data_1d(
-    symbol: str, start_date: str, days: int, df_1m: pd.DataFrame
-) -> pd.DataFrame:
-    """Generate Daily dummy data derived from 1-minute data."""
-    df_1m_copy = df_1m.copy()
-    # Resample by Day
-    daily_groups = df_1m_copy.resample("1D")
+class InMemorySymbolAdapter(BasePandasFeedAdapter):
+    """In-memory adapter for a fixed symbol frame."""
 
-    daily_data = []
-    daily_index: List[pd.Timestamp] = []
+    def __init__(self, frame: pd.DataFrame) -> None:
+        """Initialize with normalized source frame."""
+        self.frame = frame.copy()
 
-    for date_val, group in daily_groups:
-        if group.empty:
-            continue
+    def load(self, request: FeedSlice) -> pd.DataFrame:
+        """Load one symbol slice from memory."""
+        data = self.frame[
+            self.frame["symbol"].astype(str) == str(request.symbol)
+        ].copy()
+        data = self.normalize(data, request.symbol)
+        return self._clip_time_range(data, request.start_time, request.end_time)
 
-        date = cast(pd.Timestamp, date_val)
-        # Daily bar timestamp: 15:00 of the day (Asia/Shanghai)
-        ts = date + timedelta(hours=15)
-        # Ensure ts is naive
-        if ts.tzinfo is not None:
-            ts = ts.tz_localize(None)
 
-        daily_data.append(
-            {
-                "open": group.iloc[0]["open"],
-                "high": group["high"].max(),
-                "low": group["low"].min(),
-                "close": group.iloc[-1]["close"],
-                "volume": group["volume"].sum(),
-                "symbol": symbol,
-            }
+class MultiFrequencyAdapter:
+    """Expose minute and daily views under two logical symbols."""
+
+    name = "multi_frequency"
+
+    def __init__(self, minute_frame: pd.DataFrame) -> None:
+        """Build minute and daily adapters from one minute source."""
+        minute_symbol = str(minute_frame["symbol"].iloc[0])
+        self.minute_symbol = minute_symbol
+        self.daily_symbol = f"{minute_symbol}_1D"
+        base = InMemorySymbolAdapter(minute_frame)
+        self.minute_adapter = base
+        self.daily_adapter = base.replay(
+            freq="1D",
+            align="session",
+            emit_partial=True,
+            session_windows=[("09:30", "11:30"), ("13:00", "15:00")],
         )
-        daily_index.append(ts)
 
-    df = pd.DataFrame(daily_data, index=daily_index)
-    return df
+    def load(self, request: FeedSlice) -> pd.DataFrame:
+        """Route load request by logical symbol."""
+        if request.symbol == self.minute_symbol:
+            return self.minute_adapter.load(request)
+        if request.symbol == self.daily_symbol:
+            daily = self.daily_adapter.load(
+                FeedSlice(
+                    symbol=self.minute_symbol,
+                    start_time=request.start_time,
+                    end_time=request.end_time,
+                    timezone=request.timezone or "Asia/Shanghai",
+                )
+            )
+            if not daily.empty:
+                daily = daily.copy()
+                tz_name = request.timezone or "Asia/Shanghai"
+                local_index = daily.index
+                if local_index.tz is None:
+                    local_index = local_index.tz_localize("UTC")
+                local_index = local_index.tz_convert(tz_name)
+                daily["_session_day"] = local_index.normalize()
+                daily = (
+                    daily.groupby("_session_day", sort=True)
+                    .agg(
+                        {
+                            "open": "first",
+                            "high": "max",
+                            "low": "min",
+                            "close": "last",
+                            "volume": "sum",
+                        }
+                    )
+                    .sort_index()
+                )
+                daily.index = daily.index + pd.Timedelta(hours=15)
+                daily["symbol"] = self.daily_symbol
+            return daily
+        return pd.DataFrame()
 
 
 class MultiFreqStrategy(aq.Strategy):
@@ -242,14 +285,9 @@ if __name__ == "__main__":
     print("Generating dummy data (5 Days) for A-shares...")
     # Generate 5 days of data
     df_1m = create_dummy_data_1m("000001.SZ", "2024-01-01", 5)
-    df_1d = create_dummy_data_1d("000001.SZ_1D", "2024-01-01", 5, df_1m)
-
-    print(f"Generated {len(df_1m)} minute bars and {len(df_1d)} daily bars.")
-
-    # Pack data
-    # Note: We are simulating trading on '000001.SZ'.
-    # '000001.SZ_1D' is just for reference.
-    data = {"000001.SZ": df_1m, "000001.SZ_1D": df_1d}
+    data = MultiFrequencyAdapter(df_1m)
+    daily_preview = data.load(FeedSlice(symbol="000001.SZ_1D"))
+    print(f"Generated {len(df_1m)} minute bars and {len(daily_preview)} daily bars.")
 
     # 2. Configure Instruments
     # We treat them as separate instruments in configuration,
@@ -278,6 +316,7 @@ if __name__ == "__main__":
     result = aq.run_backtest(
         data=data,
         strategy=MultiFreqStrategy,
+        symbol=["000001.SZ", "000001.SZ_1D"],
         config=config,
     )
 

@@ -16,7 +16,7 @@
 - [03_parameter_optimization_advanced.py](./03_parameter_optimization_advanced.py): 参数优化进阶示例。
 - [04_mixed_assets.py](./04_mixed_assets.py): 混合资产回测示例。
 - [05_live_trading_ctp.py](./05_live_trading_ctp.py): CTP 实盘接口示例。
-- [06_complex_orders.py](./06_complex_orders.py): 复杂订单场景示例。
+- [06_complex_orders.py](./06_complex_orders.py): 复杂订单助手示例（`place_bracket_order` + 自动 OCO 联动）。
 - [07_option_test.py](./07_option_test.py): 期权回测示例。
 - [08_event_callbacks.py](./08_event_callbacks.py): 回调事件使用示例。
 - [09_ml_framework.py](./09_ml_framework.py): 机器学习框架基础示例。
@@ -24,7 +24,7 @@
 - [11_plot_visualization.py](./11_plot_visualization.py): 可视化报告生成示例。
 - [12_wfo_integrated.py](./12_wfo_integrated.py): WFO 一体化示例。
 - [13_quantstats_report.py](./13_quantstats_report.py): QuantStats 报告示例。
-- [14_multi_frequency.py](./14_multi_frequency.py): 多频率数据回测示例。
+- [14_multi_frequency.py](./14_multi_frequency.py): 基于 DataFeedAdapter replay(session_windows) 的多频率回测示例。
 - [15_plot_intraday.py](./15_plot_intraday.py): 日内绘图与回测示例。
 - [16_adj_returns_signal.py](./16_adj_returns_signal.py): 复权收益信号示例。
 - [17_readme_demo.py](./17_readme_demo.py): README 演示脚本。
@@ -37,6 +37,13 @@
 - [24_functional_tick_simulation_demo.py](./24_functional_tick_simulation_demo.py): 函数式 Tick 回调示例。
 - [34_multi_strategy_migration_demo.py](./34_multi_strategy_migration_demo.py): 单策略到多策略迁移对照示例。
 - [35_custom_broker_registry_demo.py](./35_custom_broker_registry_demo.py): 自定义 Broker 注册与工厂创建示例。
+- [36_trailing_orders.py](./36_trailing_orders.py): Trailing Stop/StopLimit 助手示例。
+- [37_feed_replay_alignment_demo.py](./37_feed_replay_alignment_demo.py): replay 的 session/day/global 与 day_mode 对齐差异示例。
+- [38_live_functional_strategy_demo.py](./38_live_functional_strategy_demo.py): LiveRunner 函数式策略入口示例。
+- [39_live_broker_submit_order_demo.py](./39_live_broker_submit_order_demo.py): broker_live 下函数式 submit_order 最小闭环示例。
+- [40_functional_multi_slot_risk_demo.py](./40_functional_multi_slot_risk_demo.py): 函数式 + 多策略 slot + 风控限制端到端示例。
+- [41_live_multi_slot_orchestration_demo.py](./41_live_multi_slot_orchestration_demo.py): LiveRunner 多策略 slot 编排示例（paper）。
+- [42_live_broker_event_audit_demo.py](./42_live_broker_event_audit_demo.py): broker 事件审计与 owner_strategy_id 追踪示例。
 
 ## 流式回测与实时报告
 

@@ -148,6 +148,48 @@ max_leverage                              0.01458
 min_margin_level                        68.587671
 ```
 
+## 复杂订单助手 (OCO / Bracket)
+
+AKQuant 提供了两组复杂订单助手，减少手写订单联动逻辑：
+
+*   `create_oco_order_group(first_order_id, second_order_id, group_id=None)`：将两个订单绑定为 OCO，任一成交后自动撤销另一单。
+*   `place_bracket_order(symbol, quantity, entry_price=None, stop_trigger_price=None, take_profit_price=None, ...)`：一次性提交 Bracket 结构；进场成交后自动挂出止损/止盈，并在双退出单场景下自动绑定 OCO。
+
+```python
+from akquant import OrderStatus, Strategy
+
+class BracketHelperStrategy(Strategy):
+    def __init__(self):
+        self.entry_order_id = ""
+
+    def on_bar(self, bar):
+        if self.get_position(bar.symbol) > 0 or self.entry_order_id:
+            return
+
+        self.entry_order_id = self.place_bracket_order(
+            symbol=bar.symbol,
+            quantity=100,
+            stop_trigger_price=bar.close * 0.98,
+            take_profit_price=bar.close * 1.04,
+            entry_tag="entry",
+            stop_tag="stop",
+            take_profit_tag="take",
+        )
+
+    def on_order(self, order):
+        if order.id == self.entry_order_id and order.status in (
+            OrderStatus.Cancelled,
+            OrderStatus.Rejected,
+        ):
+            self.entry_order_id = ""
+```
+
+可直接运行完整示例：
+
+```bash
+python examples/06_complex_orders.py
+```
+
 ## 流式回测 (Streaming)
 
 如果你希望在回测执行过程中实时消费事件，可直接使用 `run_backtest` 并传入 `on_event`：

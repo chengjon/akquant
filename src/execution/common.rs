@@ -10,6 +10,60 @@ use uuid::Uuid;
 pub struct CommonMatcher;
 
 impl CommonMatcher {
+    fn update_trailing_trigger_with_bar(order: &mut Order, high: Decimal, low: Decimal) {
+        let Some(offset) = order.trail_offset else {
+            return;
+        };
+        if offset <= Decimal::ZERO {
+            return;
+        }
+        match order.side {
+            OrderSide::Sell => {
+                let prev = order.trail_reference_price.unwrap_or(high);
+                let next = prev.max(high);
+                order.trail_reference_price = Some(next);
+                order.trigger_price = Some(next - offset);
+            }
+            OrderSide::Buy => {
+                let prev = order.trail_reference_price.unwrap_or(low);
+                let next = prev.min(low);
+                order.trail_reference_price = Some(next);
+                order.trigger_price = Some(next + offset);
+            }
+        }
+    }
+
+    fn update_trailing_trigger_with_tick(order: &mut Order, price: Decimal) {
+        let Some(offset) = order.trail_offset else {
+            return;
+        };
+        if offset <= Decimal::ZERO {
+            return;
+        }
+        match order.side {
+            OrderSide::Sell => {
+                let prev = order.trail_reference_price.unwrap_or(price);
+                let next = prev.max(price);
+                order.trail_reference_price = Some(next);
+                order.trigger_price = Some(next - offset);
+            }
+            OrderSide::Buy => {
+                let prev = order.trail_reference_price.unwrap_or(price);
+                let next = prev.min(price);
+                order.trail_reference_price = Some(next);
+                order.trigger_price = Some(next + offset);
+            }
+        }
+    }
+
+    fn promote_triggered_order_type(order: &mut Order) {
+        match order.order_type {
+            OrderType::StopMarket | OrderType::StopTrail => order.order_type = OrderType::Market,
+            OrderType::StopLimit | OrderType::StopTrailLimit => order.order_type = OrderType::Limit,
+            _ => {}
+        }
+    }
+
     /// 核心撮合逻辑 (支持穿透检查、Bar内止损、价格改善)
     ///
     /// :param order: 订单
@@ -51,6 +105,10 @@ impl CommonMatcher {
                     return None;
                 }
 
+                if matches!(order.order_type, OrderType::StopTrail | OrderType::StopTrailLimit) {
+                    Self::update_trailing_trigger_with_bar(order, bar.high, bar.low);
+                }
+
                 // 1. Volume Check (Suspension)
                 if bar.volume <= Decimal::ZERO {
                     return None;
@@ -83,11 +141,7 @@ impl CommonMatcher {
                         order.trigger_price = None; // Clear trigger
 
                         // Update Order Type
-                        match order.order_type {
-                            OrderType::StopMarket => order.order_type = OrderType::Market,
-                            OrderType::StopLimit => order.order_type = OrderType::Limit,
-                            _ => {}
-                        }
+                        Self::promote_triggered_order_type(order);
                     } else {
                         return None; // Not triggered
                     }
@@ -252,6 +306,10 @@ impl CommonMatcher {
                     return None;
                 }
 
+                if matches!(order.order_type, OrderType::StopTrail | OrderType::StopTrailLimit) {
+                    Self::update_trailing_trigger_with_tick(order, tick.price);
+                }
+
                 // 1. Check Trigger
                 if let Some(trigger_price) = order.trigger_price {
                     let triggered = match order.side {
@@ -262,11 +320,7 @@ impl CommonMatcher {
                         return None;
                     }
                      order.trigger_price = None;
-                    match order.order_type {
-                        OrderType::StopMarket => order.order_type = OrderType::Market,
-                        OrderType::StopLimit => order.order_type = OrderType::Limit,
-                        _ => {}
-                    }
+                    Self::promote_triggered_order_type(order);
                 }
 
                 // 2. Execute

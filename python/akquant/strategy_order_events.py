@@ -69,6 +69,20 @@ def check_order_events(strategy: Any) -> None:
             if not remember_trade_key(strategy, key):
                 continue
             call_user_callback(strategy, "on_trade", t, payload=t)
+            process_order_groups(strategy, t)
+            analyzer_manager = getattr(strategy, "_analyzer_manager", None)
+            if analyzer_manager is not None:
+                try:
+                    analyzer_manager.on_trade(
+                        {
+                            "strategy": strategy,
+                            "trade": t,
+                            "engine": getattr(strategy, "_engine", None),
+                            "ctx": strategy.ctx,
+                        }
+                    )
+                except Exception:
+                    pass
             mark_portfolio_dirty(strategy)
 
 
@@ -126,3 +140,10 @@ def trade_dedupe_cache_limit(strategy: Any) -> int:
         return max(1, int(raw_limit))
     except (TypeError, ValueError):
         return 50000
+
+
+def process_order_groups(strategy: Any, trade: Any) -> None:
+    """处理策略内部订单组联动逻辑."""
+    handler = getattr(strategy, "_process_order_groups", None)
+    if callable(handler):
+        handler(trade)

@@ -231,6 +231,40 @@ kelly_criterion                         -0.086485
 [67 rows x 13 columns]
 ```
 
+## 复杂订单 30 秒示例
+
+如果你需要“进场 + 止损 + 止盈 + 自动 OCO 联动”，可以直接使用 `place_bracket_order`：
+
+```python
+from akquant import OrderStatus, Strategy
+
+class BracketQuickStrategy(Strategy):
+    def __init__(self):
+        self.entry_order_id = ""
+
+    def on_bar(self, bar):
+        if self.get_position(bar.symbol) > 0 or self.entry_order_id:
+            return
+        self.entry_order_id = self.place_bracket_order(
+            symbol=bar.symbol,
+            quantity=100,
+            stop_trigger_price=bar.close * 0.98,
+            take_profit_price=bar.close * 1.04,
+            entry_tag="entry",
+            stop_tag="stop",
+            take_profit_tag="take",
+        )
+
+    def on_order(self, order):
+        if order.id == self.entry_order_id and order.status in (
+            OrderStatus.Cancelled,
+            OrderStatus.Rejected,
+        ):
+            self.entry_order_id = ""
+```
+
+完整可运行脚本见：`examples/06_complex_orders.py`。
+
 ## 报告与分析输出
 
 回测完成后，你可以直接生成交互式报告：

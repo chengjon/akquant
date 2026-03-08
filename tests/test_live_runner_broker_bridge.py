@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from typing import Any, Callable, cast
 
 from akquant.live import LiveRunner
+from akquant.strategy import Strategy
 
 
 def test_live_runner_broker_bridge_dispatches_events() -> None:
@@ -461,3 +462,224 @@ def test_live_runner_does_not_inject_removed_broker_aliases() -> None:
     assert not hasattr(strategy_any, "submit_broker_order")
     assert not hasattr(strategy_any, "broker_buy")
     assert not hasattr(strategy_any, "broker_sell")
+
+
+def test_live_runner_builds_strategy_instance_from_class() -> None:
+    """Build strategy instance from class input."""
+
+    class _DummyStrategy(Strategy):
+        def on_bar(self, bar: Any) -> None:
+            _ = bar
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.strategy_cls = _DummyStrategy
+    runner.initialize = None
+    runner.on_start = None
+    runner.on_stop = None
+    runner.on_tick = None
+    runner.on_order = None
+    runner.on_trade = None
+    runner.on_timer = None
+    runner.context = {}
+    strategy = runner._build_strategy_instance(runner.strategy_cls)
+    assert isinstance(strategy, _DummyStrategy)
+
+
+def test_live_runner_builds_strategy_instance_from_existing_instance() -> None:
+    """Reuse provided strategy instance input."""
+
+    class _DummyStrategy(Strategy):
+        def on_bar(self, bar: Any) -> None:
+            _ = bar
+
+    instance = _DummyStrategy()
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.strategy_cls = instance
+    runner.initialize = None
+    runner.on_start = None
+    runner.on_stop = None
+    runner.on_tick = None
+    runner.on_order = None
+    runner.on_trade = None
+    runner.on_timer = None
+    runner.context = {}
+    strategy = runner._build_strategy_instance(runner.strategy_cls)
+    assert strategy is instance
+
+
+def test_live_runner_builds_functional_strategy_instance() -> None:
+    """Build functional strategy wrapper from callable input."""
+    events: list[str] = []
+
+    def initialize(ctx: Any) -> None:
+        events.append("initialize")
+        ctx.seed = 7
+
+    def on_start(ctx: Any) -> None:
+        _ = ctx
+        events.append("on_start")
+
+    def on_stop(ctx: Any) -> None:
+        _ = ctx
+        events.append("on_stop")
+
+    def on_bar(ctx: Any, bar: Any) -> None:
+        _ = bar
+        events.append(f"bar:{getattr(ctx, 'seed', 0)}")
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.strategy_cls = on_bar
+    runner.initialize = initialize
+    runner.on_start = on_start
+    runner.on_stop = on_stop
+    runner.on_tick = None
+    runner.on_order = None
+    runner.on_trade = None
+    runner.on_timer = None
+    runner.context = {"flag": "ok"}
+    strategy = runner._build_strategy_instance(runner.strategy_cls)
+
+    assert isinstance(strategy, Strategy)
+    assert getattr(strategy, "flag") == "ok"
+    assert events == ["initialize"]
+    strategy.on_start()
+    strategy.on_bar(cast(Any, SimpleNamespace(symbol="TEST")))
+    strategy.on_stop()
+    assert events == ["initialize", "on_start", "bar:7", "on_stop"]
+
+
+def test_live_runner_builds_strategy_topology_with_slots() -> None:
+    """Build primary and slot strategies with explicit strategy ids."""
+
+    def on_bar(ctx: Any, bar: Any) -> None:
+        _ = ctx
+        _ = bar
+
+    def slot_on_bar(ctx: Any, bar: Any) -> None:
+        _ = ctx
+        _ = bar
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.strategy_cls = on_bar
+    runner.strategy_id = "alpha"
+    runner.strategies_by_slot = {"beta": slot_on_bar}
+    runner.initialize = None
+    runner.on_start = None
+    runner.on_stop = None
+    runner.on_tick = None
+    runner.on_order = None
+    runner.on_trade = None
+    runner.on_timer = None
+    runner.context = {}
+    strategy, slots, strategy_id = runner._build_strategy_topology()
+
+    assert isinstance(strategy, Strategy)
+    assert strategy_id == "alpha"
+    assert set(slots.keys()) == {"beta"}
+    assert isinstance(slots["beta"], Strategy)
+
+
+def test_live_runner_configures_engine_slots_for_primary_and_secondary() -> None:
+    """Configure slot metadata and strategy binding on engine."""
+
+    class _DummyEngine:
+        def __init__(self) -> None:
+            self.slot_ids: list[str] = []
+            self.default_strategy_id = ""
+            self.slot_strategies: dict[int, Any] = {}
+
+        def set_strategy_slots(self, slot_ids: list[str]) -> None:
+            self.slot_ids = slot_ids
+
+        def set_default_strategy_id(self, strategy_id: str) -> None:
+            self.default_strategy_id = strategy_id
+
+        def set_strategy_for_slot(self, slot_index: int, strategy: Any) -> None:
+            self.slot_strategies[slot_index] = strategy
+
+    class _DummyStrategy(Strategy):
+        def on_bar(self, bar: Any) -> None:
+            _ = bar
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.engine = cast(Any, _DummyEngine())
+    runner.context = {"shared_flag": "ok"}
+    primary = _DummyStrategy()
+    secondary = _DummyStrategy()
+    runner._configure_strategy_slots(primary, {"beta": secondary}, "alpha")
+    engine = cast(_DummyEngine, runner.engine)
+
+    assert engine.slot_ids == ["alpha", "beta"]
+    assert engine.default_strategy_id == "alpha"
+    assert engine.slot_strategies[0] is primary
+    assert engine.slot_strategies[1] is secondary
+    assert getattr(primary, "_owner_strategy_id") == "alpha"
+    assert getattr(secondary, "_owner_strategy_id") == "beta"
+    assert getattr(primary, "shared_flag") == "ok"
+    assert getattr(secondary, "shared_flag") == "ok"
+
+
+def test_live_runner_submitter_binds_owner_strategy_id_mapping() -> None:
+    """Bind strategy owner mapping when submit_order is called."""
+
+    class _DummyTraderGateway:
+        def place_order(self, req: Any) -> str:
+            return f"b-{req.client_order_id}"
+
+    class _DummyStrategy:
+        def __init__(self) -> None:
+            self._owner_strategy_id = "alpha"
+            self.errors: list[tuple[str, Any]] = []
+
+        def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+            self.errors.append((source, payload))
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.broker = "miniqmt"
+    runner._init_broker_bridge_state()
+    gateway = _DummyTraderGateway()
+    strategy = _DummyStrategy()
+    runner._install_broker_order_submitter(cast(Any, gateway), cast(Any, strategy))
+    strategy_any = cast(Any, strategy)
+    broker_order_id = strategy_any.submit_order(
+        symbol="000001.SZ",
+        side="Buy",
+        quantity=10.0,
+        client_order_id="coid-owner-1",
+    )
+
+    assert broker_order_id == "b-coid-owner-1"
+    assert runner._client_to_strategy_ids["coid-owner-1"] == "alpha"
+    assert runner._broker_to_strategy_ids["b-coid-owner-1"] == "alpha"
+
+
+def test_live_runner_emits_observable_broker_events_with_owner_strategy_id() -> None:
+    """Emit broker event snapshots with resolved owner strategy id."""
+    observed: list[dict[str, Any]] = []
+
+    class _DummyStrategy:
+        def __init__(self) -> None:
+            self.orders: list[Any] = []
+
+        def on_order(self, order: Any) -> None:
+            self.orders.append(order)
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.broker = "miniqmt"
+    runner._init_broker_bridge_state()
+    runner.on_broker_event = observed.append
+    runner._client_to_strategy_ids["coid-obs-1"] = "beta"
+    strategy = _DummyStrategy()
+    payload = {
+        "client_order_id": "coid-obs-1",
+        "broker_order_id": "b-obs-1",
+        "status": "Submitted",
+    }
+    runner._queue_broker_event("order", payload)
+    runner._drain_broker_events(cast(Any, strategy))
+
+    assert observed
+    event = observed[0]
+    assert event["event_type"] == "order"
+    assert event["owner_strategy_id"] == "beta"
+    assert event["payload"]["client_order_id"] == "coid-obs-1"

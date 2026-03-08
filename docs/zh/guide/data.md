@@ -112,6 +112,38 @@ df = df.rename(columns={"date": "date"}) # 确保是 date
 df['symbol'] = "AAPL"
 ```
 
+### 2.4 使用 DataFeedAdapter + 多时间框聚合
+
+如果你希望把“数据加载 + 重采样/重放”封装在同一入口，可以直接使用 `DataFeedAdapter`：
+
+```python
+import akquant as aq
+
+base = aq.CSVFeedAdapter(path_template="/data/{symbol}.csv")
+
+feed_15m = base.resample(freq="15min", emit_partial=False)
+feed_1h = base.replay(
+    freq="1h",
+    align="session",            # session | day | global
+    day_mode="trading",         # 仅 align='day' 时生效: trading | calendar
+    emit_partial=False,
+    session_windows=[("09:30", "11:30"), ("13:00", "15:00")],  # 仅 align='session'
+)
+
+result = aq.run_backtest(
+    data=feed_1h,
+    strategy=MyStrategy,
+    symbol="000001",
+    show_progress=False,
+)
+```
+
+参数语义：
+
+*   `align="session"`：按交易日分区，可叠加 `session_windows`。
+*   `align="day"`：按日分区，不接收 `session_windows`；`day_mode` 支持 `trading/calendar`。
+*   `align="global"`：按全局时间轴聚合，不按交易日切段。
+
 ---
 
 ## 3. 多标的数据 (Multi-Symbol Data)

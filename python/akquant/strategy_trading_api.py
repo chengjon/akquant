@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
-from .akquant import OrderStatus, TimeInForce
+from .akquant import OrderStatus, OrderType, TimeInForce
 
 
 def resolve_symbol(strategy: Any, symbol: Optional[str]) -> str:
@@ -100,6 +100,9 @@ def buy(
     time_in_force: Optional[TimeInForce] = None,
     trigger_price: Optional[float] = None,
     tag: Optional[str] = None,
+    order_type: Optional[str] = None,
+    trail_offset: Optional[float] = None,
+    trail_reference_price: Optional[float] = None,
 ) -> str:
     """买入下单."""
     submit_order_method = getattr(strategy, "submit_order", None)
@@ -114,8 +117,12 @@ def buy(
                 time_in_force=time_in_force,
                 trigger_price=trigger_price,
                 tag=tag,
+                order_type=order_type,
+                trail_offset=trail_offset,
+                trail_reference_price=trail_reference_price,
             ),
         )
+    order_type_enum = _parse_order_type(order_type)
     return _submit_buy_side(
         strategy=strategy,
         symbol=symbol,
@@ -124,6 +131,9 @@ def buy(
         time_in_force=time_in_force,
         trigger_price=trigger_price,
         tag=tag,
+        order_type=order_type_enum,
+        trail_offset=trail_offset,
+        trail_reference_price=trail_reference_price,
     )
 
 
@@ -135,6 +145,9 @@ def sell(
     time_in_force: Optional[TimeInForce] = None,
     trigger_price: Optional[float] = None,
     tag: Optional[str] = None,
+    order_type: Optional[str] = None,
+    trail_offset: Optional[float] = None,
+    trail_reference_price: Optional[float] = None,
 ) -> str:
     """卖出下单."""
     submit_order_method = getattr(strategy, "submit_order", None)
@@ -149,8 +162,12 @@ def sell(
                 time_in_force=time_in_force,
                 trigger_price=trigger_price,
                 tag=tag,
+                order_type=order_type,
+                trail_offset=trail_offset,
+                trail_reference_price=trail_reference_price,
             ),
         )
+    order_type_enum = _parse_order_type(order_type)
     return _submit_sell_side(
         strategy=strategy,
         symbol=symbol,
@@ -159,6 +176,9 @@ def sell(
         time_in_force=time_in_force,
         trigger_price=trigger_price,
         tag=tag,
+        order_type=order_type_enum,
+        trail_offset=trail_offset,
+        trail_reference_price=trail_reference_price,
     )
 
 
@@ -170,6 +190,9 @@ def _submit_buy_side(
     time_in_force: Optional[TimeInForce],
     trigger_price: Optional[float],
     tag: Optional[str],
+    order_type: Optional[Any] = None,
+    trail_offset: Optional[float] = None,
+    trail_reference_price: Optional[float] = None,
 ) -> str:
     if strategy.ctx is None:
         raise RuntimeError("Context not ready")
@@ -186,10 +209,29 @@ def _submit_buy_side(
         )
 
     if quantity > 0:
+        if (
+            order_type is None
+            and trail_offset is None
+            and trail_reference_price is None
+        ):
+            return cast(
+                str,
+                strategy.ctx.buy(
+                    symbol, quantity, price, time_in_force, trigger_price, tag or ""
+                ),
+            )
         return cast(
             str,
             strategy.ctx.buy(
-                symbol, quantity, price, time_in_force, trigger_price, tag or ""
+                symbol,
+                quantity,
+                price,
+                time_in_force,
+                trigger_price,
+                tag or "",
+                order_type,
+                trail_offset,
+                trail_reference_price,
             ),
         )
     return ""
@@ -203,6 +245,9 @@ def _submit_sell_side(
     time_in_force: Optional[TimeInForce],
     trigger_price: Optional[float],
     tag: Optional[str],
+    order_type: Optional[Any] = None,
+    trail_offset: Optional[float] = None,
+    trail_reference_price: Optional[float] = None,
 ) -> str:
     if strategy.ctx is None:
         raise RuntimeError("Context not ready")
@@ -217,10 +262,29 @@ def _submit_sell_side(
             return ""
 
     if quantity > 0:
+        if (
+            order_type is None
+            and trail_offset is None
+            and trail_reference_price is None
+        ):
+            return cast(
+                str,
+                strategy.ctx.sell(
+                    symbol, quantity, price, time_in_force, trigger_price, tag or ""
+                ),
+            )
         return cast(
             str,
             strategy.ctx.sell(
-                symbol, quantity, price, time_in_force, trigger_price, tag or ""
+                symbol,
+                quantity,
+                price,
+                time_in_force,
+                trigger_price,
+                tag or "",
+                order_type,
+                trail_offset,
+                trail_reference_price,
             ),
         )
     return ""
@@ -232,7 +296,7 @@ def get_execution_capabilities(strategy: Any) -> Dict[str, Any]:
     return {
         "broker_live": False,
         "client_order_id": False,
-        "order_type": False,
+        "order_type": True,
         "time_in_force_str": False,
         "broker_extra_fields": [],
     }
@@ -250,6 +314,8 @@ def submit_order(
     client_order_id: Optional[str] = None,
     order_type: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
+    trail_offset: Optional[float] = None,
+    trail_reference_price: Optional[float] = None,
 ) -> str:
     """统一下单接口."""
     capabilities = get_execution_capabilities(strategy)
@@ -259,12 +325,18 @@ def submit_order(
         raise RuntimeError(
             "extra broker fields are not supported in current execution mode"
         )
-    if order_type not in (None, "Market"):
-        raise RuntimeError("order_type is not supported in current execution mode")
+    order_type_key, order_type_enum = _parse_order_type(order_type)
     if time_in_force is not None and not isinstance(time_in_force, TimeInForce):
         raise RuntimeError(
             "time_in_force string is not supported in current execution mode"
         )
+    if order_type_key in {"stoptrail", "stoptraillimit"}:
+        if trail_offset is None or trail_offset <= 0:
+            raise RuntimeError("trail_offset must be > 0 for trailing orders")
+    if order_type_key == "stoptraillimit" and price is None:
+        raise RuntimeError("price must be provided for StopTrailLimit order")
+    if order_type_key in {"stoptrail", "stoptraillimit"} and order_type_enum is None:
+        raise RuntimeError("trailing order requires runtime with StopTrail support")
 
     side_text = side.strip().lower()
     if side_text == "buy":
@@ -276,6 +348,9 @@ def submit_order(
             time_in_force=time_in_force,
             trigger_price=trigger_price,
             tag=tag,
+            order_type=order_type_enum,
+            trail_offset=trail_offset,
+            trail_reference_price=trail_reference_price,
         )
     if side_text == "sell":
         return _submit_sell_side(
@@ -286,8 +361,33 @@ def submit_order(
             time_in_force=time_in_force,
             trigger_price=trigger_price,
             tag=tag,
+            order_type=order_type_enum,
+            trail_offset=trail_offset,
+            trail_reference_price=trail_reference_price,
         )
     raise ValueError(f"Unsupported side: {side}")
+
+
+def _parse_order_type(order_type: Optional[str]) -> Tuple[Optional[str], Optional[Any]]:
+    if order_type is None:
+        return None, None
+    key = str(order_type).strip().lower()
+    mapping: Dict[str, str] = {
+        "market": "Market",
+        "limit": "Limit",
+        "stop": "StopMarket",
+        "stopmarket": "StopMarket",
+        "stop_limit": "StopLimit",
+        "stoplimit": "StopLimit",
+        "stoptrail": "StopTrail",
+        "stoptraillimit": "StopTrailLimit",
+    }
+    if key not in mapping:
+        raise RuntimeError(
+            f"order_type {order_type!r} is not supported in current execution mode"
+        )
+    attr_name = mapping[key]
+    return key, getattr(OrderType, attr_name, None)
 
 
 def stop_buy(

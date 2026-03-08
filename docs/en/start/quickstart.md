@@ -260,6 +260,40 @@ orders_by_strategy = result.orders_by_strategy()
 executions_by_strategy = result.executions_by_strategy()
 ```
 
+## Complex Orders in 30 Seconds
+
+If you need an entry + stop-loss + take-profit flow with automatic OCO linkage, use `place_bracket_order` directly:
+
+```python
+from akquant import OrderStatus, Strategy
+
+class BracketQuickStrategy(Strategy):
+    def __init__(self):
+        self.entry_order_id = ""
+
+    def on_bar(self, bar):
+        if self.get_position(bar.symbol) > 0 or self.entry_order_id:
+            return
+        self.entry_order_id = self.place_bracket_order(
+            symbol=bar.symbol,
+            quantity=100,
+            stop_trigger_price=bar.close * 0.98,
+            take_profit_price=bar.close * 1.04,
+            entry_tag="entry",
+            stop_tag="stop",
+            take_profit_tag="take",
+        )
+
+    def on_order(self, order):
+        if order.id == self.entry_order_id and order.status in (
+            OrderStatus.Cancelled,
+            OrderStatus.Rejected,
+        ):
+            self.entry_order_id = ""
+```
+
+For a full runnable script, see `examples/06_complex_orders.py`.
+
 ## 3. Streaming Backtest
 
 If you want real-time events during a backtest (progress, equity, orders, trades,

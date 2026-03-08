@@ -1,5 +1,5 @@
 use super::market_data::extract_decimal;
-use super::types::{OrderSide, OrderStatus, OrderType, TimeInForce};
+use super::types::{OrderRole, OrderSide, OrderStatus, OrderType, TimeInForce};
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 use rust_decimal::Decimal;
@@ -19,6 +19,11 @@ use serde::{Deserialize, Serialize};
 /// :ivar price: 价格 (限价单有效)
 /// :ivar time_in_force: 订单有效期
 /// :ivar trigger_price: 触发价格 (止损/止盈单)
+/// :ivar trail_offset: 跟踪止损偏移量
+/// :ivar trail_reference_price: 跟踪止损参考价
+/// :ivar graph_id: 复杂订单图 ID
+/// :ivar parent_order_id: 父订单 ID
+/// :ivar order_role: 复杂订单节点角色
 /// :ivar status: 订单状态
 /// :ivar filled_quantity: 已成交数量
 /// :ivar average_filled_price: 成交均价
@@ -36,6 +41,19 @@ pub struct Order {
     #[pyo3(get)]
     pub time_in_force: TimeInForce,
     pub trigger_price: Option<Decimal>,
+    #[serde(default)]
+    pub trail_offset: Option<Decimal>,
+    #[serde(default)]
+    pub trail_reference_price: Option<Decimal>,
+    #[pyo3(get)]
+    #[serde(default)]
+    pub graph_id: Option<String>,
+    #[pyo3(get)]
+    #[serde(default)]
+    pub parent_order_id: Option<String>,
+    #[pyo3(get)]
+    #[serde(default)]
+    pub order_role: OrderRole,
     #[pyo3(get, set)]
     pub status: OrderStatus,
     pub filled_quantity: Decimal,
@@ -70,7 +88,7 @@ impl Order {
     /// :param created_at: 创建时间戳 (可选，默认 0)
     /// :param tag: 订单标签 (可选，默认 "")
     #[new]
-    #[pyo3(signature = (id, symbol, side, order_type, quantity, price=None, time_in_force=None, trigger_price=None, created_at=None, tag=None, owner_strategy_id=None))]
+    #[pyo3(signature = (id, symbol, side, order_type, quantity, price=None, time_in_force=None, trigger_price=None, created_at=None, tag=None, owner_strategy_id=None, graph_id=None, parent_order_id=None, order_role=None, trail_offset=None, trail_reference_price=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
@@ -84,6 +102,11 @@ impl Order {
         created_at: Option<i64>,
         tag: Option<String>,
         owner_strategy_id: Option<String>,
+        graph_id: Option<String>,
+        parent_order_id: Option<String>,
+        order_role: Option<OrderRole>,
+        trail_offset: Option<&Bound<'_, PyAny>>,
+        trail_reference_price: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         let created_at_ts = created_at.unwrap_or(0);
         Ok(Order {
@@ -101,6 +124,17 @@ impl Order {
                 Some(p) => Some(extract_decimal(p)?),
                 None => None,
             },
+            trail_offset: match trail_offset {
+                Some(v) => Some(extract_decimal(v)?),
+                None => None,
+            },
+            trail_reference_price: match trail_reference_price {
+                Some(v) => Some(extract_decimal(v)?),
+                None => None,
+            },
+            graph_id,
+            parent_order_id,
+            order_role: order_role.unwrap_or_default(),
             status: OrderStatus::New,
             filled_quantity: Decimal::ZERO,
             average_filled_price: None,
@@ -142,6 +176,44 @@ impl Order {
     }
 
     #[getter]
+    /// 获取跟踪止损偏移量.
+    /// :return: 跟踪止损偏移量 (如果未设置则返回 None)
+    fn get_trail_offset(&self) -> Option<f64> {
+        self.trail_offset.map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    fn set_trail_offset(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        if let Some(v) = value {
+            self.trail_offset = Some(extract_decimal(v)?);
+        } else {
+            self.trail_offset = None;
+        }
+        Ok(())
+    }
+
+    #[getter]
+    /// 获取跟踪止损参考价.
+    /// :return: 跟踪止损参考价 (如果未设置则返回 None)
+    fn get_trail_reference_price(&self) -> Option<f64> {
+        self.trail_reference_price
+            .map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    fn set_trail_reference_price(
+        &mut self,
+        value: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        if let Some(v) = value {
+            self.trail_reference_price = Some(extract_decimal(v)?);
+        } else {
+            self.trail_reference_price = None;
+        }
+        Ok(())
+    }
+
+    #[getter]
     /// 获取已成交数量.
     /// :return: 已成交数量
     fn get_filled_quantity(&self) -> f64 {
@@ -174,13 +246,19 @@ impl Order {
 
     pub fn __repr__(&self) -> String {
         format!(
-            "Order(id={}, symbol={}, side={:?}, type={:?}, qty={}, price={:?}, tif={:?}, status={:?}, tag={}, reject_reason={})",
+            "Order(id={}, symbol={}, side={:?}, type={:?}, qty={}, price={:?}, trigger={:?}, trail_offset={:?}, trail_ref={:?}, graph_id={:?}, parent_order_id={:?}, role={:?}, tif={:?}, status={:?}, tag={}, reject_reason={})",
             self.id,
             self.symbol,
             self.side,
             self.order_type,
             self.quantity,
             self.price,
+            self.trigger_price,
+            self.trail_offset,
+            self.trail_reference_price,
+            self.graph_id,
+            self.parent_order_id,
+            self.order_role,
             self.time_in_force,
             self.status,
             self.tag,
@@ -362,6 +440,11 @@ mod tests {
         let order: Order =
             rmp_serde::from_slice(&bytes).expect("deserialize order from legacy payload");
         assert!(order.owner_strategy_id.is_none());
+        assert!(order.trail_offset.is_none());
+        assert!(order.trail_reference_price.is_none());
+        assert!(order.graph_id.is_none());
+        assert!(order.parent_order_id.is_none());
+        assert_eq!(order.order_role, OrderRole::Standalone);
     }
 
     #[test]

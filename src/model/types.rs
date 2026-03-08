@@ -19,6 +19,12 @@ impl pyo3_stub_gen::PyStubType for OrderType {
     }
 }
 
+impl pyo3_stub_gen::PyStubType for OrderRole {
+    fn type_output() -> pyo3_stub_gen::TypeInfo {
+        pyo3_stub_gen::TypeInfo::with_module("akquant.OrderRole", "akquant".into())
+    }
+}
+
 impl pyo3_stub_gen::PyStubType for OrderSide {
     fn type_output() -> pyo3_stub_gen::TypeInfo {
         pyo3_stub_gen::TypeInfo::with_module("akquant.OrderSide", "akquant".into())
@@ -112,10 +118,34 @@ pub enum OrderType {
     Limit,
     StopMarket,
     StopLimit,
+    OCO,
+    Bracket,
+    StopTrail,
+    StopTrailLimit,
 }
 
 #[pymethods]
 impl OrderType {
+    fn __hash__(&self) -> isize {
+        *self as isize
+    }
+}
+
+#[pyclass(eq, eq_int, from_py_object)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// 复杂订单节点角色
+pub enum OrderRole {
+    #[default]
+    Standalone,
+    Entry,
+    StopLoss,
+    TakeProfit,
+    TrailStop,
+    TrailStopLimit,
+}
+
+#[pymethods]
+impl OrderRole {
     fn __hash__(&self) -> isize {
         *self as isize
     }

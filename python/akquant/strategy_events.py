@@ -64,6 +64,19 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
         call_user_callback(strategy, "on_train_signal", strategy, payload=strategy)
 
     call_user_callback(strategy, "on_bar", bar, payload=bar)
+    analyzer_manager = getattr(strategy, "_analyzer_manager", None)
+    if analyzer_manager is not None:
+        try:
+            analyzer_manager.on_bar(
+                {
+                    "strategy": strategy,
+                    "bar": bar,
+                    "engine": getattr(strategy, "_engine", None),
+                    "ctx": ctx,
+                }
+            )
+        except Exception:
+            pass
 
 
 def on_tick_event(strategy: Any, tick: Tick, ctx: StrategyContext) -> None:

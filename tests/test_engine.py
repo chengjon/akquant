@@ -191,6 +191,52 @@ def _build_benchmark_data(n: int, symbol: str) -> pd.DataFrame:
     )
 
 
+def test_run_backtest_accepts_data_feed_adapter() -> None:
+    """run_backtest should accept objects implementing DataFeedAdapter.load."""
+
+    class InMemoryAdapter:
+        """Simple in-memory adapter for testing."""
+
+        name = "memory"
+
+        def __init__(self, frame: pd.DataFrame) -> None:
+            """Store source frame."""
+            self.frame = frame
+            self.requested_symbols: list[str] = []
+
+        def load(self, request: Any) -> pd.DataFrame:
+            """Return filtered frame for requested symbol."""
+            self.requested_symbols.append(str(request.symbol))
+            data = self.frame[self.frame["symbol"] == str(request.symbol)].copy()
+            if request.start_time is not None:
+                data = data[data["timestamp"] >= request.start_time]
+            if request.end_time is not None:
+                data = data[data["timestamp"] <= request.end_time]
+            return cast(pd.DataFrame, data)
+
+    symbol = "ADAPTER"
+    data = _build_benchmark_data(10, symbol)
+    adapter = InMemoryAdapter(data)
+
+    result = akquant.run_backtest(
+        data=adapter,
+        strategy=SingleBuyStrategy,
+        symbol=symbol,
+        execution_mode="current_close",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert adapter.requested_symbols == [symbol]
+    assert not result.orders_df.empty
+    assert set(result.orders_df["symbol"].astype(str)) == {symbol}
+
+
 def test_engine_run_empty() -> None:
     """Test running engine with no data."""
     engine = akquant.Engine()
@@ -584,6 +630,134 @@ def test_run_backtest_multi_slot_owner_strategy_ids_mixed() -> None:
     exec_owner_ids = set(executions_df["owner_strategy_id"].dropna().astype(str))
     assert order_owner_ids == {"alpha", "beta"}
     assert exec_owner_ids == {"alpha", "beta"}
+
+
+def test_run_backtest_functional_on_start_on_stop_callbacks() -> None:
+    """Function-style strategy should support on_start/on_stop lifecycle callbacks."""
+    events: list[str] = []
+
+    def initialize(ctx: Any) -> None:
+        _ = ctx
+        events.append("initialize")
+
+    def on_start(ctx: Any) -> None:
+        _ = ctx
+        events.append("on_start")
+
+    def on_bar(ctx: Any, bar: akquant.Bar) -> None:
+        _ = ctx
+        _ = bar
+        events.append("on_bar")
+
+    def on_stop(ctx: Any) -> None:
+        _ = ctx
+        events.append("on_stop")
+
+    _ = akquant.run_backtest(
+        data=_build_regression_bars("FUNC_LIFECYCLE"),
+        strategy=on_bar,
+        symbol="FUNC_LIFECYCLE",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        initialize=initialize,
+        on_start=on_start,
+        on_stop=on_stop,
+    )
+
+    assert events[0] == "initialize"
+    assert events.count("on_start") == 1
+    assert events.count("on_stop") == 1
+    assert events[-1] == "on_stop"
+    assert events.count("on_bar") == 3
+
+
+@pytest.mark.parametrize(
+    ("limit_key", "limit_value", "rejection_marker", "required_method"),
+    [
+        (
+            "strategy_max_order_value",
+            {"alpha": 50.0, "beta": 200.0},
+            "exceeds strategy limit",
+            "set_strategy_max_order_value_limits",
+        ),
+        (
+            "strategy_max_order_size",
+            {"alpha": 5.0, "beta": 20.0},
+            "order quantity",
+            "set_strategy_max_order_size_limits",
+        ),
+    ],
+)
+def test_run_backtest_functional_multi_slot_risk_matrix(
+    limit_key: str,
+    limit_value: dict[str, float],
+    rejection_marker: str,
+    required_method: str,
+) -> None:
+    """Function-style multi-slot strategies should honor per-slot risk limits."""
+    probe = akquant.Engine()
+    if not hasattr(probe, required_method):
+        pytest.skip("Engine binary does not expose required strategy risk methods")
+
+    def alpha_on_bar(ctx: Any, bar: akquant.Bar) -> None:
+        if getattr(ctx, "_submitted_once", False):
+            return
+        ctx.buy(symbol=bar.symbol, quantity=10)
+        ctx._submitted_once = True
+
+    def beta_on_bar(ctx: Any, bar: akquant.Bar) -> None:
+        if getattr(ctx, "_submitted_once", False):
+            return
+        ctx.buy(symbol=bar.symbol, quantity=10)
+        ctx._submitted_once = True
+
+    events: list[akquant.BacktestStreamEvent] = []
+    extra_limits: dict[str, Any] = {limit_key: limit_value}
+    result = akquant.run_backtest(
+        data=_build_regression_bars(f"FUNC_SLOT_{limit_key.upper()}"),
+        strategy=alpha_on_bar,
+        symbol=f"FUNC_SLOT_{limit_key.upper()}",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": beta_on_bar},
+        on_event=events.append,
+        stream_progress_interval=1,
+        stream_equity_interval=1,
+        stream_batch_size=1,
+        stream_max_buffer=256,
+        **extra_limits,
+    )
+
+    orders_df = result.orders_df
+    assert not orders_df.empty
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    assert not alpha_rows.empty
+    assert not beta_rows.empty
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any(rejection_marker in reason for reason in alpha_reject_reasons)
+    assert not any(rejection_marker in reason for reason in beta_reject_reasons)
+
+    risk_owner_ids = {
+        str(event["payload"].get("owner_strategy_id"))
+        for event in events
+        if event.get("event_type") == "risk"
+    }
+    assert risk_owner_ids == {"alpha"}
 
 
 def test_run_backtest_strategy_max_order_value_by_slot() -> None:
@@ -1834,3 +2008,52 @@ def test_run_backtest_on_event_audit_mode_latency_budget_benchmark() -> None:
     assert event_counts[5] == event_counts[0]
     assert durations[1] > durations[0]
     assert durations[5] > durations[1]
+
+
+def test_run_backtest_analyzer_plugins_lifecycle_and_output() -> None:
+    """Analyzer plugins should receive lifecycle events and write result output."""
+
+    class CountingAnalyzer:
+        name = "counting"
+
+        def __init__(self) -> None:
+            self.starts = 0
+            self.bars = 0
+            self.trades = 0
+
+        def on_start(self, context: dict[str, Any]) -> None:
+            _ = context
+            self.starts += 1
+
+        def on_bar(self, context: dict[str, Any]) -> None:
+            _ = context
+            self.bars += 1
+
+        def on_trade(self, context: dict[str, Any]) -> None:
+            _ = context
+            self.trades += 1
+
+        def on_finish(self, context: dict[str, Any]) -> dict[str, Any]:
+            _ = context
+            return {
+                "starts": self.starts,
+                "bars": self.bars,
+                "trades": self.trades,
+            }
+
+    analyzer = CountingAnalyzer()
+    result = akquant.run_backtest(
+        data=_build_regression_bars("ANALYZER"),
+        strategy=RegressionStrategy,
+        symbol="ANALYZER",
+        execution_mode="current_close",
+        show_progress=False,
+        analyzer_plugins=[analyzer],
+    )
+
+    assert hasattr(result, "analyzer_outputs")
+    outputs = cast(dict[str, dict[str, Any]], result.analyzer_outputs)
+    assert "counting" in outputs
+    assert outputs["counting"]["starts"] == 1
+    assert outputs["counting"]["bars"] == 3
+    assert outputs["counting"]["trades"] >= 1

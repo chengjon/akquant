@@ -225,6 +225,10 @@ class Strategy:
     _framework_stop_flushed: bool
     _framework_boundary_timers_registered: bool
     _trading_day_bounds: Dict[str, Tuple[int, int]]
+    _oco_groups: Dict[str, set[str]]
+    _oco_order_to_group: Dict[str, str]
+    _pending_brackets: Dict[str, Dict[str, Any]]
+    _order_group_seq: int
 
     _trading_days: List[pd.Timestamp]
 
@@ -314,6 +318,10 @@ class Strategy:
         instance._framework_stop_flushed = False
         instance._framework_boundary_timers_registered = False
         instance._trading_day_bounds = {}
+        instance._oco_groups = {}
+        instance._oco_order_to_group = {}
+        instance._pending_brackets = {}
+        instance._order_group_seq = 0
 
         return instance
 
@@ -385,6 +393,14 @@ class Strategy:
             self._seen_trade_keys = set()
         if not hasattr(self, "_seen_trade_key_order"):
             self._seen_trade_key_order = deque()
+        if not hasattr(self, "_oco_groups"):
+            self._oco_groups = {}
+        if not hasattr(self, "_oco_order_to_group"):
+            self._oco_order_to_group = {}
+        if not hasattr(self, "_pending_brackets"):
+            self._pending_brackets = {}
+        if not hasattr(self, "_order_group_seq"):
+            self._order_group_seq = 0
         _ensure_framework_state_impl(self)
 
     @property
@@ -988,6 +1004,161 @@ class Strategy:
         """
         _cancel_all_orders_impl(self, symbol)
 
+    def create_oco_order_group(
+        self,
+        first_order_id: str,
+        second_order_id: str,
+        group_id: Optional[str] = None,
+    ) -> str:
+        """
+        创建 OCO 订单组.
+
+        当组内任一订单成交时，自动撤销另一订单。
+        """
+        first = first_order_id.strip()
+        second = second_order_id.strip()
+        if not first or not second:
+            raise ValueError("OCO order ids cannot be empty")
+        if first == second:
+            raise ValueError("OCO order ids must be different")
+
+        if group_id is None or not str(group_id).strip():
+            self._order_group_seq += 1
+            group_id = f"oco-{self._order_group_seq}"
+        group_key = str(group_id).strip()
+
+        self._detach_oco_order(first)
+        self._detach_oco_order(second)
+
+        self._oco_groups[group_key] = {first, second}
+        self._oco_order_to_group[first] = group_key
+        self._oco_order_to_group[second] = group_key
+        return group_key
+
+    def place_bracket_order(
+        self,
+        symbol: str,
+        quantity: float,
+        entry_price: Optional[float] = None,
+        stop_trigger_price: Optional[float] = None,
+        take_profit_price: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        entry_tag: Optional[str] = None,
+        stop_tag: Optional[str] = None,
+        take_profit_tag: Optional[str] = None,
+    ) -> str:
+        """
+        创建 Bracket 订单.
+
+        先提交进场单，待进场成交后自动挂出止损/止盈，并绑定 OCO。
+        """
+        if quantity <= 0:
+            raise ValueError("quantity must be > 0")
+        if stop_trigger_price is None and take_profit_price is None:
+            raise ValueError("stop_trigger_price or take_profit_price must be provided")
+
+        entry_order_id = self.buy(
+            symbol=symbol,
+            quantity=quantity,
+            price=entry_price,
+            time_in_force=time_in_force,
+            tag=entry_tag,
+        )
+        if not entry_order_id:
+            raise RuntimeError("failed to submit bracket entry order")
+
+        self._pending_brackets[entry_order_id] = {
+            "symbol": symbol,
+            "quantity": float(quantity),
+            "stop_trigger_price": stop_trigger_price,
+            "take_profit_price": take_profit_price,
+            "time_in_force": time_in_force,
+            "stop_tag": stop_tag,
+            "take_profit_tag": take_profit_tag,
+        }
+        return entry_order_id
+
+    def _process_order_groups(self, trade: Any) -> None:
+        self._process_pending_bracket(trade)
+        self._process_oco_trade(trade)
+
+    def _process_pending_bracket(self, trade: Any) -> None:
+        order_id = str(getattr(trade, "order_id", "") or "")
+        if not order_id:
+            return
+
+        bracket = self._pending_brackets.pop(order_id, None)
+        if bracket is None:
+            return
+
+        trade_symbol = getattr(trade, "symbol", None)
+        symbol = str(trade_symbol) if trade_symbol else str(bracket["symbol"])
+
+        trade_qty = getattr(trade, "quantity", None)
+        if trade_qty is None:
+            quantity = float(bracket["quantity"])
+        else:
+            quantity = float(trade_qty)
+
+        stop_order_id = ""
+        take_order_id = ""
+        stop_trigger_price = bracket["stop_trigger_price"]
+        take_profit_price = bracket["take_profit_price"]
+        time_in_force = cast(Optional[TimeInForce], bracket["time_in_force"])
+
+        if stop_trigger_price is not None:
+            stop_order_id = self.sell(
+                symbol=symbol,
+                quantity=quantity,
+                trigger_price=float(stop_trigger_price),
+                time_in_force=time_in_force,
+                tag=cast(Optional[str], bracket["stop_tag"]),
+            )
+
+        if take_profit_price is not None:
+            take_order_id = self.sell(
+                symbol=symbol,
+                quantity=quantity,
+                price=float(take_profit_price),
+                time_in_force=time_in_force,
+                tag=cast(Optional[str], bracket["take_profit_tag"]),
+            )
+
+        if stop_order_id and take_order_id:
+            self.create_oco_order_group(stop_order_id, take_order_id)
+
+    def _process_oco_trade(self, trade: Any) -> None:
+        order_id = str(getattr(trade, "order_id", "") or "")
+        if not order_id:
+            return
+
+        group_id = self._oco_order_to_group.get(order_id)
+        if not group_id:
+            return
+
+        group_orders = self._oco_groups.get(group_id, set())
+        peer_orders = [oid for oid in group_orders if oid != order_id]
+        for peer_order_id in peer_orders:
+            self.cancel_order(peer_order_id)
+
+        self._remove_oco_group(group_id)
+
+    def _detach_oco_order(self, order_id: str) -> None:
+        old_group = self._oco_order_to_group.get(order_id)
+        if not old_group:
+            return
+        group_orders = self._oco_groups.get(old_group)
+        if group_orders is not None:
+            group_orders.discard(order_id)
+            if len(group_orders) <= 1:
+                self._remove_oco_group(old_group)
+        self._oco_order_to_group.pop(order_id, None)
+
+    def _remove_oco_group(self, group_id: str) -> None:
+        group_orders = self._oco_groups.pop(group_id, set())
+        for oid in group_orders:
+            self._oco_order_to_group.pop(oid, None)
+
     def buy(
         self,
         symbol: Optional[str] = None,
@@ -1054,6 +1225,8 @@ class Strategy:
         client_order_id: Optional[str] = None,
         order_type: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
+        trail_offset: Optional[float] = None,
+        trail_reference_price: Optional[float] = None,
     ) -> str:
         """
         统一下单接口.
@@ -1072,6 +1245,8 @@ class Strategy:
             client_order_id=client_order_id,
             order_type=order_type,
             extra=extra,
+            trail_offset=trail_offset,
+            trail_reference_price=trail_reference_price,
         )
 
     def can_submit_client_order(self, client_order_id: str) -> bool:
@@ -1120,6 +1295,62 @@ class Strategy:
         - 如果 price 不为 None, 触发后转为限价单 (Stop Limit).
         """
         _stop_sell_impl(self, symbol, trigger_price, quantity, price, time_in_force)
+
+    def place_trailing_stop(
+        self,
+        symbol: str,
+        quantity: float,
+        trail_offset: float,
+        side: str = "Sell",
+        trail_reference_price: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        tag: Optional[str] = None,
+    ) -> str:
+        """创建跟踪止损单 (StopTrail)."""
+        if quantity <= 0:
+            raise ValueError("quantity must be > 0")
+        if trail_offset <= 0:
+            raise ValueError("trail_offset must be > 0")
+        return self.submit_order(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            time_in_force=time_in_force,
+            tag=tag,
+            order_type="StopTrail",
+            trail_offset=trail_offset,
+            trail_reference_price=trail_reference_price,
+        )
+
+    def place_trailing_stop_limit(
+        self,
+        symbol: str,
+        quantity: float,
+        price: float,
+        trail_offset: float,
+        side: str = "Sell",
+        trail_reference_price: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        tag: Optional[str] = None,
+    ) -> str:
+        """创建跟踪止损限价单 (StopTrailLimit)."""
+        if quantity <= 0:
+            raise ValueError("quantity must be > 0")
+        if price <= 0:
+            raise ValueError("price must be > 0")
+        if trail_offset <= 0:
+            raise ValueError("trail_offset must be > 0")
+        return self.submit_order(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            price=price,
+            time_in_force=time_in_force,
+            tag=tag,
+            order_type="StopTrailLimit",
+            trail_offset=trail_offset,
+            trail_reference_price=trail_reference_price,
+        )
 
     def get_portfolio_value(self) -> float:
         """计算当前投资组合总价值 (现金 + 持仓市值)."""

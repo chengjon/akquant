@@ -42,8 +42,20 @@ class OrderSide:
 class OrderType:
     Market: typing.ClassVar["OrderType"]
     Limit: typing.ClassVar["OrderType"]
-    Stop: typing.ClassVar["OrderType"]
+    StopMarket: typing.ClassVar["OrderType"]
     StopLimit: typing.ClassVar["OrderType"]
+    OCO: typing.ClassVar["OrderType"]
+    Bracket: typing.ClassVar["OrderType"]
+    StopTrail: typing.ClassVar["OrderType"]
+    StopTrailLimit: typing.ClassVar["OrderType"]
+
+class OrderRole:
+    Standalone: typing.ClassVar["OrderRole"]
+    Entry: typing.ClassVar["OrderRole"]
+    StopLoss: typing.ClassVar["OrderRole"]
+    TakeProfit: typing.ClassVar["OrderRole"]
+    TrailStop: typing.ClassVar["OrderRole"]
+    TrailStopLimit: typing.ClassVar["OrderRole"]
 
 class TimeInForce:
     GTC: typing.ClassVar["TimeInForce"]
@@ -698,6 +710,11 @@ class Order:
     tag: str
     reject_reason: str
     owner_strategy_id: typing.Optional[str]
+    graph_id: typing.Optional[str]
+    parent_order_id: typing.Optional[str]
+    order_role: akquant.OrderRole
+    trail_offset: typing.Optional[float]
+    trail_reference_price: typing.Optional[float]
     commission: float
     quantity: float
     price: typing.Optional[float]
@@ -717,7 +734,14 @@ class Order:
         created_at: int = ...,
         tag: str = ...,
         owner_strategy_id: typing.Optional[str] = ...,
+        graph_id: typing.Optional[str] = ...,
+        parent_order_id: typing.Optional[str] = ...,
+        order_role: typing.Optional[akquant.OrderRole] = ...,
+        trail_offset: typing.Optional[float] = ...,
+        trail_reference_price: typing.Optional[float] = ...,
     ) -> "Order": ...
+    def set_trail_offset(self, value: typing.Optional[float]) -> None: ...
+    def set_trail_reference_price(self, value: typing.Optional[float]) -> None: ...
     def set_filled_quantity(self, value: float) -> None: ...
     def set_average_filled_price(self, value: typing.Optional[float]) -> None: ...
     def __repr__(self) -> str: ...
@@ -960,6 +984,9 @@ class StrategyContext:
         time_in_force: typing.Optional[akquant.TimeInForce] = ...,
         trigger_price: typing.Optional[float] = ...,
         tag: str = ...,
+        order_type: typing.Optional[akquant.OrderType] = ...,
+        trail_offset: typing.Optional[float] = ...,
+        trail_reference_price: typing.Optional[float] = ...,
     ) -> str:
         r"""
         买入下单.
@@ -982,6 +1009,9 @@ class StrategyContext:
         time_in_force: typing.Optional[akquant.TimeInForce] = ...,
         trigger_price: typing.Optional[float] = ...,
         tag: str = ...,
+        order_type: typing.Optional[akquant.OrderType] = ...,
+        trail_offset: typing.Optional[float] = ...,
+        trail_reference_price: typing.Optional[float] = ...,
     ) -> str:
         r"""
         卖出下单.

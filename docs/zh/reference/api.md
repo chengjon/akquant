@@ -24,6 +24,8 @@ def run_backtest(
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
     initialize: Optional[Callable[[Any], None]] = None,
+    on_start: Optional[Callable[[Any], None]] = None,
+    on_stop: Optional[Callable[[Any], None]] = None,
     context: Optional[Dict[str, Any]] = None,
     history_depth: Optional[int] = None,
     warmup_period: int = 0,
@@ -43,8 +45,9 @@ def run_backtest(
 
 **关键参数:**
 
-*   `data`: 回测数据。支持单个 DataFrame，`{symbol: DataFrame}` 字典，或 `List[Bar]`。
+*   `data`: 回测数据。支持单个 DataFrame，`{symbol: DataFrame}` 字典，`List[Bar]`，或实现 `DataFeedAdapter.load(request)` 的对象。
 *   `strategy`: 策略类、策略实例，或 `on_bar` 函数（函数式编程风格）。
+*   `initialize` / `on_start` / `on_stop`: 函数式策略生命周期回调，分别对应初始化、启动、停止阶段。
 *   `symbol`: 标的代码或代码列表。
 *   `initial_cash`: 初始资金 (默认 1,000,000.0)。
 *   `execution_mode`: 执行模式。
@@ -61,7 +64,36 @@ def run_backtest(
 *   `custom_matchers`: 自定义撮合器字典。
 *   `risk_config`: 风控配置。支持字典 (e.g., `{"max_position_pct": 0.1}`) 或 `RiskConfig` 对象。如果同时提供了 `config.strategy_config.risk`，此参数将覆盖其中的同名字段。
 *   `strategies_by_slot`: 可选多策略映射。键为 slot id，值为策略类/实例/函数式 on_bar 回调；用于启用 slot 迭代执行。
+*   `analyzer_plugins`: 可选 Analyzer 插件列表。插件接收 `on_start/on_bar/on_trade/on_finish` 生命周期回调，结果汇总到 `result.analyzer_outputs`。
 *   `on_event`: 可选事件回调。不传时内部使用 no-op 回调并保持阻塞返回语义；传入时可实时消费事件。
+
+**DataFeedAdapter 用法（多时间框）:**
+
+```python
+import akquant as aq
+
+base = aq.CSVFeedAdapter(path_template="/data/{symbol}.csv")
+
+feed_15m = base.resample(freq="15min", emit_partial=False)
+feed_replay = base.replay(
+    freq="1h",
+    align="session",            # session | day | global
+    day_mode="trading",         # 仅 align='day' 时生效: trading | calendar
+    emit_partial=False,
+    session_windows=[("09:30", "11:30"), ("13:00", "15:00")],  # 仅 align='session'
+)
+
+result = aq.run_backtest(
+    data=feed_replay,
+    strategy=MyStrategy,
+    symbol="000001",
+    show_progress=False,
+)
+```
+
+*   `align="session"`: 按交易日分区，可叠加 `session_windows`。
+*   `align="day"`: 按日分区，不接收 `session_windows`；`day_mode` 支持 `trading/calendar`。
+*   `align="global"`: 按全局时间轴聚合，不按交易日切段。
 
 **兼容与迁移说明:**
 
@@ -338,8 +370,14 @@ result = run_backtest(
     *   如果指定 `price`，则为限价单。
     *   如果指定 `trigger_price`，则为止损/止盈单 (Stop Market)。
 *   `sell(symbol, quantity, price=None, trigger_price=None, ...)`: 卖出（平多/开空）。参数同上。
+*   `submit_order(..., order_type="StopTrail", trail_offset=..., trail_reference_price=None)`: 提交跟踪止损单。`trail_offset` 必须大于 0。
+*   `submit_order(..., order_type="StopTrailLimit", price=..., trail_offset=..., trail_reference_price=None)`: 提交跟踪止损限价单。`price` 与 `trail_offset` 必填。
+*   `place_trailing_stop(symbol, quantity, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: 跟踪止损助手，触发后按市价执行。
+*   `place_trailing_stop_limit(symbol, quantity, price, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: 跟踪止损限价助手，触发后按限价执行。
 *   `cancel_order(order_id: str)`: 撤销指定订单。
 *   `cancel_all_orders(symbol)`: 取消指定标的的所有挂单。如果不指定 `symbol`，则取消所有挂单。
+*   `create_oco_order_group(first_order_id, second_order_id, group_id=None) -> str`: 创建 OCO 订单组。组内任一订单成交后，另一订单会被自动撤单。
+*   `place_bracket_order(symbol, quantity, entry_price=None, stop_trigger_price=None, take_profit_price=None, ...) -> str`: 创建 Bracket 订单。先提交进场单，进场成交后自动提交止损/止盈；当止损与止盈同时存在时会自动绑定 OCO。
 
 **数据与工具:**
 

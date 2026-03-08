@@ -1,11 +1,61 @@
 # -*- coding: utf-8 -*-
 import threading
 import time
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
 from akquant import Bar, DataFeed, Engine, Instrument, Strategy
 from akquant.gateway.factory import create_gateway_bundle
 from akquant.gateway.models import UnifiedOrderRequest
+
+
+class _StrategyCallbackFanout:
+    def __init__(self, strategies: List[Strategy]):
+        self._strategies = strategies
+
+    def on_order(self, order: Any) -> None:
+        for strategy in self._strategies:
+            callback = getattr(strategy, "on_order", None)
+            if callback is None:
+                continue
+            try:
+                callback(order)
+            except Exception as exc:
+                on_error = getattr(strategy, "on_error", None)
+                if on_error is not None:
+                    try:
+                        on_error(exc, "on_order", order)
+                    except Exception:
+                        pass
+
+    def on_trade(self, trade: Any) -> None:
+        for strategy in self._strategies:
+            callback = getattr(strategy, "on_trade", None)
+            if callback is None:
+                continue
+            try:
+                callback(trade)
+            except Exception as exc:
+                on_error = getattr(strategy, "on_error", None)
+                if on_error is not None:
+                    try:
+                        on_error(exc, "on_trade", trade)
+                    except Exception:
+                        pass
+
+    def on_execution_report(self, report: Any) -> None:
+        for strategy in self._strategies:
+            callback = getattr(strategy, "on_execution_report", None)
+            if callback is None:
+                continue
+            try:
+                callback(report)
+            except Exception as exc:
+                on_error = getattr(strategy, "on_error", None)
+                if on_error is not None:
+                    try:
+                        on_error(exc, "on_execution_report", report)
+                    except Exception:
+                        pass
 
 
 class LiveRunner:
@@ -18,8 +68,12 @@ class LiveRunner:
 
     def __init__(
         self,
-        strategy_cls: Type[Strategy],
+        strategy_cls: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]],
         instruments: List[Instrument],
+        strategy_id: Optional[str] = None,
+        strategies_by_slot: Optional[
+            Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]
+        ] = None,
         md_front: str = "",
         td_front: Optional[str] = None,
         broker_id: str = "",
@@ -31,11 +85,23 @@ class LiveRunner:
         broker: str = "ctp",
         trading_mode: str = "paper",
         gateway_options: Optional[Dict[str, Any]] = None,
+        initialize: Optional[Callable[[Any], None]] = None,
+        on_start: Optional[Callable[[Any], None]] = None,
+        on_stop: Optional[Callable[[Any], None]] = None,
+        on_tick: Optional[Callable[[Any, Any], None]] = None,
+        on_order: Optional[Callable[[Any, Any], None]] = None,
+        on_trade: Optional[Callable[[Any, Any], None]] = None,
+        on_timer: Optional[Callable[[Any, str], None]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        on_broker_event: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         """
         Initialize the LiveRunner.
 
-        :param strategy_cls: The strategy class to run.
+        :param strategy_cls: Strategy class/instance, or function-style on_bar callback.
+        :param strategy_id: Primary strategy id for slot ownership (default "_default").
+        :param strategies_by_slot: Optional slot->strategy mapping
+                                   for multi-slot runtime.
         :param instruments: List of instruments to trade.
         :param md_front: CTP Market Data Front URL.
         :param td_front: CTP Trade Front URL (optional).
@@ -45,8 +111,19 @@ class LiveRunner:
         :param app_id: CTP App ID (optional).
         :param auth_code: CTP Auth Code (optional).
         :param use_aggregator: Whether to use BarAggregator (default True).
+        :param initialize: Optional function-style initialize callback.
+        :param on_start: Optional function-style on_start callback.
+        :param on_stop: Optional function-style on_stop callback.
+        :param on_tick: Optional function-style on_tick callback.
+        :param on_order: Optional function-style on_order callback.
+        :param on_trade: Optional function-style on_trade callback.
+        :param on_timer: Optional function-style on_timer callback.
+        :param context: Optional context dict injected into function-style strategy.
+        :param on_broker_event: Optional broker event observer callback.
         """
         self.strategy_cls = strategy_cls
+        self.strategy_id = (strategy_id or "_default").strip() or "_default"
+        self.strategies_by_slot = strategies_by_slot or {}
         self.instruments = instruments
         self.md_front = md_front
         self.td_front = td_front
@@ -59,6 +136,15 @@ class LiveRunner:
         self.broker = broker
         self.trading_mode = trading_mode
         self.gateway_options = gateway_options or {}
+        self.initialize = initialize
+        self.on_start = on_start
+        self.on_stop = on_stop
+        self.on_tick = on_tick
+        self.on_order = on_order
+        self.on_trade = on_trade
+        self.on_timer = on_timer
+        self.context = context or {}
+        self.on_broker_event = on_broker_event
         self._init_broker_bridge_state()
 
         self.feed = DataFeed.create_live()  # type: ignore
@@ -118,13 +204,23 @@ class LiveRunner:
 
         time.sleep(2.0)
 
-        # Create Strategy Instance
-        strategy_instance = self.strategy_cls()
+        # Create Strategy Instances
+        strategy_instance, slot_strategy_instances, effective_strategy_id = (
+            self._build_strategy_topology()
+        )
+        self._configure_strategy_slots(
+            strategy_instance, slot_strategy_instances, effective_strategy_id
+        )
         if bundle.trader_gateway is not None:
-            self._bind_broker_callbacks(bundle.trader_gateway, strategy_instance)
-            self._install_broker_order_submitter(
-                bundle.trader_gateway, strategy_instance
+            strategy_targets = [strategy_instance, *slot_strategy_instances.values()]
+            callback_target: Any = (
+                _StrategyCallbackFanout(strategy_targets)
+                if len(strategy_targets) > 1
+                else strategy_instance
             )
+            self._bind_broker_callbacks(bundle.trader_gateway, callback_target)
+            for target in strategy_targets:
+                self._install_broker_order_submitter(bundle.trader_gateway, target)
 
         # Apply duration limit if specified
         if duration:
@@ -144,6 +240,75 @@ class LiveRunner:
         finally:
             self._stop_broker_dispatcher()
             self._print_summary()
+
+    def _build_strategy_instance(self, strategy_input: Any) -> Strategy:
+        if isinstance(strategy_input, type) and issubclass(strategy_input, Strategy):
+            return cast(Strategy, strategy_input())
+        if isinstance(strategy_input, Strategy):
+            return strategy_input
+        if callable(strategy_input):
+            from akquant.backtest import FunctionalStrategy
+
+            return FunctionalStrategy(
+                initialize=self.initialize,
+                on_bar=cast(Callable[[Any, Bar], None], strategy_input),
+                on_start=self.on_start,
+                on_stop=self.on_stop,
+                on_tick=self.on_tick,
+                on_order=self.on_order,
+                on_trade=self.on_trade,
+                on_timer=self.on_timer,
+                context=self.context,
+            )
+        raise TypeError("strategy must be Strategy type/instance or callable")
+
+    def _build_strategy_topology(self) -> tuple[Strategy, Dict[str, Strategy], str]:
+        strategy_instance = self._build_strategy_instance(self.strategy_cls)
+        slot_strategy_instances: Dict[str, Strategy] = {}
+        for slot_key, slot_input in self.strategies_by_slot.items():
+            slot_key_str = str(slot_key).strip()
+            if not slot_key_str:
+                raise ValueError("strategy slot id cannot be empty")
+            slot_strategy_instances[slot_key_str] = self._build_strategy_instance(
+                slot_input
+            )
+        return strategy_instance, slot_strategy_instances, self.strategy_id
+
+    def _configure_strategy_slots(
+        self,
+        strategy_instance: Strategy,
+        slot_strategy_instances: Dict[str, Strategy],
+        effective_strategy_id: str,
+    ) -> None:
+        configured_slot_ids = [effective_strategy_id]
+        for slot_id in slot_strategy_instances.keys():
+            if slot_id not in configured_slot_ids:
+                configured_slot_ids.append(slot_id)
+
+        setattr(strategy_instance, "_owner_strategy_id", effective_strategy_id)
+        for slot_id, slot_strategy in slot_strategy_instances.items():
+            setattr(slot_strategy, "_owner_strategy_id", slot_id)
+
+        strategy_targets = [strategy_instance, *slot_strategy_instances.values()]
+        if self.context:
+            for target in strategy_targets:
+                if hasattr(target, "_context"):
+                    continue
+                for key, value in self.context.items():
+                    setattr(target, key, value)
+
+        if hasattr(self.engine, "set_strategy_slots"):
+            cast(Any, self.engine).set_strategy_slots(configured_slot_ids)
+        if hasattr(self.engine, "set_default_strategy_id"):
+            cast(Any, self.engine).set_default_strategy_id(effective_strategy_id)
+        if hasattr(self.engine, "set_strategy_for_slot"):
+            for slot_index, slot_id in enumerate(configured_slot_ids):
+                assigned = (
+                    strategy_instance
+                    if slot_id == effective_strategy_id
+                    else slot_strategy_instances[slot_id]
+                )
+                cast(Any, self.engine).set_strategy_for_slot(slot_index, assigned)
 
     def _build_gateway_kwargs(self) -> Dict[str, Any]:
         kwargs = dict(self.gateway_options)
@@ -168,12 +333,16 @@ class LiveRunner:
         thread.start()
 
     def _init_broker_bridge_state(self) -> None:
+        if not hasattr(self, "on_broker_event"):
+            self.on_broker_event = None
         self._broker_event_lock = threading.Lock()
         self._broker_events: list[tuple[str, Any]] = []
         self._broker_event_keys: set[str] = set()
         self._broker_order_states: dict[str, Any] = {}
         self._client_to_broker_order_ids: dict[str, str] = {}
         self._broker_to_client_order_ids: dict[str, str] = {}
+        self._client_to_strategy_ids: dict[str, str] = {}
+        self._broker_to_strategy_ids: dict[str, str] = {}
         self._closed_broker_order_ids: set[str] = set()
         self._broker_trade_keys: set[str] = set()
         self._broker_report_keys: set[str] = set()
@@ -222,6 +391,7 @@ class LiveRunner:
             if extra:
                 raise RuntimeError("extra broker fields are not supported")
             request_client_order_id = client_order_id or self._next_client_order_id()
+            owner_strategy_id = str(getattr(strategy, "_owner_strategy_id", "_default"))
             if not self.can_submit_client_order(request_client_order_id):
                 exc = RuntimeError(
                     f"duplicate active client_order_id: {request_client_order_id}"
@@ -249,6 +419,9 @@ class LiveRunner:
             )
             broker_order_id = str(trader_gateway.place_order(request))
             self._sync_order_id_mapping(request_client_order_id, broker_order_id)
+            self._bind_order_owner(
+                request_client_order_id, broker_order_id, owner_strategy_id
+            )
             return broker_order_id
 
         setattr(strategy, "submit_order", _submit_order)
@@ -319,6 +492,19 @@ class LiveRunner:
             self._broker_event_keys.clear()
         for event_name, payload in events:
             self._update_broker_state(event_name, payload)
+            if self.on_broker_event is not None:
+                try:
+                    self.on_broker_event(
+                        {
+                            "event_type": event_name,
+                            "owner_strategy_id": self._resolve_owner_strategy_id(
+                                payload
+                            ),
+                            "payload": self._payload_to_dict(payload),
+                        }
+                    )
+                except Exception:
+                    pass
             if event_name == "order":
                 self._safe_strategy_callback(strategy, "on_order", payload)
             elif event_name == "trade":
@@ -438,6 +624,41 @@ class LiveRunner:
             self._client_to_broker_order_ids[client_order_id] = broker_order_id
             self._broker_to_client_order_ids[broker_order_id] = client_order_id
 
+    def _bind_order_owner(
+        self, client_order_id: str, broker_order_id: str, owner_strategy_id: str
+    ) -> None:
+        if client_order_id:
+            self._client_to_strategy_ids[client_order_id] = owner_strategy_id
+        if broker_order_id:
+            self._broker_to_strategy_ids[broker_order_id] = owner_strategy_id
+
+    def _resolve_owner_strategy_id(self, payload: Any) -> str:
+        owner_strategy_id = str(
+            self._payload_field(payload, "owner_strategy_id")
+        ).strip()
+        if owner_strategy_id:
+            return owner_strategy_id
+        broker_order_id = str(self._payload_field(payload, "broker_order_id")).strip()
+        client_order_id = str(self._payload_field(payload, "client_order_id")).strip()
+        if not client_order_id and broker_order_id:
+            client_order_id = self._resolve_client_order_id(broker_order_id)
+        if client_order_id:
+            mapped = self._client_to_strategy_ids.get(client_order_id, "").strip()
+            if mapped:
+                return mapped
+        if broker_order_id:
+            mapped = self._broker_to_strategy_ids.get(broker_order_id, "").strip()
+            if mapped:
+                return mapped
+        return "_default"
+
+    def _payload_to_dict(self, payload: Any) -> Dict[str, Any]:
+        if isinstance(payload, dict):
+            return dict(payload)
+        if hasattr(payload, "__dict__"):
+            return dict(getattr(payload, "__dict__"))
+        return {}
+
     def _resolve_client_order_id(self, broker_order_id: str) -> str:
         return self._broker_to_client_order_ids.get(broker_order_id, "")
 
@@ -447,8 +668,10 @@ class LiveRunner:
     def _close_order_mapping(self, client_order_id: str, broker_order_id: str) -> None:
         if client_order_id:
             self._client_to_broker_order_ids.pop(client_order_id, None)
+            self._client_to_strategy_ids.pop(client_order_id, None)
         if broker_order_id:
             self._broker_to_client_order_ids.pop(broker_order_id, None)
+            self._broker_to_strategy_ids.pop(broker_order_id, None)
             self._closed_broker_order_ids.add(broker_order_id)
 
     def _is_terminal_status(self, status: Any) -> bool:

@@ -8,6 +8,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypedDict,
@@ -25,8 +26,10 @@ from ..akquant import (
     ExecutionMode,
     Instrument,
 )
+from ..analyzer_plugin import AnalyzerManager, AnalyzerPlugin
 from ..config import BacktestConfig, RiskConfig
 from ..data import ParquetDataCatalog
+from ..feed_adapter import DataFeedAdapter, FeedSlice
 from ..log import get_logger, register_logger
 from ..risk import apply_risk_config
 from ..strategy import Strategy, StrategyRuntimeConfig
@@ -47,6 +50,11 @@ class BacktestStreamEvent(TypedDict):
     symbol: Optional[str]
     level: str
     payload: Dict[str, str]
+
+
+BacktestDataInput = Union[
+    pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed, DataFeedAdapter
+]
 
 
 def _parse_positive_int_option(name: str, value: Any) -> int:
@@ -74,11 +82,55 @@ def _noop_stream_event_handler(_event: BacktestStreamEvent) -> None:
     return None
 
 
+def _is_data_feed_adapter(value: Any) -> bool:
+    return hasattr(value, "load") and callable(getattr(value, "load"))
+
+
+def _load_data_map_from_adapter(
+    adapter: Any,
+    symbols: List[str],
+    start_time: Optional[Union[str, Any]],
+    end_time: Optional[Union[str, Any]],
+    timezone: Optional[str],
+) -> Dict[str, pd.DataFrame]:
+    request_start = pd.Timestamp(start_time) if start_time is not None else None
+    request_end = pd.Timestamp(end_time) if end_time is not None else None
+    requested_symbols = symbols or ["BENCHMARK"]
+    data_map: Dict[str, pd.DataFrame] = {}
+
+    for sym in requested_symbols:
+        frame = adapter.load(
+            FeedSlice(
+                symbol=str(sym),
+                start_time=request_start,
+                end_time=request_end,
+                timezone=timezone,
+            )
+        )
+        if not isinstance(frame, pd.DataFrame):
+            raise TypeError("DataFeedAdapter.load must return pandas.DataFrame")
+        if frame.empty:
+            continue
+
+        if "symbol" in frame.columns:
+            grouped = frame.groupby(frame["symbol"].astype(str), sort=False)
+            for grouped_symbol, grouped_frame in grouped:
+                data_map[str(grouped_symbol)] = grouped_frame.copy()
+        else:
+            normalized = frame.copy()
+            normalized["symbol"] = str(sym)
+            data_map[str(sym)] = normalized
+
+    return data_map
+
+
 def _build_strategy_instance(
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None],
     strategy_kwargs: Dict[str, Any],
     logger: Any,
     initialize: Optional[Callable[[Any], None]],
+    on_start: Optional[Callable[[Any], None]],
+    on_stop: Optional[Callable[[Any], None]],
     on_tick: Optional[Callable[[Any, Any], None]],
     on_order: Optional[Callable[[Any, Any], None]],
     on_trade: Optional[Callable[[Any, Any], None]],
@@ -100,6 +152,8 @@ def _build_strategy_instance(
         return FunctionalStrategy(
             initialize,
             cast(Callable[[Any, Bar], None], strategy),
+            on_start=on_start,
+            on_stop=on_stop,
             on_tick=on_tick,
             on_order=on_order,
             on_trade=on_trade,
@@ -118,6 +172,8 @@ class FunctionalStrategy(Strategy):
         self,
         initialize: Optional[Callable[[Any], None]],
         on_bar: Optional[Callable[[Any, Bar], None]],
+        on_start: Optional[Callable[[Any], None]] = None,
+        on_stop: Optional[Callable[[Any], None]] = None,
         on_tick: Optional[Callable[[Any, Any], None]] = None,
         on_order: Optional[Callable[[Any, Any], None]] = None,
         on_trade: Optional[Callable[[Any, Any], None]] = None,
@@ -128,6 +184,8 @@ class FunctionalStrategy(Strategy):
         super().__init__()
         self._initialize = initialize
         self._on_bar_func = on_bar
+        self._on_start_func = on_start
+        self._on_stop_func = on_stop
         self._on_tick_func = on_tick
         self._on_order_func = on_order
         self._on_trade_func = on_trade
@@ -147,6 +205,16 @@ class FunctionalStrategy(Strategy):
         """Delegate on_bar event to the user-provided function."""
         if self._on_bar_func is not None:
             self._on_bar_func(self, bar)
+
+    def on_start(self) -> None:
+        """Delegate on_start event to the user-provided function."""
+        if self._on_start_func is not None:
+            self._on_start_func(self)
+
+    def on_stop(self) -> None:
+        """Delegate on_stop event to the user-provided function."""
+        if self._on_stop_func is not None:
+            self._on_stop_func(self)
 
     def on_tick(self, tick: Any) -> None:
         """Delegate on_tick event to the user-provided function."""
@@ -243,10 +311,33 @@ def _apply_strategy_runtime_config(
     strategy_instance.runtime_config = cfg
 
 
+def _coerce_analyzer_plugins(
+    analyzer_plugins: Optional[Sequence[AnalyzerPlugin]],
+) -> List[AnalyzerPlugin]:
+    if analyzer_plugins is None:
+        return []
+    if not isinstance(analyzer_plugins, (list, tuple)):
+        raise TypeError("analyzer_plugins must be a list/tuple of analyzer plugins")
+    normalized: List[AnalyzerPlugin] = []
+    for plugin in analyzer_plugins:
+        if not hasattr(plugin, "name"):
+            raise TypeError("analyzer plugin must have 'name' attribute")
+        if not hasattr(plugin, "on_start") or not callable(getattr(plugin, "on_start")):
+            raise TypeError("analyzer plugin must implement on_start(context)")
+        if not hasattr(plugin, "on_bar") or not callable(getattr(plugin, "on_bar")):
+            raise TypeError("analyzer plugin must implement on_bar(context)")
+        if not hasattr(plugin, "on_trade") or not callable(getattr(plugin, "on_trade")):
+            raise TypeError("analyzer plugin must implement on_trade(context)")
+        if not hasattr(plugin, "on_finish") or not callable(
+            getattr(plugin, "on_finish")
+        ):
+            raise TypeError("analyzer plugin must implement on_finish(context)")
+        normalized.append(plugin)
+    return normalized
+
+
 def run_backtest(
-    data: Optional[
-        Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed]
-    ] = None,
+    data: Optional[BacktestDataInput] = None,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
     symbol: Union[str, List[str]] = "BENCHMARK",
     initial_cash: Optional[float] = None,
@@ -260,6 +351,8 @@ def run_backtest(
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
     initialize: Optional[Callable[[Any], None]] = None,
+    on_start: Optional[Callable[[Any], None]] = None,
+    on_stop: Optional[Callable[[Any], None]] = None,
     on_tick: Optional[Callable[[Any, Any], None]] = None,
     on_order: Optional[Callable[[Any, Any], None]] = None,
     on_trade: Optional[Callable[[Any, Any], None]] = None,
@@ -294,6 +387,7 @@ def run_backtest(
     portfolio_risk_budget: Optional[float] = None,
     risk_budget_mode: str = "order_notional",
     risk_budget_reset_daily: bool = False,
+    analyzer_plugins: Optional[Sequence[AnalyzerPlugin]] = None,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     **kwargs: Any,
 ) -> BacktestResult:
@@ -323,6 +417,8 @@ def run_backtest(
     :param timezone: 时区名称 (默认 "Asia/Shanghai")
     :param t_plus_one: 是否启用 T+1 交易规则 (默认 False)
     :param initialize: 初始化回调函数 (仅当 strategy 为函数时使用)
+    :param on_start: 启动回调函数 (仅当 strategy 为函数时使用)
+    :param on_stop: 停止回调函数 (仅当 strategy 为函数时使用)
     :param on_tick: Tick 回调函数 (仅当 strategy 为函数时使用)
     :param on_order: 订单回调函数 (仅当 strategy 为函数时使用)
     :param on_trade: 成交回调函数 (仅当 strategy 为函数时使用)
@@ -361,6 +457,8 @@ def run_backtest(
     :param portfolio_risk_budget: 可选账户级累计风险预算上限
     :param risk_budget_mode: 风险预算口径，支持 order_notional/trade_notional
     :param risk_budget_reset_daily: 风险预算是否按交易日重置
+    :param analyzer_plugins: Analyzer 插件列表，
+                             接收 on_start/on_bar/on_trade/on_finish 生命周期事件
     :param on_event: 可选流式事件回调。阶段 5 后 `run_backtest` 始终走统一事件内核；
                      不传时内部使用 no-op 回调并保持返回语义不变。
     故障速查可参考 docs/zh/advanced/runtime_config.md，
@@ -549,6 +647,7 @@ def run_backtest(
     if not logger.handlers:
         register_logger(console=True, level="INFO")
         logger = get_logger()
+    normalized_analyzers = _coerce_analyzer_plugins(analyzer_plugins)
 
     # 1.2 检查 PyCharm 环境下的进度条可见性
     if show_progress and "PYCHARM_HOSTED" in os.environ:
@@ -598,6 +697,8 @@ def run_backtest(
         strategy_kwargs,
         logger,
         initialize,
+        on_start,
+        on_stop,
         on_tick,
         on_order,
         on_trade,
@@ -615,6 +716,8 @@ def run_backtest(
                 dict(strategy_kwargs),
                 logger,
                 initialize,
+                on_start,
+                on_stop,
                 on_tick,
                 on_order,
                 on_trade,
@@ -716,6 +819,11 @@ def run_backtest(
                 if s not in symbols:
                     symbols.append(s)
 
+    analyzer_manager = AnalyzerManager()
+    for plugin in normalized_analyzers:
+        analyzer_manager.register(plugin)
+    setattr(strategy_instance, "_analyzer_manager", analyzer_manager)
+
     # Determine Data Loading Strategy
     if data is not None:
         if isinstance(data, DataFeed):
@@ -725,6 +833,22 @@ def run_backtest(
             # but usually feed contains all needed data.
             # We might need to update 'symbols' if they were not provided explicitly?
             # For now, assume user provided symbols or feed covers them.
+        elif _is_data_feed_adapter(data):
+            adapter_data_map = _load_data_map_from_adapter(
+                adapter=data,
+                symbols=symbols,
+                start_time=start_time,
+                end_time=end_time,
+                timezone=timezone,
+            )
+            for sym, df in adapter_data_map.items():
+                df_prep = prepare_dataframe(df)
+                data_map_for_indicators[sym] = df_prep
+                arrays = df_to_arrays(df_prep, symbol=sym)
+                feed.add_arrays(*arrays)  # type: ignore
+                if sym not in symbols:
+                    symbols.append(sym)
+            feed.sort()
         elif isinstance(data, pd.DataFrame):
             df_input = data
             # Ensure index is datetime
@@ -956,6 +1080,18 @@ def run_backtest(
 
     # 4. 配置引擎
     engine = Engine()
+    setattr(strategy_instance, "_engine", engine)
+    if analyzer_manager.plugins:
+        try:
+            analyzer_manager.on_start(
+                {
+                    "engine": engine,
+                    "strategy": strategy_instance,
+                    "symbols": list(symbols),
+                }
+            )
+        except Exception as e:
+            logger.error(f"Analyzer on_start error: {e}")
     # engine.set_timezone_name(timezone)
     offset_delta = pd.Timestamp.now(tz=timezone).utcoffset()
     if offset_delta is None:
@@ -1551,15 +1687,26 @@ def run_backtest(
         strategy=strategy_instance,
         engine=engine,
     )
+    analyzer_outputs: Dict[str, Dict[str, Any]] = {}
+    if analyzer_manager.plugins:
+        try:
+            analyzer_outputs = analyzer_manager.on_finish(
+                {
+                    "engine": engine,
+                    "strategy": strategy_instance,
+                    "result": result,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Analyzer on_finish error: {e}")
+    result.analyzer_outputs = analyzer_outputs
     setattr(result, "_owner_strategy_id", effective_strategy_id)
     return result
 
 
 def run_warm_start(
     checkpoint_path: str,
-    data: Optional[
-        Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed]
-    ] = None,
+    data: Optional[BacktestDataInput] = None,
     show_progress: bool = True,
     symbol: Union[str, List[str]] = "BENCHMARK",
     strategy_runtime_config: Optional[
@@ -1591,6 +1738,26 @@ def run_warm_start(
 
     if isinstance(data, DataFeed):
         feed = data
+    elif _is_data_feed_adapter(data):
+        feed = DataFeed()
+        symbols = [symbol] if isinstance(symbol, str) else symbol
+        adapter_data_map = _load_data_map_from_adapter(
+            adapter=data,
+            symbols=list(symbols),
+            start_time=kwargs.get("start_time"),
+            end_time=kwargs.get("end_time"),
+            timezone=kwargs.get("timezone"),
+        )
+        loaded_count = 0
+        for sym, df in adapter_data_map.items():
+            if not df.empty:
+                df_prep = prepare_dataframe(df)
+                data_map_for_indicators[sym] = df_prep
+                arrays = df_to_arrays(df_prep, symbol=sym)
+                feed.add_arrays(*arrays)  # type: ignore
+                loaded_count += 1
+        if loaded_count > 0:
+            feed.sort()
     elif data is not None:
         # Convert DataFrame/List to DataFeed
         feed = DataFeed()

@@ -49,6 +49,7 @@ class BacktestResult:
         self.initial_cash = initial_cash
         self.strategy = strategy
         self.engine = engine
+        self.analyzer_outputs: dict[str, dict[str, Any]] = {}
 
     @property
     def equity_curve(self) -> pd.Series:

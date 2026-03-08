@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 from akquant import run_backtest, run_warm_start, save_snapshot
-from akquant.akquant import Bar, OrderStatus, StrategyContext, Tick
+from akquant.akquant import Bar, OrderStatus, StrategyContext, Tick, TimeInForce
 from akquant.backtest import FunctionalStrategy
 from akquant.strategy import Strategy, StrategyRuntimeConfig
 
@@ -1982,12 +1982,14 @@ def test_strategy_buy_sell_delegate_to_submit_order() -> None:
             side: str = "Buy",
             quantity: float | None = None,
             price: float | None = None,
-            time_in_force: Any = None,
+            time_in_force: TimeInForce | str | None = None,
             trigger_price: float | None = None,
             tag: str | None = None,
             client_order_id: str | None = None,
             order_type: str | None = None,
             extra: dict[str, Any] | None = None,
+            trail_offset: float | None = None,
+            trail_reference_price: float | None = None,
         ) -> str:
             _ = price
             _ = time_in_force
@@ -1996,6 +1998,8 @@ def test_strategy_buy_sell_delegate_to_submit_order() -> None:
             _ = client_order_id
             _ = order_type
             _ = extra
+            _ = trail_offset
+            _ = trail_reference_price
             assert symbol is not None
             assert quantity is not None
             self.calls.append((side, symbol, quantity))
@@ -2010,6 +2014,111 @@ def test_strategy_buy_sell_delegate_to_submit_order() -> None:
     assert strategy.calls == [("Buy", "AAPL", 2.0), ("Sell", "AAPL", 1.0)]
 
 
+def test_strategy_submit_order_trailing_validation() -> None:
+    """submit_order should validate trailing order required fields."""
+    strategy = MyStrategy()
+
+    with pytest.raises(RuntimeError, match="trail_offset must be > 0"):
+        strategy.submit_order(
+            symbol="AAPL",
+            side="Sell",
+            quantity=1.0,
+            order_type="StopTrail",
+        )
+
+    with pytest.raises(RuntimeError, match="price must be provided"):
+        strategy.submit_order(
+            symbol="AAPL",
+            side="Sell",
+            quantity=1.0,
+            order_type="StopTrailLimit",
+            trail_offset=1.0,
+        )
+
+
+def test_strategy_trailing_helpers_delegate_to_submit_order() -> None:
+    """Trailing helper APIs should call unified submit_order with trailing args."""
+
+    class _TrailingSpyStrategy(Strategy):
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def submit_order(
+            self,
+            symbol: str | None = None,
+            side: str = "Buy",
+            quantity: float | None = None,
+            price: float | None = None,
+            time_in_force: Any = None,
+            trigger_price: float | None = None,
+            tag: str | None = None,
+            client_order_id: str | None = None,
+            order_type: str | None = None,
+            extra: dict[str, Any] | None = None,
+            trail_offset: float | None = None,
+            trail_reference_price: float | None = None,
+        ) -> str:
+            _ = time_in_force
+            _ = trigger_price
+            _ = client_order_id
+            _ = extra
+            self.calls.append(
+                {
+                    "symbol": symbol,
+                    "side": side,
+                    "quantity": quantity,
+                    "price": price,
+                    "tag": tag,
+                    "order_type": order_type,
+                    "trail_offset": trail_offset,
+                    "trail_reference_price": trail_reference_price,
+                }
+            )
+            return f"oid-{len(self.calls)}"
+
+    strategy = _TrailingSpyStrategy()
+    order_id_1 = strategy.place_trailing_stop(
+        symbol="AAPL",
+        quantity=2.0,
+        trail_offset=1.5,
+        trail_reference_price=101.0,
+        tag="trail-stop",
+    )
+    order_id_2 = strategy.place_trailing_stop_limit(
+        symbol="AAPL",
+        quantity=3.0,
+        price=99.5,
+        trail_offset=2.0,
+        trail_reference_price=103.0,
+        tag="trail-limit",
+    )
+
+    assert order_id_1 == "oid-1"
+    assert order_id_2 == "oid-2"
+    assert strategy.calls == [
+        {
+            "symbol": "AAPL",
+            "side": "Sell",
+            "quantity": 2.0,
+            "price": None,
+            "tag": "trail-stop",
+            "order_type": "StopTrail",
+            "trail_offset": 1.5,
+            "trail_reference_price": 101.0,
+        },
+        {
+            "symbol": "AAPL",
+            "side": "Sell",
+            "quantity": 3.0,
+            "price": 99.5,
+            "tag": "trail-limit",
+            "order_type": "StopTrailLimit",
+            "trail_offset": 2.0,
+            "trail_reference_price": 103.0,
+        },
+    ]
+
+
 def test_strategy_no_legacy_broker_aliases() -> None:
     """Unified API should not expose removed broker alias methods."""
     strategy = MyStrategy()
@@ -2017,3 +2126,140 @@ def test_strategy_no_legacy_broker_aliases() -> None:
     assert not hasattr(strategy, "submit_broker_order")
     assert not hasattr(strategy, "broker_buy")
     assert not hasattr(strategy, "broker_sell")
+
+
+def test_oco_group_cancels_peer_on_trade() -> None:
+    """Filled order in OCO group should cancel the peer order."""
+
+    class _OcoSpyStrategy(Strategy):
+        def __init__(self) -> None:
+            self.cancelled: list[str] = []
+
+        def cancel_order(self, order_id: str) -> None:
+            self.cancelled.append(order_id)
+
+    strategy = _OcoSpyStrategy()
+    group_id = strategy.create_oco_order_group("order-a", "order-b")
+    strategy._process_order_groups(SimpleNamespace(order_id="order-a"))
+
+    assert group_id == "oco-1"
+    assert strategy.cancelled == ["order-b"]
+    assert strategy._oco_groups == {}
+    assert strategy._oco_order_to_group == {}
+
+
+def test_oco_group_rebind_detaches_old_group() -> None:
+    """Rebinding an order into new OCO group should detach old mapping."""
+    strategy = MyStrategy()
+
+    first_group = strategy.create_oco_order_group("order-a", "order-b")
+    second_group = strategy.create_oco_order_group("order-b", "order-c")
+
+    assert first_group == "oco-1"
+    assert second_group == "oco-2"
+    assert strategy._oco_groups == {"oco-2": {"order-b", "order-c"}}
+    assert strategy._oco_order_to_group == {"order-b": "oco-2", "order-c": "oco-2"}
+
+
+def test_bracket_places_exit_orders_and_builds_oco() -> None:
+    """Bracket entry fill should create stop/take exits and bind OCO."""
+
+    class _BracketSpyStrategy(Strategy):
+        def __init__(self) -> None:
+            self.buy_calls: list[dict[str, Any]] = []
+            self.sell_calls: list[dict[str, Any]] = []
+            self._sell_counter = 0
+
+        def buy(
+            self,
+            symbol: str | None = None,
+            quantity: float | None = None,
+            price: float | None = None,
+            time_in_force: Any = None,
+            trigger_price: float | None = None,
+            tag: str | None = None,
+        ) -> str:
+            self.buy_calls.append(
+                {
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "price": price,
+                    "time_in_force": time_in_force,
+                    "trigger_price": trigger_price,
+                    "tag": tag,
+                }
+            )
+            return "entry-1"
+
+        def sell(
+            self,
+            symbol: str | None = None,
+            quantity: float | None = None,
+            price: float | None = None,
+            time_in_force: Any = None,
+            trigger_price: float | None = None,
+            tag: str | None = None,
+        ) -> str:
+            self._sell_counter += 1
+            order_id = f"exit-{self._sell_counter}"
+            self.sell_calls.append(
+                {
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "price": price,
+                    "time_in_force": time_in_force,
+                    "trigger_price": trigger_price,
+                    "tag": tag,
+                }
+            )
+            return order_id
+
+    strategy = _BracketSpyStrategy()
+    entry_id = strategy.place_bracket_order(
+        symbol="AAPL",
+        quantity=2.0,
+        entry_price=100.0,
+        stop_trigger_price=95.0,
+        take_profit_price=110.0,
+        entry_tag="entry",
+        stop_tag="stop",
+        take_profit_tag="take",
+    )
+    strategy._process_order_groups(
+        SimpleNamespace(order_id=entry_id, symbol="AAPL", quantity=2.0)
+    )
+
+    assert strategy.buy_calls == [
+        {
+            "symbol": "AAPL",
+            "quantity": 2.0,
+            "price": 100.0,
+            "time_in_force": None,
+            "trigger_price": None,
+            "tag": "entry",
+        }
+    ]
+    assert strategy.sell_calls == [
+        {
+            "order_id": "exit-1",
+            "symbol": "AAPL",
+            "quantity": 2.0,
+            "price": None,
+            "time_in_force": None,
+            "trigger_price": 95.0,
+            "tag": "stop",
+        },
+        {
+            "order_id": "exit-2",
+            "symbol": "AAPL",
+            "quantity": 2.0,
+            "price": 110.0,
+            "time_in_force": None,
+            "trigger_price": None,
+            "tag": "take",
+        },
+    ]
+    assert strategy._pending_brackets == {}
+    assert strategy._oco_groups == {"oco-1": {"exit-1", "exit-2"}}
+    assert strategy._oco_order_to_group == {"exit-1": "oco-1", "exit-2": "oco-1"}

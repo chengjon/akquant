@@ -213,9 +213,11 @@ For full pre-live checks, see: [Cross-Section Strategy Playbook Checklist](cross
 
 AKQuant provides two styles of strategy development interfaces:
 
+For style selection guidance, see [Strategy Style Decision Guide](../advanced/strategy_style_decision.md).
+
 | Feature | Class-based Style (Recommended) | Function-based Style |
 | :--- | :--- | :--- |
-| **Definition** | Inherit from `akquant.Strategy` | Define `initialize` + `on_bar` (required), optional `on_tick` / `on_order` / `on_trade` / `on_timer` |
+| **Definition** | Inherit from `akquant.Strategy` | Define `initialize` + `on_bar` (required), optional `on_start` / `on_stop` / `on_tick` / `on_order` / `on_trade` / `on_timer` |
 | **Scenarios** | Complex strategies, need to maintain internal state, production | Rapid prototyping, migrating Zipline/Backtrader strategies |
 | **Structure** | Object-oriented, good logic encapsulation | Script-like, simple and intuitive |
 | **API Call** | `self.buy()`, `self.ctx` | `ctx.buy()`, pass `ctx` as parameter |
@@ -225,6 +227,8 @@ AKQuant provides two styles of strategy development interfaces:
 | Callback | Trigger Condition | Notes |
 | :--- | :--- | :--- |
 | `on_bar(ctx, bar)` | Backtest feed emits Bar events | Required entry callback for function-style strategies |
+| `on_start(ctx)` | Backtest starts | Aligns with class-style `on_start` lifecycle |
+| `on_stop(ctx)` | Backtest ends | Aligns with class-style `on_stop` lifecycle |
 | `on_tick(ctx, tick)` | Backtest feed emits Tick events | Tick callbacks are not triggered in bar-only datasets |
 | `on_order(ctx, order)` | Order state changes are observed in strategy context | Triggered before event callback in each event loop |
 | `on_trade(ctx, trade)` | Trade reports appear in `recent_trades` | Trade dedupe applies to avoid repeated callbacks |
@@ -234,6 +238,10 @@ AKQuant provides two styles of strategy development interfaces:
 
 *   Function-style callback baseline: `examples/23_functional_callbacks_demo.py`
 *   Function-style tick callback simulation: `examples/24_functional_tick_simulation_demo.py`
+*   LiveRunner supports function-style entry and multi-slot orchestration: `LiveRunner(strategy_cls=on_bar, strategy_id="alpha", strategies_by_slot={"beta": OtherStrategy}, initialize=..., on_tick=..., on_order=..., on_trade=..., on_timer=...)`
+*   broker_live function-style submit example: `examples/39_live_broker_submit_order_demo.py`
+*   Function-style multi-slot + risk example: `examples/40_functional_multi_slot_risk_demo.py`
+*   LiveRunner multi-slot orchestration example: `examples/41_live_multi_slot_orchestration_demo.py`
 *   Output markers:
     *   `done_functional_callbacks_demo`
     *   `done_functional_tick_simulation_demo`
@@ -500,7 +508,78 @@ class IntradayStrategy(Strategy):
         # Other trading logic...
 ```
 
-### 7.3 Multi-Asset Rotation {: #multi-asset }
+### 7.3 OCO and Bracket Helpers
+
+AKQuant provides helper APIs for linked order management:
+
+*   `self.create_oco_order_group(first_order_id, second_order_id, group_id=None)`
+    *   Binds two orders as OCO (One-Cancels-the-Other).
+    *   Once either order is filled, the peer order is canceled automatically.
+*   `self.place_bracket_order(symbol, quantity, entry_price=None, stop_trigger_price=None, take_profit_price=None, ...)`
+    *   Submits a bracket structure in one call.
+    *   After entry fill, stop-loss and take-profit exits are submitted automatically; when both exits exist, they are linked as OCO.
+
+```python
+from akquant import OrderStatus, Strategy
+
+class BracketHelperStrategy(Strategy):
+    def __init__(self):
+        self.entry_order_id = ""
+
+    def on_bar(self, bar):
+        if self.get_position(bar.symbol) > 0 or self.entry_order_id:
+            return
+
+        self.entry_order_id = self.place_bracket_order(
+            symbol=bar.symbol,
+            quantity=100,
+            stop_trigger_price=bar.close * 0.98,
+            take_profit_price=bar.close * 1.04,
+            entry_tag="entry",
+            stop_tag="stop",
+            take_profit_tag="take",
+        )
+
+    def on_order(self, order):
+        if order.id == self.entry_order_id and order.status in (
+            OrderStatus.Cancelled,
+            OrderStatus.Rejected,
+        ):
+            self.entry_order_id = ""
+```
+
+### 7.4 Trailing Stop Helpers
+
+If you want to express a moving stop line directly in strategy logic, use these helpers:
+
+*   `self.place_trailing_stop(symbol, quantity, trail_offset, side="Sell", trail_reference_price=None, ...)`
+    *   Executes as market order after trigger (`StopTrail -> Market`).
+*   `self.place_trailing_stop_limit(symbol, quantity, price, trail_offset, side="Sell", trail_reference_price=None, ...)`
+    *   Executes as limit order after trigger (`StopTrailLimit -> Limit`).
+
+```python
+from akquant import Strategy
+
+class TrailingHelperStrategy(Strategy):
+    def __init__(self):
+        self.trailing_order_id = ""
+
+    def on_bar(self, bar):
+        if self.get_position(bar.symbol) == 0:
+            self.buy(bar.symbol, 100)
+            self.trailing_order_id = self.place_trailing_stop(
+                symbol=bar.symbol,
+                quantity=100,
+                trail_offset=1.5,
+                side="Sell",
+                trail_reference_price=bar.close,
+                tag="trail-stop",
+            )
+```
+
+For a full runnable script, see `examples/36_trailing_orders.py`.
+
+### 7.5 Multi-Asset Rotation {: #multi-asset }
 
 ```python
 class RotationStrategy(Strategy):

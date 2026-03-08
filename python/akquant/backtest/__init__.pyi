@@ -4,14 +4,21 @@ import pandas as pd
 
 from ..akquant import AssetType, Bar, DataFeed, ExecutionMode
 from ..config import BacktestConfig, RiskConfig
+from ..feed_adapter import DataFeedAdapter
 from ..strategy import Strategy, StrategyRuntimeConfig
 from .result import BacktestResult
+
+BacktestDataInput = Union[
+    pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed, DataFeedAdapter
+]
 
 class FunctionalStrategy(Strategy):
     def __init__(
         self,
         initialize: Optional[Callable[[Any], None]],
         on_bar: Optional[Callable[[Any, Bar], None]],
+        on_start: Optional[Callable[[Any], None]] = ...,
+        on_stop: Optional[Callable[[Any], None]] = ...,
         on_tick: Optional[Callable[[Any, Any], None]] = ...,
         on_order: Optional[Callable[[Any, Any], None]] = ...,
         on_trade: Optional[Callable[[Any, Any], None]] = ...,
@@ -29,9 +36,7 @@ class BacktestStreamEvent(TypedDict):
     payload: Dict[str, str]
 
 def run_backtest(
-    data: Optional[
-        Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed]
-    ] = ...,
+    data: Optional[BacktestDataInput] = ...,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = ...,
     symbol: Union[str, List[str]] = ...,
     initial_cash: Optional[float] = ...,
@@ -45,6 +50,8 @@ def run_backtest(
     timezone: Optional[str] = ...,
     t_plus_one: bool = ...,
     initialize: Optional[Callable[[Any], None]] = ...,
+    on_start: Optional[Callable[[Any], None]] = ...,
+    on_stop: Optional[Callable[[Any], None]] = ...,
     on_tick: Optional[Callable[[Any, Any], None]] = ...,
     on_order: Optional[Callable[[Any, Any], None]] = ...,
     on_trade: Optional[Callable[[Any, Any], None]] = ...,
@@ -85,9 +92,7 @@ def run_backtest(
 ) -> BacktestResult: ...
 def run_warm_start(
     checkpoint_path: str,
-    data: Optional[
-        Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed]
-    ] = ...,
+    data: Optional[BacktestDataInput] = ...,
     show_progress: bool = ...,
     symbol: Union[str, List[str]] = ...,
     strategy_runtime_config: Optional[
