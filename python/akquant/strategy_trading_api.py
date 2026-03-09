@@ -587,6 +587,84 @@ def order_target_percent(
     order_target_value(strategy, target_value, symbol, price, **kwargs)
 
 
+def order_target_weights(
+    strategy: Any,
+    target_weights: Dict[str, float],
+    price_map: Optional[Dict[str, float]] = None,
+    liquidate_unmentioned: bool = False,
+    allow_leverage: bool = False,
+    rebalance_tolerance: float = 0.0,
+    **kwargs: Any,
+) -> None:
+    """按多标的目标权重调仓."""
+    if strategy.ctx is None:
+        raise RuntimeError("Context not ready")
+
+    if rebalance_tolerance < 0:
+        raise ValueError("rebalance_tolerance must be >= 0")
+
+    normalized_weights: Dict[str, float] = {}
+    for symbol, weight in target_weights.items():
+        if not symbol:
+            raise ValueError("symbol in target_weights must be non-empty")
+        normalized_weight = float(weight)
+        if normalized_weight < 0:
+            raise ValueError(f"target weight for {symbol} must be >= 0")
+        normalized_weights[symbol] = normalized_weight
+
+    total_weight = sum(normalized_weights.values())
+    if not allow_leverage and total_weight > 1.0 + 1e-8:
+        raise ValueError(
+            f"sum of target_weights ({total_weight:.6f}) exceeds 1.0; "
+            "set allow_leverage=True to permit this"
+        )
+
+    if liquidate_unmentioned:
+        for symbol, qty in strategy.ctx.positions.items():
+            if float(qty) != 0.0 and symbol not in normalized_weights:
+                normalized_weights[symbol] = 0.0
+
+    if not normalized_weights:
+        return
+
+    portfolio_value = get_portfolio_value(strategy)
+    abs_tolerance_value = abs(float(portfolio_value)) * float(rebalance_tolerance)
+    planned: List[Tuple[str, float, float]] = []
+
+    for symbol, weight in normalized_weights.items():
+        target_value = float(portfolio_value) * float(weight)
+        current_qty = float(strategy.ctx.get_position(symbol))
+
+        current_price = strategy._last_prices.get(symbol, 0.0)
+        if current_price == 0.0:
+            if strategy.current_bar and strategy.current_bar.symbol == symbol:
+                current_price = strategy.current_bar.close
+            elif strategy.current_tick and strategy.current_tick.symbol == symbol:
+                current_price = strategy.current_tick.price
+
+        current_value = current_qty * float(current_price)
+        delta_value = target_value - current_value
+        if abs(delta_value) <= abs_tolerance_value:
+            continue
+        planned.append((symbol, target_value, delta_value))
+
+    if not planned:
+        return
+
+    sell_legs = [item for item in planned if item[2] < 0]
+    buy_legs = [item for item in planned if item[2] >= 0]
+
+    for symbol, target_value, _ in sorted(sell_legs, key=lambda item: item[2]):
+        leg_price = price_map.get(symbol) if price_map else None
+        order_target_value(strategy, target_value, symbol, leg_price, **kwargs)
+
+    for symbol, target_value, _ in sorted(
+        buy_legs, key=lambda item: item[2], reverse=True
+    ):
+        leg_price = price_map.get(symbol) if price_map else None
+        order_target_value(strategy, target_value, symbol, leg_price, **kwargs)
+
+
 def buy_all(strategy: Any, symbol: Optional[str] = None) -> None:
     """全仓买入 (Buy All)."""
     if strategy.ctx is None:

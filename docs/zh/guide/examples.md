@@ -5,6 +5,7 @@
 *   [Examples 目录索引](https://github.com/akfamily/akquant/blob/main/examples/README.md): 快速浏览 `examples/` 下所有脚本入口，并包含按场景整理的最短执行路径。
 *   [快速开始 (Quickstart)](../start/quickstart.md): 包含手动数据回测和 AKShare 数据回测的完整流程。
 *   [简单的均线策略 (SMA Strategy)](strategy.md#class-based): 展示了如何使用类风格编写策略，并在 `on_bar` 中进行简单的交易逻辑。
+*   [多标的目标权重调仓最短路径](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py): 聚焦 `order_target_weights`，展示同时间切片收齐后的一次性组合调仓。
 
 > 数据源约定：除特别标注需要模拟数据外，本页示例默认使用 AKShare 获取真实市场数据。
 
@@ -335,3 +336,7 @@ class AdjSignal(Strategy):
 *   **[35_custom_broker_registry_demo.py](https://github.com/akfamily/akquant/blob/main/examples/35_custom_broker_registry_demo.py)**:
     *   演示自定义 broker 注册机制：通过 `register_broker` 注入 `builder` 并使用 `create_gateway_bundle` 按名称创建网关。
     *   输出 `bundle.metadata` 以确认自定义 broker 已被工厂解析。
+
+*   **[43_target_weights_rebalance.py](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py)**:
+    *   演示 `order_target_weights` 的最小可运行闭环：收齐同一时间切片的多标的 Bar 后一次性按权重调仓。
+    *   展示 `liquidate_unmentioned` 与 `rebalance_tolerance` 的组合用法，并输出 `final_positions` / `final_equity`。

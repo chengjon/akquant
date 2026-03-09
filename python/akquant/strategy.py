@@ -135,6 +135,9 @@ from .strategy_trading_api import (
     order_target_value as _order_target_value_impl,
 )
 from .strategy_trading_api import (
+    order_target_weights as _order_target_weights_impl,
+)
+from .strategy_trading_api import (
     resolve_symbol as _resolve_symbol_impl,
 )
 from .strategy_trading_api import (
@@ -1426,6 +1429,35 @@ class Strategy:
         :param kwargs: 其他下单参数
         """
         _order_target_percent_impl(self, target_percent, symbol, price, **kwargs)
+
+    def order_target_weights(
+        self,
+        target_weights: Dict[str, float],
+        price_map: Optional[Dict[str, float]] = None,
+        liquidate_unmentioned: bool = False,
+        allow_leverage: bool = False,
+        rebalance_tolerance: float = 0.0,
+        **kwargs: Any,
+    ) -> None:
+        """
+        按多标的目标权重调仓.
+
+        :param target_weights: 目标权重字典 {symbol: weight}
+        :param price_map: 每个标的的委托价格字典（可选）
+        :param liquidate_unmentioned: 是否清仓未出现在目标权重中的现有持仓
+        :param allow_leverage: 是否允许目标权重和超过 1.0
+        :param rebalance_tolerance: 调仓容忍阈值（按组合市值比例）
+        :param kwargs: 其他下单参数
+        """
+        _order_target_weights_impl(
+            self,
+            target_weights,
+            price_map,
+            liquidate_unmentioned,
+            allow_leverage,
+            rebalance_tolerance,
+            **kwargs,
+        )
 
     def buy_all(self, symbol: Optional[str] = None) -> None:
         """

@@ -5,6 +5,7 @@
 *   [Examples Directory Index](https://github.com/akfamily/akquant/blob/main/examples/README.md): Quick entry to all scripts under `examples/`, including scenario-based shortest run paths.
 *   [Quick Start](../start/quickstart.md): Complete workflow covering manual data backtesting and AKShare data backtesting.
 *   [Simple SMA Strategy](strategy.md#class-based): Demonstrates how to write a strategy in class style and perform simple trading logic in `on_bar`.
+*   [Shortest Path for Multi-Asset Target Weights](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py): Focuses on `order_target_weights` and demonstrates one-shot portfolio rebalance after collecting a full timestamp bucket.
 
 > Data Source Convention: Unless otherwise specified (e.g. simulated data), examples on this page default to using AKShare to fetch real market data.
 
@@ -335,3 +336,7 @@ The `examples/` directory contains more scripts demonstrating AKShare integratio
 *   **[35_custom_broker_registry_demo.py](https://github.com/akfamily/akquant/blob/main/examples/35_custom_broker_registry_demo.py)**:
     *   Demonstrates custom broker registry flow: injects a broker `builder` with `register_broker` and creates gateways by name via `create_gateway_bundle`.
     *   Prints `bundle.metadata` to confirm the custom broker is resolved by factory.
+
+*   **[43_target_weights_rebalance.py](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py)**:
+    *   Demonstrates a minimal runnable `order_target_weights` flow: rebalance once after collecting all symbols for the same timestamp bucket.
+    *   Shows practical usage of `liquidate_unmentioned` and `rebalance_tolerance`, then prints `final_positions` / `final_equity`.

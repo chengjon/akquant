@@ -326,6 +326,16 @@ In AKQuant, order status transitions are as follows:
     # Adjust holding to 1000 shares (Buy 1000 if 0, Sell 1000 if 2000)
     self.order_target_value(target_value=1000 * price, symbol="AAPL") # Note: API does not support target_share directly yet, simulate with value
     ```
+    Rebalance multiple symbols with a single target-weight call:
+    ```python
+    self.order_target_weights(
+        target_weights={"AAPL": 0.4, "MSFT": 0.3, "GOOGL": 0.2},
+        liquidate_unmentioned=True,
+        rebalance_tolerance=0.01,
+    )
+    ```
+    By default the sum of weights must be `<= 1.0`; set `allow_leverage=True` to allow higher aggregate exposure.
+    Orders are submitted sell-first and then buy-second to reduce cash-lock conflicts during rotation.
 *   **Cancel Order**:
     ```python
     self.cancel_order(order_id) # Cancel specific order

@@ -410,6 +410,19 @@ class MyStrategy(Strategy):
     *   `self.order_target(target=100, symbol="AAPL")`: 调整持仓数量至 100 股。
     *   `self.order_target_percent(target_percent=0.5, symbol="AAPL")`: 调整持仓至总资产的 50%。
     *   `self.order_target_value(target_value=10000, symbol="AAPL")`: 调整持仓至 10000 元市值。
+    *   `self.order_target_weights(target_weights={"AAPL":0.4,"MSFT":0.3}, liquidate_unmentioned=True, rebalance_tolerance=0.01)`: 按多标的权重统一调仓。
+        *   默认权重和不超过 `1.0`，如需超过请设置 `allow_leverage=True`。
+        *   执行顺序为先卖后买，减少现金占用导致的买入失败。
+
+```python
+def on_timer(self, payload: str):
+    weights = {"sh600519": 0.35, "sz000858": 0.25, "sh601318": 0.20}
+    self.order_target_weights(
+        target_weights=weights,
+        liquidate_unmentioned=True,
+        rebalance_tolerance=0.01,
+    )
+```
 
 *   **撤单 (Cancel Order)**:
     *   `self.cancel_order(order_id)`: 撤销指定订单。

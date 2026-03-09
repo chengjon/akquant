@@ -399,6 +399,11 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `place_trailing_stop_limit(symbol, quantity, price, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: Helper for trailing stop-limit orders, promoted to limit order when triggered.
 *   `order_target_value(target_value, symbol, price=None)`: Adjust position to target value.
 *   `order_target_percent(target_percent, symbol, price=None)`: Adjust position to target account percentage.
+*   `order_target_weights(target_weights, price_map=None, liquidate_unmentioned=False, allow_leverage=False, rebalance_tolerance=0.0, ...)`: Rebalance a multi-asset portfolio by target weights.
+    *   `target_weights` is `{symbol: weight}` and by default requires total weight `<= 1.0`.
+    *   `liquidate_unmentioned=True` sets all existing non-mentioned positions to target `0`.
+    *   Orders are submitted in sell-first then buy-second order to reduce cash-lock conflicts.
+    *   `rebalance_tolerance` skips tiny drifts by portfolio-value ratio to reduce churn.
 *   `close_position(symbol)`: Close position for a specific instrument.
 *   `cancel_order(order_id: str)`: Cancel a specific order.
 *   `cancel_all_orders(symbol)`: Cancel all pending orders for a specific instrument. If `symbol` is omitted, cancels all orders.
