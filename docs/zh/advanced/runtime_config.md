@@ -85,7 +85,9 @@ result = run_warm_start(
 
 可直接运行：
 
-- `examples/22_strategy_runtime_config_demo.py`
+- [22_strategy_runtime_config_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/22_strategy_runtime_config_demo.py)
+
+另见：[热启动指南](warm_start.md)。
 
 预期输出标记：
 

@@ -123,6 +123,10 @@ impl Engine {
             .collect()
     }
 
+    fn get_strategy_slots(&self) -> Vec<String> {
+        self.get_strategy_slot_ids()
+    }
+
     fn get_active_strategy_slot(&self) -> usize {
         self.active_strategy_slot
     }

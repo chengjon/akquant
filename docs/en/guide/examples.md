@@ -330,7 +330,8 @@ The `examples/` directory contains more scripts demonstrating AKShare integratio
     *   Prints `report_html=...` and ends with `done_report_and_analysis_outputs`.
 
 *   **[34_multi_strategy_migration_demo.py](https://github.com/akfamily/akquant/blob/main/examples/34_multi_strategy_migration_demo.py)**:
-    *   Demonstrates before/after migration from single strategy to multi-slot execution, including strategy-level limits, reduce-only behavior, and cooldown bars.
+    *   Demonstrates before/after migration from single strategy to multi-slot execution, using centralized `BacktestConfig(strategy_config=StrategyConfig(...))`.
+    *   Covers strategy-level limits, reduce-only behavior, and cooldown bars under the config-driven style.
     *   Prints `single_owner_ids`, `multi_owner_ids`, `multi_alpha_cooldown_rejections`, and ends with `done_multi_strategy_migration_demo`.
 
 *   **[35_custom_broker_registry_demo.py](https://github.com/akfamily/akquant/blob/main/examples/35_custom_broker_registry_demo.py)**:

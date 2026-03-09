@@ -21,12 +21,12 @@
 
 从单策略迁移到多策略时，核心参数如下：
 
-- `strategy_id`：主策略归属 ID。
-- `strategies_by_slot`：额外 slot -> 策略映射。
-- `strategy_max_order_value` / `strategy_max_order_size` / `strategy_max_position_size`。
-- `strategy_max_daily_loss` / `strategy_max_drawdown`。
-- `strategy_reduce_only_after_risk`。
-- `strategy_risk_cooldown_bars`。
+- `StrategyConfig.strategy_id`：主策略归属 ID。
+- `StrategyConfig.strategies_by_slot`：额外 slot -> 策略映射。
+- `StrategyConfig.strategy_max_order_value` / `StrategyConfig.strategy_max_order_size` / `StrategyConfig.strategy_max_position_size`。
+- `StrategyConfig.strategy_max_daily_loss` / `StrategyConfig.strategy_max_drawdown`。
+- `StrategyConfig.strategy_reduce_only_after_risk`。
+- `StrategyConfig.strategy_risk_cooldown_bars`。
 
 规则：
 
@@ -37,14 +37,22 @@
 
 ## 4.1 第一步：先做“单策略归属化”
 
-先保持只有一个策略，仅补 `strategy_id`，验证归属字段和报告输出：
+先保持只有一个策略，在 `StrategyConfig` 中补 `strategy_id`，验证归属字段和报告输出：
 
 ```python
+from akquant import BacktestConfig, StrategyConfig, run_backtest
+
+config = BacktestConfig(
+    strategy_config=StrategyConfig(
+        strategy_id="alpha",
+    )
+)
+
 result = run_backtest(
     data=data,
     strategy=MyStrategy,
     symbol="TEST",
-    strategy_id="alpha",
+    config=config,
     show_progress=False,
 )
 ```
@@ -56,15 +64,23 @@ result = run_backtest(
 
 ## 4.2 第二步：引入 slot
 
-在主策略外增加 `strategies_by_slot`：
+通过配置对象增加 `strategies_by_slot`：
 
 ```python
+from akquant import BacktestConfig, StrategyConfig, run_backtest
+
+config = BacktestConfig(
+    strategy_config=StrategyConfig(
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BetaStrategy},
+    )
+)
+
 result = run_backtest(
     data=data,
     strategy=AlphaStrategy,
     symbol="TEST",
-    strategy_id="alpha",
-    strategies_by_slot={"beta": BetaStrategy},
+    config=config,
     show_progress=False,
 )
 ```
@@ -76,18 +92,26 @@ result = run_backtest(
 
 ## 4.3 第三步：配置策略级风控动作
 
-按策略键配置限额与动作：
+在 `StrategyConfig` 中按策略键配置限额与动作：
 
 ```python
+from akquant import BacktestConfig, StrategyConfig, run_backtest
+
+config = BacktestConfig(
+    strategy_config=StrategyConfig(
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BetaStrategy},
+        strategy_max_order_size={"alpha": 10, "beta": 20},
+        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+        strategy_risk_cooldown_bars={"alpha": 2, "beta": 0},
+    )
+)
+
 result = run_backtest(
     data=data,
     strategy=AlphaStrategy,
     symbol="TEST",
-    strategy_id="alpha",
-    strategies_by_slot={"beta": BetaStrategy},
-    strategy_max_order_size={"alpha": 10, "beta": 20},
-    strategy_reduce_only_after_risk={"alpha": True, "beta": False},
-    strategy_risk_cooldown_bars={"alpha": 2, "beta": 0},
+    config=config,
     show_progress=False,
 )
 ```
@@ -100,6 +124,7 @@ result = run_backtest(
 ## 4.4 第四步：验证热启动连续性
 
 - 保存快照后使用 `run_warm_start` 恢复。
+- 建议恢复阶段复用同一个 `config`，集中维护 slot 与策略级风控映射。
 - 检查恢复后的默认策略 ID、slot 集合、风控动作状态是否连续。
 
 ## 5. 最小验收矩阵
@@ -120,7 +145,7 @@ result = run_backtest(
 
 处理：
 
-- 对齐策略键；保证所有映射键来自已注册 slot。
+- 对齐策略键；保证所有映射键来自 `StrategyConfig.strategy_id + StrategyConfig.strategies_by_slot`。
 
 ## 6.2 热启动后归属不一致
 
@@ -143,4 +168,4 @@ result = run_backtest(
 
 ## 7. 推荐阅读
 
-- 热启动指南：`docs/zh/advanced/warm_start.md`
+- [热启动指南](warm_start.md)

@@ -72,7 +72,7 @@ replayed = feed.replay(
 
 ## 与示例迁移
 
-- 目标替代 [14_multi_frequency.py](file:///Users/albert/Documents/trae_projects/akquant/examples/14_multi_frequency.py) 中手写 `pandas.resample` 流程。
+- 目标替代 [14_multi_frequency.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/14_multi_frequency.py) 中手写 `pandas.resample` 流程。
 - 新示例结构：
   - `feed_1m = ...`
   - `feed_15m = feed_1m.resample("15min")`

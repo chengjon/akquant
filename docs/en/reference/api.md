@@ -37,7 +37,20 @@ def run_backtest(
     instruments_config: Optional[Union[List[InstrumentConfig], Dict[str, InstrumentConfig]]] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
     risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
+    strategy_id: Optional[str] = None,
     strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
+    strategy_max_order_value: Optional[Dict[str, float]] = None,
+    strategy_max_order_size: Optional[Dict[str, float]] = None,
+    strategy_max_position_size: Optional[Dict[str, float]] = None,
+    strategy_max_daily_loss: Optional[Dict[str, float]] = None,
+    strategy_max_drawdown: Optional[Dict[str, float]] = None,
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None,
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None,
+    strategy_priority: Optional[Dict[str, int]] = None,
+    strategy_risk_budget: Optional[Dict[str, float]] = None,
+    portfolio_risk_budget: Optional[float] = None,
+    risk_budget_mode: Literal["order_notional", "trade_notional"] = "order_notional",
+    risk_budget_reset_daily: bool = False,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     **kwargs: Any,
 ) -> BacktestResult
@@ -62,9 +75,54 @@ def run_backtest(
 *   `instruments_config`: Instrument configuration. Used to set parameters for non-stock assets like futures/options (e.g., multiplier, margin ratio).
     *   Accepts `List[InstrumentConfig]` or `{symbol: InstrumentConfig}`.
 *   `risk_config`: Risk configuration. Supports dict (e.g., `{"max_position_pct": 0.1}`) or `RiskConfig` object. Overrides fields in `config.strategy_config.risk` if both are provided.
+*   `strategy_id`: Primary strategy ownership id. Default `_default`.
 *   `strategies_by_slot`: Optional multi-strategy mapping. Keys are slot ids and values are strategy class/instance/functional callback used by slot-iterative execution.
+*   `strategy_max_order_size` / `strategy_max_order_value` / `strategy_max_position_size`: Optional strategy-level risk maps keyed by strategy id.
+*   `strategy_max_daily_loss` / `strategy_max_drawdown`: Optional strategy-level stop maps keyed by strategy id.
+*   `strategy_reduce_only_after_risk` / `strategy_risk_cooldown_bars`: Optional post-risk behavior maps keyed by strategy id.
+*   `strategy_priority` / `strategy_risk_budget` / `portfolio_risk_budget`: Optional scheduling/budget controls.
+*   `risk_budget_mode` / `risk_budget_reset_daily`: Risk budget accounting mode and reset policy.
 *   `analyzer_plugins`: Optional analyzer plugin list. Plugins receive `on_start/on_bar/on_trade/on_finish` callbacks and final outputs are stored in `result.analyzer_outputs`.
 *   `on_event`: Optional stream callback. When omitted, an internal no-op callback keeps legacy blocking return semantics; when provided, runtime events are emitted.
+
+### `akquant.run_warm_start`
+
+Resume a backtest from snapshot state and continue execution.
+
+```python
+def run_warm_start(
+    checkpoint_path: str,
+    data: Optional[BacktestDataInput] = None,
+    show_progress: bool = True,
+    symbol: Union[str, List[str]] = "BENCHMARK",
+    strategy_runtime_config: Optional[Union[StrategyRuntimeConfig, Dict[str, Any]]] = None,
+    runtime_config_override: bool = True,
+    strategy_id: Optional[str] = None,
+    strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
+    strategy_max_order_value: Optional[Dict[str, float]] = None,
+    strategy_max_order_size: Optional[Dict[str, float]] = None,
+    strategy_max_position_size: Optional[Dict[str, float]] = None,
+    strategy_max_daily_loss: Optional[Dict[str, float]] = None,
+    strategy_max_drawdown: Optional[Dict[str, float]] = None,
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None,
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None,
+    strategy_priority: Optional[Dict[str, int]] = None,
+    strategy_risk_budget: Optional[Dict[str, float]] = None,
+    portfolio_risk_budget: Optional[float] = None,
+    risk_budget_mode: Literal["order_notional", "trade_notional"] = "order_notional",
+    risk_budget_reset_daily: bool = False,
+    on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
+    config: Optional[BacktestConfig] = None,
+    **kwargs: Any,
+) -> BacktestResult
+```
+
+`run_warm_start` uses the same strategy-slot and strategy-level risk parameters as `run_backtest`.
+For these fields, priority is:
+
+1. explicit function arguments
+2. `config.strategy_config`
+3. restored/default values
 
 **DataFeedAdapter Usage (Multi-Timeframe):**
 
@@ -217,6 +275,20 @@ class StrategyConfig:
     max_short_positions: Optional[int] = None
 
     risk: Optional[RiskConfig] = None
+
+    # Multi-strategy topology & strategy-level controls
+    strategy_id: Optional[str] = None
+    strategies_by_slot: Optional[Dict[str, Any]] = None
+    strategy_max_order_value: Optional[Dict[str, float]] = None
+    strategy_max_order_size: Optional[Dict[str, float]] = None
+    strategy_max_position_size: Optional[Dict[str, float]] = None
+    strategy_max_daily_loss: Optional[Dict[str, float]] = None
+    strategy_max_drawdown: Optional[Dict[str, float]] = None
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None
+    strategy_priority: Optional[Dict[str, int]] = None
+    strategy_risk_budget: Optional[Dict[str, float]] = None
+    portfolio_risk_budget: Optional[float] = None
 ```
 
 ### `akquant.InstrumentConfig`
@@ -277,6 +349,9 @@ Parameter resolution in `run_backtest` follows this priority order (highest to l
     *   Example: `run_backtest(start_time="2022-01-01")` overrides `config.start_time`.
 2.  **Configuration Objects**:
     *   If explicit arguments are `None`, values are read from `config` (`BacktestConfig`).
+    *   Multi-strategy fields can be centralized in `config.strategy_config`
+        (`strategy_id`, `strategies_by_slot`, `strategy_max_*`, `strategy_priority`,
+        `strategy_risk_budget`, `portfolio_risk_budget`).
 3.  **Defaults**:
     *   If neither provides a value, system defaults are used.
 

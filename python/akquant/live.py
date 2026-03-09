@@ -93,6 +93,18 @@ class LiveRunner:
         on_trade: Optional[Callable[[Any, Any], None]] = None,
         on_timer: Optional[Callable[[Any, str], None]] = None,
         context: Optional[Dict[str, Any]] = None,
+        strategy_max_order_value: Optional[Dict[str, float]] = None,
+        strategy_max_order_size: Optional[Dict[str, float]] = None,
+        strategy_max_position_size: Optional[Dict[str, float]] = None,
+        strategy_max_daily_loss: Optional[Dict[str, float]] = None,
+        strategy_max_drawdown: Optional[Dict[str, float]] = None,
+        strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None,
+        strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None,
+        strategy_priority: Optional[Dict[str, int]] = None,
+        strategy_risk_budget: Optional[Dict[str, float]] = None,
+        portfolio_risk_budget: Optional[float] = None,
+        risk_budget_mode: str = "order_notional",
+        risk_budget_reset_daily: bool = False,
         on_broker_event: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         """
@@ -144,6 +156,36 @@ class LiveRunner:
         self.on_trade = on_trade
         self.on_timer = on_timer
         self.context = context or {}
+        self.strategy_max_order_value = self._normalize_strategy_float_map(
+            strategy_max_order_value
+        )
+        self.strategy_max_order_size = self._normalize_strategy_float_map(
+            strategy_max_order_size
+        )
+        self.strategy_max_position_size = self._normalize_strategy_float_map(
+            strategy_max_position_size
+        )
+        self.strategy_max_daily_loss = self._normalize_strategy_float_map(
+            strategy_max_daily_loss
+        )
+        self.strategy_max_drawdown = self._normalize_strategy_float_map(
+            strategy_max_drawdown
+        )
+        self.strategy_reduce_only_after_risk = self._normalize_strategy_bool_map(
+            strategy_reduce_only_after_risk
+        )
+        self.strategy_risk_cooldown_bars = self._normalize_strategy_int_map(
+            strategy_risk_cooldown_bars
+        )
+        self.strategy_priority = self._normalize_strategy_int_map(strategy_priority)
+        self.strategy_risk_budget = self._normalize_strategy_float_map(
+            strategy_risk_budget
+        )
+        self.portfolio_risk_budget = (
+            float(portfolio_risk_budget) if portfolio_risk_budget is not None else None
+        )
+        self.risk_budget_mode = risk_budget_mode
+        self.risk_budget_reset_daily = bool(risk_budget_reset_daily)
         self.on_broker_event = on_broker_event
         self._init_broker_bridge_state()
 
@@ -309,6 +351,203 @@ class LiveRunner:
                     else slot_strategy_instances[slot_id]
                 )
                 cast(Any, self.engine).set_strategy_for_slot(slot_index, assigned)
+        self._apply_strategy_risk_controls(configured_slot_ids)
+
+    def _normalize_strategy_float_map(
+        self, values: Optional[Dict[str, float]]
+    ) -> Dict[str, float]:
+        if values is None:
+            return {}
+        if not isinstance(values, dict):
+            raise TypeError("strategy map must be a dict when provided")
+        normalized: Dict[str, float] = {}
+        for key, value in values.items():
+            key_str = str(key).strip()
+            if not key_str:
+                raise ValueError("strategy id cannot be empty")
+            normalized[key_str] = float(value)
+        return normalized
+
+    def _normalize_strategy_int_map(
+        self, values: Optional[Dict[str, int]]
+    ) -> Dict[str, int]:
+        if values is None:
+            return {}
+        if not isinstance(values, dict):
+            raise TypeError("strategy map must be a dict when provided")
+        normalized: Dict[str, int] = {}
+        for key, value in values.items():
+            key_str = str(key).strip()
+            if not key_str:
+                raise ValueError("strategy id cannot be empty")
+            normalized[key_str] = int(value)
+        return normalized
+
+    def _normalize_strategy_bool_map(
+        self, values: Optional[Dict[str, bool]]
+    ) -> Dict[str, bool]:
+        if values is None:
+            return {}
+        if not isinstance(values, dict):
+            raise TypeError("strategy map must be a dict when provided")
+        normalized: Dict[str, bool] = {}
+        for key, value in values.items():
+            key_str = str(key).strip()
+            if not key_str:
+                raise ValueError("strategy id cannot be empty")
+            normalized[key_str] = bool(value)
+        return normalized
+
+    def _validate_strategy_map_keys(
+        self, values: Dict[str, Any], configured_slot_ids: List[str], field_name: str
+    ) -> None:
+        if not values:
+            return
+        unknown = sorted(set(values.keys()).difference(set(configured_slot_ids)))
+        if unknown:
+            unknown_text = ", ".join(unknown)
+            raise ValueError(
+                f"{field_name} contains unknown strategy ids: {unknown_text}"
+            )
+
+    def _apply_strategy_risk_controls(self, configured_slot_ids: List[str]) -> None:
+        strategy_max_order_value = cast(
+            Dict[str, float], getattr(self, "strategy_max_order_value", {})
+        )
+        strategy_max_order_size = cast(
+            Dict[str, float], getattr(self, "strategy_max_order_size", {})
+        )
+        strategy_max_position_size = cast(
+            Dict[str, float], getattr(self, "strategy_max_position_size", {})
+        )
+        strategy_max_daily_loss = cast(
+            Dict[str, float], getattr(self, "strategy_max_daily_loss", {})
+        )
+        strategy_max_drawdown = cast(
+            Dict[str, float], getattr(self, "strategy_max_drawdown", {})
+        )
+        strategy_reduce_only_after_risk = cast(
+            Dict[str, bool], getattr(self, "strategy_reduce_only_after_risk", {})
+        )
+        strategy_risk_cooldown_bars = cast(
+            Dict[str, int], getattr(self, "strategy_risk_cooldown_bars", {})
+        )
+        strategy_priority = cast(Dict[str, int], getattr(self, "strategy_priority", {}))
+        strategy_risk_budget = cast(
+            Dict[str, float], getattr(self, "strategy_risk_budget", {})
+        )
+        portfolio_risk_budget = cast(
+            Optional[float], getattr(self, "portfolio_risk_budget", None)
+        )
+        risk_budget_mode = str(getattr(self, "risk_budget_mode", "order_notional"))
+        risk_budget_reset_daily = bool(getattr(self, "risk_budget_reset_daily", False))
+
+        self._validate_strategy_map_keys(
+            strategy_max_order_value,
+            configured_slot_ids,
+            "strategy_max_order_value",
+        )
+        self._validate_strategy_map_keys(
+            strategy_max_order_size,
+            configured_slot_ids,
+            "strategy_max_order_size",
+        )
+        self._validate_strategy_map_keys(
+            strategy_max_position_size,
+            configured_slot_ids,
+            "strategy_max_position_size",
+        )
+        self._validate_strategy_map_keys(
+            strategy_max_daily_loss,
+            configured_slot_ids,
+            "strategy_max_daily_loss",
+        )
+        self._validate_strategy_map_keys(
+            strategy_max_drawdown,
+            configured_slot_ids,
+            "strategy_max_drawdown",
+        )
+        self._validate_strategy_map_keys(
+            strategy_reduce_only_after_risk,
+            configured_slot_ids,
+            "strategy_reduce_only_after_risk",
+        )
+        self._validate_strategy_map_keys(
+            strategy_risk_cooldown_bars,
+            configured_slot_ids,
+            "strategy_risk_cooldown_bars",
+        )
+        self._validate_strategy_map_keys(
+            strategy_priority,
+            configured_slot_ids,
+            "strategy_priority",
+        )
+        self._validate_strategy_map_keys(
+            strategy_risk_budget,
+            configured_slot_ids,
+            "strategy_risk_budget",
+        )
+
+        if strategy_max_order_value and hasattr(
+            self.engine, "set_strategy_max_order_value_limits"
+        ):
+            cast(Any, self.engine).set_strategy_max_order_value_limits(
+                strategy_max_order_value
+            )
+        if strategy_max_order_size and hasattr(
+            self.engine, "set_strategy_max_order_size_limits"
+        ):
+            cast(Any, self.engine).set_strategy_max_order_size_limits(
+                strategy_max_order_size
+            )
+        if strategy_max_position_size and hasattr(
+            self.engine, "set_strategy_max_position_size_limits"
+        ):
+            cast(Any, self.engine).set_strategy_max_position_size_limits(
+                strategy_max_position_size
+            )
+        if strategy_max_daily_loss and hasattr(
+            self.engine, "set_strategy_max_daily_loss_limits"
+        ):
+            cast(Any, self.engine).set_strategy_max_daily_loss_limits(
+                strategy_max_daily_loss
+            )
+        if strategy_max_drawdown and hasattr(
+            self.engine, "set_strategy_max_drawdown_limits"
+        ):
+            cast(Any, self.engine).set_strategy_max_drawdown_limits(
+                strategy_max_drawdown
+            )
+        if strategy_reduce_only_after_risk and hasattr(
+            self.engine, "set_strategy_reduce_only_after_risk"
+        ):
+            cast(Any, self.engine).set_strategy_reduce_only_after_risk(
+                strategy_reduce_only_after_risk
+            )
+        if strategy_risk_cooldown_bars and hasattr(
+            self.engine, "set_strategy_risk_cooldown_bars"
+        ):
+            cast(Any, self.engine).set_strategy_risk_cooldown_bars(
+                strategy_risk_cooldown_bars
+            )
+        if strategy_priority and hasattr(self.engine, "set_strategy_priorities"):
+            cast(Any, self.engine).set_strategy_priorities(strategy_priority)
+        if strategy_risk_budget and hasattr(
+            self.engine, "set_strategy_risk_budget_limits"
+        ):
+            cast(Any, self.engine).set_strategy_risk_budget_limits(strategy_risk_budget)
+        if hasattr(self.engine, "set_portfolio_risk_budget_limit"):
+            cast(Any, self.engine).set_portfolio_risk_budget_limit(
+                portfolio_risk_budget
+            )
+        if risk_budget_mode not in {"order_notional", "trade_notional"}:
+            raise ValueError(
+                "risk_budget_mode must be 'order_notional' or 'trade_notional'"
+            )
+        if hasattr(self.engine, "set_risk_budget_mode"):
+            cast(Any, self.engine).set_risk_budget_mode(risk_budget_mode)
+        if hasattr(self.engine, "set_risk_budget_reset_daily"):
+            cast(Any, self.engine).set_risk_budget_reset_daily(risk_budget_reset_daily)
 
     def _build_gateway_kwargs(self) -> Dict[str, Any]:
         kwargs = dict(self.gateway_options)

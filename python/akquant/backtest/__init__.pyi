@@ -99,6 +99,24 @@ def run_warm_start(
         Union[StrategyRuntimeConfig, Dict[str, Any]]
     ] = ...,
     runtime_config_override: bool = ...,
+    strategy_id: Optional[str] = ...,
+    strategies_by_slot: Optional[
+        Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]
+    ] = ...,
+    strategy_max_order_value: Optional[Dict[str, float]] = ...,
+    strategy_max_order_size: Optional[Dict[str, float]] = ...,
+    strategy_max_position_size: Optional[Dict[str, float]] = ...,
+    strategy_max_daily_loss: Optional[Dict[str, float]] = ...,
+    strategy_max_drawdown: Optional[Dict[str, float]] = ...,
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = ...,
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = ...,
+    strategy_priority: Optional[Dict[str, int]] = ...,
+    strategy_risk_budget: Optional[Dict[str, float]] = ...,
+    portfolio_risk_budget: Optional[float] = ...,
+    risk_budget_mode: Literal["order_notional", "trade_notional"] = ...,
+    risk_budget_reset_daily: bool = ...,
+    on_event: Optional[Callable[[BacktestStreamEvent], None]] = ...,
+    config: Optional[BacktestConfig] = ...,
     **kwargs: Any,
 ) -> BacktestResult: ...
 

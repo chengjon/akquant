@@ -40,6 +40,14 @@ import akquant as aq
 # 准备第二阶段数据
 data_phase2 = ...
 
+config = aq.BacktestConfig(
+    strategy_config=aq.StrategyConfig(
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BetaStrategy},
+        strategy_max_order_size={"alpha": 10, "beta": 20},
+    )
+)
+
 # 从快照恢复并运行
 result2 = aq.run_warm_start(
     checkpoint_path="checkpoint_phase1.pkl",
@@ -47,7 +55,9 @@ result2 = aq.run_warm_start(
     symbol="AAPL",  # 你的主要标的
     # 重要：必须重新传入市场费用配置，因为 MarketModel 不会被保存
     commission_rate=0.0003,
-    stamp_tax=0.001,
+    stamp_tax_rate=0.001,
+    transfer_fee_rate=0.00001,
+    config=config,
     t_plus_one=True  # 如果是 A 股
 )
 ```
@@ -103,15 +113,16 @@ AKQuant 内置的指标（如 `SMA`, `EMA`）已经支持 Pickle 序列化。如
 ## 4. 注意事项
 
 1.  **Instrument 需重新注册**：`run_warm_start` 会尝试自动为新数据中的 Symbol 注册默认 Instrument。如果你的策略依赖特定的 `lot_size` 或 `multiplier`，建议在 `on_start` 中手动检查并调用 `self.ctx.engine.add_instrument(...)`。
-2.  **MarketModel 重置**：费用设置（佣金、印花税）和交易规则（T+1）不会保存在快照中。务必在 `run_warm_start` 的 `kwargs` 中传入正确的参数。
+2.  **MarketModel 重置**：费用设置（佣金、印花税）和交易规则（T+1）不会保存在快照中。务必在 `run_warm_start` 参数中重新传入正确配置（可通过显式参数或 `config.strategy_config`），优先使用 `stamp_tax_rate`、`transfer_fee_rate`（`stamp_tax`、`transfer_fee` 仍兼容）。
 3.  **初始资金显示**：`result2.metrics.initial_cash` 会自动调整为恢复时的资金，确保收益率计算是基于第二阶段的实际起始资金，而不是账户的历史初始资金。
 4.  **数据连续性**：确保 Phase 1 的结束时间与 Phase 2 的开始时间是连续的。如果中间有长时间中断，指标计算可能会出现跳跃。
 5.  **运行时配置注入**：可通过 `strategy_runtime_config` 在恢复阶段覆盖错误处理和快照阈值等运行时行为。
 6.  **策略级风控状态可恢复**：策略限额、策略现金流、日损基线、回撤峰值、仅平仓激活态等会随快照保存并恢复，便于断点续跑后保持风控行为连续。
+7.  **默认时区**：`run_warm_start` 未显式传入 `timezone` 时，默认使用 `Asia/Shanghai`。
 
 ## 5. 完整示例
 
-请参考项目中的 `examples/21_warm_start_demo.py` 获取完整的可运行代码。
+请参考项目中的 [21_warm_start_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/21_warm_start_demo.py) 获取完整的可运行代码。
 
 ```python
 # 示例摘要
@@ -127,3 +138,9 @@ save_snapshot(engine, strategy, "checkpoint.pkl")
 # ... 运行 Phase 2 ...
 run_warm_start("checkpoint.pkl", data_new, ...)
 ```
+
+## 6. 推荐阅读
+
+- `run_warm_start` 参数详情：[API 参考](../reference/api.md#akquantrun_warm_start)
+- 恢复阶段运行时覆盖：[Runtime Config 指南](runtime_config.md)
+- 多 slot 连续性与策略级风控映射：[多策略迁移指南](multi_strategy_migration.md)

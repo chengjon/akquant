@@ -62,7 +62,7 @@ This guide standardizes how teams choose between class-based and function-style 
 
 ## 6. Reference Examples
 
-- Functional baseline: `examples/23_functional_callbacks_demo.py`
-- Live functional entry: `examples/38_live_functional_strategy_demo.py`
-- broker_live functional submit: `examples/39_live_broker_submit_order_demo.py`
-- Functional multi-slot + risk: `examples/40_functional_multi_slot_risk_demo.py`
+- Functional baseline: [23_functional_callbacks_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/23_functional_callbacks_demo.py)
+- Live functional entry: [38_live_functional_strategy_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/38_live_functional_strategy_demo.py)
+- broker_live functional submit: [39_live_broker_submit_order_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/39_live_broker_submit_order_demo.py)
+- Functional multi-slot + risk: [40_functional_multi_slot_risk_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/40_functional_multi_slot_risk_demo.py)

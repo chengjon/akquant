@@ -22,12 +22,12 @@ Before migration, confirm:
 
 Key parameters for migration:
 
-- `strategy_id`
-- `strategies_by_slot`
-- `strategy_max_order_value` / `strategy_max_order_size` / `strategy_max_position_size`
-- `strategy_max_daily_loss` / `strategy_max_drawdown`
-- `strategy_reduce_only_after_risk`
-- `strategy_risk_cooldown_bars`
+- `StrategyConfig.strategy_id`
+- `StrategyConfig.strategies_by_slot`
+- `StrategyConfig.strategy_max_order_value` / `StrategyConfig.strategy_max_order_size` / `StrategyConfig.strategy_max_position_size`
+- `StrategyConfig.strategy_max_daily_loss` / `StrategyConfig.strategy_max_drawdown`
+- `StrategyConfig.strategy_reduce_only_after_risk`
+- `StrategyConfig.strategy_risk_cooldown_bars`
 
 Rules:
 
@@ -38,14 +38,22 @@ Rules:
 
 ## 4.1 Step 1: Single Strategy Ownership
 
-Keep one strategy and add `strategy_id` first:
+Keep one strategy and add `strategy_id` in `StrategyConfig` first:
 
 ```python
+from akquant import BacktestConfig, StrategyConfig, run_backtest
+
+config = BacktestConfig(
+    strategy_config=StrategyConfig(
+        strategy_id="alpha",
+    )
+)
+
 result = run_backtest(
     data=data,
     strategy=MyStrategy,
     symbol="TEST",
-    strategy_id="alpha",
+    config=config,
     show_progress=False,
 )
 ```
@@ -57,15 +65,23 @@ Checks:
 
 ## 4.2 Step 2: Add Slots
 
-Introduce `strategies_by_slot`:
+Introduce `strategies_by_slot` via config:
 
 ```python
+from akquant import BacktestConfig, StrategyConfig, run_backtest
+
+config = BacktestConfig(
+    strategy_config=StrategyConfig(
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BetaStrategy},
+    )
+)
+
 result = run_backtest(
     data=data,
     strategy=AlphaStrategy,
     symbol="TEST",
-    strategy_id="alpha",
-    strategies_by_slot={"beta": BetaStrategy},
+    config=config,
     show_progress=False,
 )
 ```
@@ -77,18 +93,26 @@ Checks:
 
 ## 4.3 Step 3: Add Strategy-Level Risk Actions
 
-Configure per-strategy limits and actions:
+Configure per-strategy limits and actions in `StrategyConfig`:
 
 ```python
+from akquant import BacktestConfig, StrategyConfig, run_backtest
+
+config = BacktestConfig(
+    strategy_config=StrategyConfig(
+        strategy_id="alpha",
+        strategies_by_slot={"beta": BetaStrategy},
+        strategy_max_order_size={"alpha": 10, "beta": 20},
+        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+        strategy_risk_cooldown_bars={"alpha": 2, "beta": 0},
+    )
+)
+
 result = run_backtest(
     data=data,
     strategy=AlphaStrategy,
     symbol="TEST",
-    strategy_id="alpha",
-    strategies_by_slot={"beta": BetaStrategy},
-    strategy_max_order_size={"alpha": 10, "beta": 20},
-    strategy_reduce_only_after_risk={"alpha": True, "beta": False},
-    strategy_risk_cooldown_bars={"alpha": 2, "beta": 0},
+    config=config,
     show_progress=False,
 )
 ```
@@ -101,6 +125,7 @@ Checks:
 ## 4.4 Step 4: Validate Warm-Start Continuity
 
 - save snapshot and resume via `run_warm_start`
+- use the same `config` to keep strategy topology/risk mapping centralized
 - verify default strategy id, slot topology, and risk runtime states are preserved
 
 ## 5. Minimum Acceptance Matrix
@@ -121,7 +146,7 @@ Cause:
 
 Fix:
 
-- align all map keys with `strategy_id + strategies_by_slot`.
+- align all map keys with `StrategyConfig.strategy_id + StrategyConfig.strategies_by_slot`.
 
 ## 6.2 Ownership mismatch after warm-start
 
@@ -144,4 +169,4 @@ Troubleshooting order:
 
 ## 7. Further Reading
 
-- `docs/en/advanced/warm_start.md`
+- [Warm Start Guide](warm_start.md)

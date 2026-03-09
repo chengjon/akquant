@@ -79,6 +79,10 @@ def check_order_events(strategy: Any) -> None:
                             "trade": t,
                             "engine": getattr(strategy, "_engine", None),
                             "ctx": strategy.ctx,
+                            "owner_strategy_id": str(
+                                getattr(strategy.ctx, "strategy_id", None)
+                                or getattr(strategy, "_owner_strategy_id", "_default")
+                            ),
                         }
                     )
                 except Exception:

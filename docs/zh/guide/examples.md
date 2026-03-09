@@ -330,7 +330,8 @@ class AdjSignal(Strategy):
     *   输出 `report_html=...`，并以 `done_report_and_analysis_outputs` 作为结束标记。
 
 *   **[34_multi_strategy_migration_demo.py](https://github.com/akfamily/akquant/blob/main/examples/34_multi_strategy_migration_demo.py)**:
-    *   演示单策略到多策略 slot 的迁移对照：先跑 `strategy_id` 单策略，再跑 `strategies_by_slot` 多策略，并启用策略级限额、仅平仓、冷却 bars。
+    *   演示单策略到多策略 slot 的迁移对照，采用集中式 `BacktestConfig(strategy_config=StrategyConfig(...))` 写法。
+    *   覆盖策略级限额、仅平仓、冷却 bars 等配置驱动能力。
     *   输出 `single_owner_ids`、`multi_owner_ids`、`multi_alpha_cooldown_rejections` 等摘要，并以 `done_multi_strategy_migration_demo` 作为结束标记。
 
 *   **[35_custom_broker_registry_demo.py](https://github.com/akfamily/akquant/blob/main/examples/35_custom_broker_registry_demo.py)**:

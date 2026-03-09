@@ -43,6 +43,38 @@ def run_backtest(
 ) -> BacktestResult
 ```
 
+### `akquant.run_warm_start`
+
+从快照恢复并继续运行回测（支持多策略 slot 执行）。
+
+```python
+def run_warm_start(
+    checkpoint_path: str,
+    data: Optional[BacktestDataInput] = None,
+    show_progress: bool = True,
+    symbol: Union[str, List[str]] = "BENCHMARK",
+    strategy_runtime_config: Optional[Union[StrategyRuntimeConfig, Dict[str, Any]]] = None,
+    runtime_config_override: bool = True,
+    strategy_id: Optional[str] = None,
+    strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
+    strategy_max_order_value: Optional[Dict[str, float]] = None,
+    strategy_max_order_size: Optional[Dict[str, float]] = None,
+    strategy_max_position_size: Optional[Dict[str, float]] = None,
+    strategy_max_daily_loss: Optional[Dict[str, float]] = None,
+    strategy_max_drawdown: Optional[Dict[str, float]] = None,
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None,
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None,
+    strategy_priority: Optional[Dict[str, int]] = None,
+    strategy_risk_budget: Optional[Dict[str, float]] = None,
+    portfolio_risk_budget: Optional[float] = None,
+    risk_budget_mode: Literal["order_notional", "trade_notional"] = "order_notional",
+    risk_budget_reset_daily: bool = False,
+    on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
+    config: Optional[BacktestConfig] = None,
+    **kwargs: Any,
+) -> BacktestResult
+```
+
 **关键参数:**
 
 *   `data`: 回测数据。支持单个 DataFrame，`{symbol: DataFrame}` 字典，`List[Bar]`，或实现 `DataFeedAdapter.load(request)` 的对象。
@@ -221,6 +253,20 @@ class StrategyConfig:
 
     # 风控
     risk: Optional[RiskConfig] = None
+
+    # 多策略拓扑与策略级风控
+    strategy_id: Optional[str] = None
+    strategies_by_slot: Optional[Dict[str, Any]] = None
+    strategy_max_order_value: Optional[Dict[str, float]] = None
+    strategy_max_order_size: Optional[Dict[str, float]] = None
+    strategy_max_position_size: Optional[Dict[str, float]] = None
+    strategy_max_daily_loss: Optional[Dict[str, float]] = None
+    strategy_max_drawdown: Optional[Dict[str, float]] = None
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None
+    strategy_priority: Optional[Dict[str, int]] = None
+    strategy_risk_budget: Optional[Dict[str, float]] = None
+    portfolio_risk_budget: Optional[float] = None
 ```
 
 ### `akquant.InstrumentConfig`
@@ -282,6 +328,9 @@ BacktestConfig (回测场景)
     *   例如：`run_backtest(start_time="2022-01-01")` 会覆盖 `config.start_time`。
 2.  **配置对象 (Config Objects)**:
     *   如果显式参数为 `None`，则从 `config` (`BacktestConfig`) 中读取。
+    *   多策略字段可集中配置在 `config.strategy_config`（如 `strategy_id`、
+        `strategies_by_slot`、`strategy_max_*`、`strategy_priority`、
+        `strategy_risk_budget`、`portfolio_risk_budget`）。
 3.  **默认值 (Defaults)**:
     *   如果上述两者都未提供，则使用系统默认值。
 

@@ -14,7 +14,7 @@ This guide focuses on function-style strategy entry with LiveRunner, covering bo
 
 Start with paper mode to verify callback flow:
 
-- Example: [38_live_functional_strategy_demo.py](file:///Users/albert/Documents/trae_projects/akquant/examples/38_live_functional_strategy_demo.py)
+- Example: [38_live_functional_strategy_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/38_live_functional_strategy_demo.py)
 - Typical setup:
   - `trading_mode="paper"`
   - `strategy_cls=on_bar`
@@ -24,8 +24,8 @@ Start with paper mode to verify callback flow:
 
 Switch to broker_live after gateway connectivity is verified:
 
-- Example: [39_live_broker_submit_order_demo.py](file:///Users/albert/Documents/trae_projects/akquant/examples/39_live_broker_submit_order_demo.py)
-- Audit example: [42_live_broker_event_audit_demo.py](file:///Users/albert/Documents/trae_projects/akquant/examples/42_live_broker_event_audit_demo.py)
+- Example: [39_live_broker_submit_order_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/39_live_broker_submit_order_demo.py)
+- Audit example: [42_live_broker_event_audit_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/42_live_broker_event_audit_demo.py)
 - Key points:
   - `trading_mode="broker_live"`
   - call `ctx.submit_order(...)` inside `on_bar`

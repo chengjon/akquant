@@ -225,6 +225,20 @@ class StrategyConfig:
     # Risk Config
     risk: Optional[RiskConfig] = None
 
+    # Multi-Strategy Topology & Risk Controls
+    strategy_id: Optional[str] = None
+    strategies_by_slot: Optional[Dict[str, Any]] = None
+    strategy_max_order_value: Optional[Dict[str, float]] = None
+    strategy_max_order_size: Optional[Dict[str, float]] = None
+    strategy_max_position_size: Optional[Dict[str, float]] = None
+    strategy_max_daily_loss: Optional[Dict[str, float]] = None
+    strategy_max_drawdown: Optional[Dict[str, float]] = None
+    strategy_reduce_only_after_risk: Optional[Dict[str, bool]] = None
+    strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None
+    strategy_priority: Optional[Dict[str, int]] = None
+    strategy_risk_budget: Optional[Dict[str, float]] = None
+    portfolio_risk_budget: Optional[float] = None
+
 
 @dataclass
 class BacktestConfig:

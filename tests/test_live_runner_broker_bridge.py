@@ -619,6 +619,155 @@ def test_live_runner_configures_engine_slots_for_primary_and_secondary() -> None
     assert getattr(secondary, "shared_flag") == "ok"
 
 
+def test_live_runner_applies_strategy_risk_controls_for_slots() -> None:
+    """Apply strategy-level risk controls using configured slot ids."""
+
+    class _DummyEngine:
+        def __init__(self) -> None:
+            self.slot_ids: list[str] = []
+            self.default_strategy_id = ""
+            self.slot_strategies: dict[int, Any] = {}
+            self.max_order_value_limits: dict[str, float] = {}
+            self.max_order_size_limits: dict[str, float] = {}
+            self.max_position_size_limits: dict[str, float] = {}
+            self.max_daily_loss_limits: dict[str, float] = {}
+            self.max_drawdown_limits: dict[str, float] = {}
+            self.reduce_only_flags: dict[str, bool] = {}
+            self.cooldown_bars: dict[str, int] = {}
+            self.strategy_priorities: dict[str, int] = {}
+            self.strategy_risk_budget_limits: dict[str, float] = {}
+            self.portfolio_risk_budget_limit: float | None = None
+            self.risk_budget_mode = ""
+            self.risk_budget_reset_daily = False
+
+        def set_strategy_slots(self, slot_ids: list[str]) -> None:
+            self.slot_ids = slot_ids
+
+        def set_default_strategy_id(self, strategy_id: str) -> None:
+            self.default_strategy_id = strategy_id
+
+        def set_strategy_for_slot(self, slot_index: int, strategy: Any) -> None:
+            self.slot_strategies[slot_index] = strategy
+
+        def set_strategy_max_order_value_limits(self, limits: dict[str, float]) -> None:
+            self.max_order_value_limits = limits
+
+        def set_strategy_max_order_size_limits(self, limits: dict[str, float]) -> None:
+            self.max_order_size_limits = limits
+
+        def set_strategy_max_position_size_limits(
+            self, limits: dict[str, float]
+        ) -> None:
+            self.max_position_size_limits = limits
+
+        def set_strategy_max_daily_loss_limits(self, limits: dict[str, float]) -> None:
+            self.max_daily_loss_limits = limits
+
+        def set_strategy_max_drawdown_limits(self, limits: dict[str, float]) -> None:
+            self.max_drawdown_limits = limits
+
+        def set_strategy_reduce_only_after_risk(self, flags: dict[str, bool]) -> None:
+            self.reduce_only_flags = flags
+
+        def set_strategy_risk_cooldown_bars(self, bars: dict[str, int]) -> None:
+            self.cooldown_bars = bars
+
+        def set_strategy_priorities(self, priorities: dict[str, int]) -> None:
+            self.strategy_priorities = priorities
+
+        def set_strategy_risk_budget_limits(self, limits: dict[str, float]) -> None:
+            self.strategy_risk_budget_limits = limits
+
+        def set_portfolio_risk_budget_limit(self, limit: float | None) -> None:
+            self.portfolio_risk_budget_limit = limit
+
+        def set_risk_budget_mode(self, mode: str) -> None:
+            self.risk_budget_mode = mode
+
+        def set_risk_budget_reset_daily(self, enabled: bool) -> None:
+            self.risk_budget_reset_daily = enabled
+
+    class _DummyStrategy(Strategy):
+        def on_bar(self, bar: Any) -> None:
+            _ = bar
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.engine = cast(Any, _DummyEngine())
+    runner.context = {}
+    runner.strategy_max_order_value = {"alpha": 1000.0, "beta": 2000.0}
+    runner.strategy_max_order_size = {"alpha": 10.0, "beta": 20.0}
+    runner.strategy_max_position_size = {"alpha": 100.0, "beta": 200.0}
+    runner.strategy_max_daily_loss = {"alpha": 0.02, "beta": 0.03}
+    runner.strategy_max_drawdown = {"alpha": 0.1, "beta": 0.15}
+    runner.strategy_reduce_only_after_risk = {"alpha": True, "beta": False}
+    runner.strategy_risk_cooldown_bars = {"alpha": 3, "beta": 5}
+    runner.strategy_priority = {"alpha": 1, "beta": 2}
+    runner.strategy_risk_budget = {"alpha": 50000.0, "beta": 60000.0}
+    runner.portfolio_risk_budget = 120000.0
+    runner.risk_budget_mode = "order_notional"
+    runner.risk_budget_reset_daily = True
+    primary = _DummyStrategy()
+    secondary = _DummyStrategy()
+    runner._configure_strategy_slots(primary, {"beta": secondary}, "alpha")
+    engine = cast(_DummyEngine, runner.engine)
+
+    assert engine.max_order_value_limits == {"alpha": 1000.0, "beta": 2000.0}
+    assert engine.max_order_size_limits == {"alpha": 10.0, "beta": 20.0}
+    assert engine.max_position_size_limits == {"alpha": 100.0, "beta": 200.0}
+    assert engine.max_daily_loss_limits == {"alpha": 0.02, "beta": 0.03}
+    assert engine.max_drawdown_limits == {"alpha": 0.1, "beta": 0.15}
+    assert engine.reduce_only_flags == {"alpha": True, "beta": False}
+    assert engine.cooldown_bars == {"alpha": 3, "beta": 5}
+    assert engine.strategy_priorities == {"alpha": 1, "beta": 2}
+    assert engine.strategy_risk_budget_limits == {"alpha": 50000.0, "beta": 60000.0}
+    assert engine.portfolio_risk_budget_limit == 120000.0
+    assert engine.risk_budget_mode == "order_notional"
+    assert engine.risk_budget_reset_daily is True
+
+
+def test_live_runner_rejects_unknown_strategy_ids_in_risk_controls() -> None:
+    """Reject strategy-level maps containing ids outside configured slots."""
+
+    class _DummyEngine:
+        def set_strategy_slots(self, slot_ids: list[str]) -> None:
+            _ = slot_ids
+
+        def set_default_strategy_id(self, strategy_id: str) -> None:
+            _ = strategy_id
+
+        def set_strategy_for_slot(self, slot_index: int, strategy: Any) -> None:
+            _ = slot_index
+            _ = strategy
+
+    class _DummyStrategy(Strategy):
+        def on_bar(self, bar: Any) -> None:
+            _ = bar
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.engine = cast(Any, _DummyEngine())
+    runner.context = {}
+    runner.strategy_max_order_value = {"ghost": 123.0}
+    runner.strategy_max_order_size = {}
+    runner.strategy_max_position_size = {}
+    runner.strategy_max_daily_loss = {}
+    runner.strategy_max_drawdown = {}
+    runner.strategy_reduce_only_after_risk = {}
+    runner.strategy_risk_cooldown_bars = {}
+    runner.strategy_priority = {}
+    runner.strategy_risk_budget = {}
+    runner.portfolio_risk_budget = None
+    runner.risk_budget_mode = "order_notional"
+    runner.risk_budget_reset_daily = False
+    primary = _DummyStrategy()
+    secondary = _DummyStrategy()
+
+    try:
+        runner._configure_strategy_slots(primary, {"beta": secondary}, "alpha")
+        assert False, "expected ValueError for unknown strategy id"
+    except ValueError as exc:
+        assert "unknown strategy ids: ghost" in str(exc)
+
+
 def test_live_runner_submitter_binds_owner_strategy_id_mapping() -> None:
     """Bind strategy owner mapping when submit_order is called."""
 

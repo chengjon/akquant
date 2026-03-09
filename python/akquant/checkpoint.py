@@ -17,16 +17,65 @@ def save_snapshot(engine: aq.Engine, strategy: Any, filepath: str) -> None:
     # Note: engine.get_state_bytes returns bytes directly in Python
     engine_bytes = engine.get_state_bytes()  # type: ignore[attr-defined]
 
-    # 2. Construct snapshot dict
+    default_strategy_id = str(getattr(strategy, "_owner_strategy_id", "") or "").strip()
+    if (
+        not default_strategy_id
+        and hasattr(engine, "get_default_strategy_id")
+        and callable(getattr(engine, "get_default_strategy_id"))
+    ):
+        default_strategy_id = str(engine.get_default_strategy_id() or "").strip()
+    if not default_strategy_id:
+        default_strategy_id = "_default"
+
+    slot_ids: list[str] = []
+    slot_fetcher = None
+    if hasattr(engine, "get_strategy_slot_ids") and callable(
+        getattr(engine, "get_strategy_slot_ids")
+    ):
+        slot_fetcher = engine.get_strategy_slot_ids
+    elif hasattr(engine, "get_strategy_slots") and callable(
+        getattr(engine, "get_strategy_slots")
+    ):
+        slot_fetcher = engine.get_strategy_slots
+    if slot_fetcher is not None:
+        try:
+            slot_ids = [
+                str(slot_id).strip()
+                for slot_id in slot_fetcher()
+                if str(slot_id).strip()
+            ]
+        except Exception:
+            slot_ids = []
+    if not slot_ids:
+        raw_slot_ids = getattr(strategy, "_strategy_slot_ids", [])
+        if isinstance(raw_slot_ids, list):
+            slot_ids = [
+                str(slot_id).strip() for slot_id in raw_slot_ids if str(slot_id).strip()
+            ]
+    if default_strategy_id not in slot_ids:
+        slot_ids.insert(0, default_strategy_id)
+
     snapshot = {
         "engine_state": engine_bytes,
         "strategy": strategy,
+        "strategy_topology": {
+            "default_strategy_id": default_strategy_id,
+            "slot_ids": slot_ids,
+        },
         "version": aq.__version__,
     }
 
-    # 3. Save to file
-    with open(filepath, "wb") as f:
-        pickle.dump(snapshot, f)
+    transient_backups: dict[str, Any] = {}
+    for attr_name in ("_slot_strategies", "_engine", "_analyzer_manager"):
+        if hasattr(strategy, attr_name):
+            transient_backups[attr_name] = getattr(strategy, attr_name)
+            delattr(strategy, attr_name)
+    try:
+        with open(filepath, "wb") as f:
+            pickle.dump(snapshot, f)
+    finally:
+        for attr_name, attr_value in transient_backups.items():
+            setattr(strategy, attr_name, attr_value)
     print(f"Snapshot saved to {filepath}")
 
 
@@ -48,6 +97,9 @@ def warm_start(
 
     # 1. Restore Strategy
     strategy = snapshot["strategy"]
+    topology = snapshot.get("strategy_topology", {})
+    if not isinstance(topology, dict):
+        topology = {}
 
     # 2. Initialize new Engine
     engine = aq.Engine()
@@ -65,7 +117,16 @@ def warm_start(
     # But if user strategy does, they should handle it or we can try.
     if hasattr(strategy, "engine"):
         strategy.engine = engine
-
+    default_strategy_id = str(topology.get("default_strategy_id", "") or "").strip()
+    if default_strategy_id:
+        setattr(strategy, "_owner_strategy_id", default_strategy_id)
+    slot_ids = topology.get("slot_ids", [])
+    if isinstance(slot_ids, list):
+        normalized_slot_ids = [
+            str(slot_id).strip() for slot_id in slot_ids if str(slot_id).strip()
+        ]
+        if normalized_slot_ids:
+            setattr(strategy, "_strategy_slot_ids", normalized_slot_ids)
     # print(f"Warm start loaded from {filepath}. Snapshot time: {engine.snapshot_time}")
 
     return engine, strategy

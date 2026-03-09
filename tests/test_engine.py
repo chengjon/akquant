@@ -828,6 +828,83 @@ def test_run_backtest_strategy_max_order_size_by_slot() -> None:
     assert not any("order quantity" in reason for reason in beta_reject_reasons)
 
 
+def test_run_backtest_strategy_slot_risk_from_config() -> None:
+    """Config strategy settings should drive slot topology and risk limits."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(
+            initial_cash=100000.0,
+            strategy_id="alpha",
+            strategies_by_slot={"beta": SingleBuyStrategy},
+            strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+        )
+    )
+    bars = _build_regression_bars("SLOT_RISK_SIZE_CFG")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="SLOT_RISK_SIZE_CFG",
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        config=config,
+    )
+    orders_df = result.orders_df
+    assert not orders_df.empty
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("order quantity" in reason for reason in alpha_reject_reasons)
+    assert not any("order quantity" in reason for reason in beta_reject_reasons)
+
+
+def test_run_backtest_explicit_strategy_slot_risk_overrides_config() -> None:
+    """Explicit strategy slot risk args should override config values."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_strategy_max_order_size_limits"):
+        pytest.skip("Engine binary does not expose strategy-level risk limit methods")
+
+    config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(
+            initial_cash=100000.0,
+            strategy_id="alpha",
+            strategies_by_slot={"beta": SingleBuyStrategy},
+            strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+        )
+    )
+    bars = _build_regression_bars("SLOT_RISK_SIZE_CFG_OVERRIDE")
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbol="SLOT_RISK_SIZE_CFG_OVERRIDE",
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        config=config,
+        strategy_max_order_size={"alpha": 20.0, "beta": 5.0},
+    )
+    orders_df = result.orders_df
+    assert not orders_df.empty
+    alpha_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = orders_df[orders_df["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert not any("order quantity" in reason for reason in alpha_reject_reasons)
+    assert any("order quantity" in reason for reason in beta_reject_reasons)
+
+
 def test_backtest_result_strategy_level_views() -> None:
     """BacktestResult should provide strategy-level orders/executions views."""
     probe = akquant.Engine()
@@ -2057,3 +2134,51 @@ def test_run_backtest_analyzer_plugins_lifecycle_and_output() -> None:
     assert outputs["counting"]["starts"] == 1
     assert outputs["counting"]["bars"] == 3
     assert outputs["counting"]["trades"] >= 1
+
+
+def test_run_backtest_analyzer_plugins_multi_slot_owner_context() -> None:
+    """Analyzer contexts should include owner strategy ids across slots."""
+
+    class OwnerAwareAnalyzer:
+        name = "owner_aware"
+
+        def __init__(self) -> None:
+            self.bar_owner_ids: set[str] = set()
+            self.trade_owner_ids: set[str] = set()
+
+        def on_start(self, context: dict[str, Any]) -> None:
+            _ = context
+
+        def on_bar(self, context: dict[str, Any]) -> None:
+            owner_strategy_id = str(context.get("owner_strategy_id", "")).strip()
+            if owner_strategy_id:
+                self.bar_owner_ids.add(owner_strategy_id)
+
+        def on_trade(self, context: dict[str, Any]) -> None:
+            owner_strategy_id = str(context.get("owner_strategy_id", "")).strip()
+            if owner_strategy_id:
+                self.trade_owner_ids.add(owner_strategy_id)
+
+        def on_finish(self, context: dict[str, Any]) -> dict[str, Any]:
+            _ = context
+            return {
+                "bar_owner_ids": sorted(self.bar_owner_ids),
+                "trade_owner_ids": sorted(self.trade_owner_ids),
+            }
+
+    analyzer = OwnerAwareAnalyzer()
+    result = akquant.run_backtest(
+        data=_build_regression_bars("ANALYZER_SLOT"),
+        strategy=RegressionStrategy,
+        symbol="ANALYZER_SLOT",
+        execution_mode="current_close",
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": RegressionStrategy},
+        analyzer_plugins=[analyzer],
+    )
+
+    outputs = cast(dict[str, dict[str, Any]], result.analyzer_outputs)
+    assert "owner_aware" in outputs
+    assert outputs["owner_aware"]["bar_owner_ids"] == ["alpha", "beta"]
+    assert outputs["owner_aware"]["trade_owner_ids"] == ["alpha", "beta"]

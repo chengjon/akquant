@@ -26,12 +26,12 @@
 
 - P0 原生复杂订单族
   - 核心类型定义：[types.rs](file:///Users/albert/Documents/trae_projects/akquant/src/model/types.rs)
-  - 复杂订单示例：[06_complex_orders.py](file:///Users/albert/Documents/trae_projects/akquant/examples/06_complex_orders.py)
+  - 复杂订单示例：[06_complex_orders.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/06_complex_orders.py)
 - P1 统一数据源适配层
   - API 文档入口：[api.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/reference/api.md)
   - 数据入口实现：[data.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/data.py)
 - P1 多时间框架重采样/重放
-  - 现有多频示例：[14_multi_frequency.py](file:///Users/albert/Documents/trae_projects/akquant/examples/14_multi_frequency.py)
+  - 现有多频示例：[14_multi_frequency.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/14_multi_frequency.py)
 - P1 Broker 生态国际化
   - 工厂入口：[factory.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/gateway/factory.py)
   - 注册入口：[registry.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/gateway/registry.py)

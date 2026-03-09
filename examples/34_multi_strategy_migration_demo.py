@@ -49,17 +49,22 @@ class BetaStrategy(Strategy):
 
 def run_single_strategy() -> Any:
     """Run single-strategy ownership baseline."""
+    config = aq.BacktestConfig(
+        strategy_config=aq.StrategyConfig(
+            strategy_id="alpha",
+            initial_cash=100000.0,
+            commission_rate=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+            min_commission=0.0,
+        )
+    )
     return aq.run_backtest(
         data=make_bars(),
         strategy=AlphaStrategy,
         symbol="MIGRATE",
-        strategy_id="alpha",
-        initial_cash=100000.0,
+        config=config,
         execution_mode="current_close",
-        commission_rate=0.0,
-        stamp_tax_rate=0.0,
-        transfer_fee_rate=0.0,
-        min_commission=0.0,
         lot_size=1,
         show_progress=False,
     )
@@ -67,21 +72,26 @@ def run_single_strategy() -> Any:
 
 def run_multi_strategy() -> Any:
     """Run multi-slot strategy with risk actions."""
+    config = aq.BacktestConfig(
+        strategy_config=aq.StrategyConfig(
+            strategy_id="alpha",
+            strategies_by_slot={"beta": BetaStrategy},
+            strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+            strategy_reduce_only_after_risk={"alpha": True, "beta": False},
+            strategy_risk_cooldown_bars={"alpha": 2, "beta": 0},
+            initial_cash=100000.0,
+            commission_rate=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+            min_commission=0.0,
+        )
+    )
     return aq.run_backtest(
         data=make_bars(),
         strategy=AlphaStrategy,
         symbol="MIGRATE",
-        strategy_id="alpha",
-        strategies_by_slot={"beta": BetaStrategy},
-        strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
-        strategy_reduce_only_after_risk={"alpha": True, "beta": False},
-        strategy_risk_cooldown_bars={"alpha": 2, "beta": 0},
-        initial_cash=100000.0,
+        config=config,
         execution_mode="current_close",
-        commission_rate=0.0,
-        stamp_tax_rate=0.0,
-        transfer_fee_rate=0.0,
-        min_commission=0.0,
         lot_size=1,
         show_progress=False,
     )

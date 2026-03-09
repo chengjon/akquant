@@ -14,7 +14,7 @@
 
 推荐先用 paper 检查事件链路是否正常：
 
-- 示例脚本：[38_live_functional_strategy_demo.py](file:///Users/albert/Documents/trae_projects/akquant/examples/38_live_functional_strategy_demo.py)
+- 示例脚本：[38_live_functional_strategy_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/38_live_functional_strategy_demo.py)
 - 典型参数：
   - `trading_mode="paper"`
   - `strategy_cls=on_bar`
@@ -24,8 +24,8 @@
 
 确认网关连通后切换到 broker_live：
 
-- 示例脚本：[39_live_broker_submit_order_demo.py](file:///Users/albert/Documents/trae_projects/akquant/examples/39_live_broker_submit_order_demo.py)
-- 审计示例：[42_live_broker_event_audit_demo.py](file:///Users/albert/Documents/trae_projects/akquant/examples/42_live_broker_event_audit_demo.py)
+- 示例脚本：[39_live_broker_submit_order_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/39_live_broker_submit_order_demo.py)
+- 审计示例：[42_live_broker_event_audit_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/42_live_broker_event_audit_demo.py)
 - 关键点：
   - `trading_mode="broker_live"`
   - `on_bar` 中调用 `ctx.submit_order(...)`

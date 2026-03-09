@@ -62,7 +62,7 @@
 
 ## 6. 参考示例
 
-- 函数式回调基线：`examples/23_functional_callbacks_demo.py`
-- Live 函数式入口：`examples/38_live_functional_strategy_demo.py`
-- broker_live 函数式下单：`examples/39_live_broker_submit_order_demo.py`
-- 函数式多 slot + 风控：`examples/40_functional_multi_slot_risk_demo.py`
+- 函数式回调基线：[23_functional_callbacks_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/23_functional_callbacks_demo.py)
+- Live 函数式入口：[38_live_functional_strategy_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/38_live_functional_strategy_demo.py)
+- broker_live 函数式下单：[39_live_broker_submit_order_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/39_live_broker_submit_order_demo.py)
+- 函数式多 slot + 风控：[40_functional_multi_slot_risk_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/40_functional_multi_slot_risk_demo.py)

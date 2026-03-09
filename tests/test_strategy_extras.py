@@ -6,7 +6,13 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-from akquant import run_backtest, run_warm_start, save_snapshot
+from akquant import (
+    BacktestConfig,
+    StrategyConfig,
+    run_backtest,
+    run_warm_start,
+    save_snapshot,
+)
 from akquant.akquant import Bar, OrderStatus, StrategyContext, Tick, TimeInForce
 from akquant.backtest import FunctionalStrategy
 from akquant.strategy import Strategy, StrategyRuntimeConfig
@@ -676,18 +682,181 @@ def test_run_warm_start_restores_strategy_risk_state(tmp_path: Path) -> None:
     )
     engine = result2.engine
     assert engine is not None
-    if not hasattr(engine, "get_default_strategy_id") or not hasattr(
-        engine, "get_strategy_slots"
+    if not hasattr(engine, "get_default_strategy_id") or (
+        not hasattr(engine, "get_strategy_slots")
+        and not hasattr(engine, "get_strategy_slot_ids")
     ):
         pytest.skip("Engine binary does not expose strategy slot methods")
     assert cast(Any, engine).get_default_strategy_id() == "alpha"
-    assert set(cast(Any, engine).get_strategy_slots()) == {"alpha", "beta"}
+    slot_getter = (
+        cast(Any, engine).get_strategy_slot_ids
+        if hasattr(engine, "get_strategy_slot_ids")
+        else cast(Any, engine).get_strategy_slots
+    )
+    assert set(slot_getter()) == {"alpha", "beta"}
     orders_df = result2.orders_df
     phase2_rows = orders_df[
         orders_df["created_at"].dt.strftime("%Y-%m-%d") == "2023-01-02"
     ]
     reject_reasons = phase2_rows["reject_reason"].fillna("").astype(str).tolist()
     assert any("cooldown" in reason for reason in reject_reasons), reject_reasons
+
+
+def test_run_warm_start_accepts_multi_slot_risk_overrides(tmp_path: Path) -> None:
+    """run_warm_start should apply slot risk maps with explicit topology args."""
+    checkpoint = tmp_path / "snapshot_risk_override.pkl"
+    phase1 = _make_bars("2023-01-01", 1)
+    phase2 = _make_bars("2023-01-02", 1, start_price=101.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartRiskStateStrategy,
+        symbol="TEST",
+        initial_cash=100000.0,
+        execution_mode="current_close",
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": WarmStartRiskStateStrategy},
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="TEST",
+        execution_mode="current_close",
+        show_progress=False,
+        strategy_id="alpha",
+        strategies_by_slot={"beta": WarmStartRiskStateStrategy},
+        strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+    )
+    phase2_rows = result2.orders_df[
+        result2.orders_df["created_at"].dt.strftime("%Y-%m-%d") == "2023-01-02"
+    ]
+    alpha_rows = phase2_rows[phase2_rows["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = phase2_rows[phase2_rows["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("order quantity" in reason for reason in alpha_reject_reasons)
+    assert not any("order quantity" in reason for reason in beta_reject_reasons)
+
+
+def test_run_warm_start_accepts_multi_slot_risk_from_config(tmp_path: Path) -> None:
+    """run_warm_start should accept strategy slot risk settings from config."""
+    checkpoint = tmp_path / "snapshot_risk_from_config.pkl"
+    phase1 = _make_bars("2023-01-01", 1)
+    phase2 = _make_bars("2023-01-02", 1, start_price=101.0)
+    config = BacktestConfig(
+        strategy_config=StrategyConfig(
+            initial_cash=100000.0,
+            strategy_id="alpha",
+            strategies_by_slot={"beta": WarmStartRiskStateStrategy},
+            strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+        )
+    )
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartRiskStateStrategy,
+        symbol="TEST",
+        execution_mode="current_close",
+        show_progress=False,
+        config=config,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="TEST",
+        execution_mode="current_close",
+        show_progress=False,
+        config=config,
+    )
+    phase2_rows = result2.orders_df[
+        result2.orders_df["created_at"].dt.strftime("%Y-%m-%d") == "2023-01-02"
+    ]
+    alpha_rows = phase2_rows[phase2_rows["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = phase2_rows[phase2_rows["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert any("order quantity" in reason for reason in alpha_reject_reasons)
+    assert not any("order quantity" in reason for reason in beta_reject_reasons)
+
+
+def test_run_warm_start_explicit_slot_risk_overrides_config(tmp_path: Path) -> None:
+    """Explicit warm-start slot risk args should override config values."""
+    checkpoint = tmp_path / "snapshot_risk_from_config_override.pkl"
+    phase1 = _make_bars("2023-01-01", 1)
+    phase2 = _make_bars("2023-01-02", 1, start_price=101.0)
+    config = BacktestConfig(
+        strategy_config=StrategyConfig(
+            initial_cash=100000.0,
+            strategy_id="alpha",
+            strategies_by_slot={"beta": WarmStartRiskStateStrategy},
+            strategy_max_order_size={"alpha": 5.0, "beta": 20.0},
+        )
+    )
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartRiskStateStrategy,
+        symbol="TEST",
+        execution_mode="current_close",
+        show_progress=False,
+        config=config,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="TEST",
+        execution_mode="current_close",
+        show_progress=False,
+        config=config,
+        strategy_max_order_size={"alpha": 20.0, "beta": 5.0},
+    )
+    phase2_rows = result2.orders_df[
+        result2.orders_df["created_at"].dt.strftime("%Y-%m-%d") == "2023-01-02"
+    ]
+    alpha_rows = phase2_rows[phase2_rows["owner_strategy_id"].astype(str) == "alpha"]
+    beta_rows = phase2_rows[phase2_rows["owner_strategy_id"].astype(str) == "beta"]
+    alpha_reject_reasons = alpha_rows["reject_reason"].fillna("").astype(str).tolist()
+    beta_reject_reasons = beta_rows["reject_reason"].fillna("").astype(str).tolist()
+    assert not any("order quantity" in reason for reason in alpha_reject_reasons)
+    assert any("order quantity" in reason for reason in beta_reject_reasons)
+
+
+def test_run_warm_start_accepts_fee_rate_names_and_default_timezone(
+    tmp_path: Path,
+) -> None:
+    """run_warm_start should accept *_rate fee names and keep Asia/Shanghai default."""
+    checkpoint = tmp_path / "snapshot_fee_rate_alias.pkl"
+    phase1 = _make_bars("2023-01-01", 2)
+    phase2 = _make_bars("2023-01-03", 2, start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbol="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbol="TEST",
+        show_progress=False,
+        commission_rate=0.0003,
+        stamp_tax_rate=0.001,
+        transfer_fee_rate=0.00001,
+        min_commission=0.0,
+    )
+    equity_index = cast(pd.DatetimeIndex, result2.equity_curve.index)
+    assert equity_index.tz is not None
+    assert str(equity_index.tz) == "Asia/Shanghai"
 
 
 def test_run_warm_start_runtime_config_override_true_by_default(

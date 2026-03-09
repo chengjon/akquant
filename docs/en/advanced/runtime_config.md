@@ -81,11 +81,13 @@ result = run_warm_start(
 
 Conflict rules are exactly the same as `run_backtest`.
 
+See also: [Warm Start Guide](warm_start.md).
+
 ## 7. End-to-End Demo
 
 See runnable demo:
 
-- `examples/22_strategy_runtime_config_demo.py`
+- [22_strategy_runtime_config_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/22_strategy_runtime_config_demo.py)
 
 Expected output markers:
 

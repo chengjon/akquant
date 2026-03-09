@@ -69,4 +69,4 @@ Use this checklist to move a custom broker from "works in demo" to "production-r
 
 - [Custom Broker Registry](./custom_broker_registry.md)
 - [API Reference: gateway registry APIs](../reference/api.md#akquantgateway-custom-broker-registry)
-- [Example: 35_custom_broker_registry_demo.py](file:///Users/albert/Documents/trae_projects/akquant/examples/35_custom_broker_registry_demo.py)
+- [Example: 35_custom_broker_registry_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/35_custom_broker_registry_demo.py)

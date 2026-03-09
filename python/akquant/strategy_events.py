@@ -73,6 +73,10 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
                     "bar": bar,
                     "engine": getattr(strategy, "_engine", None),
                     "ctx": ctx,
+                    "owner_strategy_id": str(
+                        getattr(ctx, "strategy_id", None)
+                        or getattr(strategy, "_owner_strategy_id", "_default")
+                    ),
                 }
             )
         except Exception:

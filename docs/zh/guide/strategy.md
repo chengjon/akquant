@@ -315,6 +315,7 @@ AKQuant 提供了两种风格的策略开发接口：
 *   函数式回调基础示例：`examples/23_functional_callbacks_demo.py`
 *   函数式 Tick 回调模拟示例：`examples/24_functional_tick_simulation_demo.py`
 *   LiveRunner 支持函数式入口与多 slot 编排：`LiveRunner(strategy_cls=on_bar, strategy_id="alpha", strategies_by_slot={"beta": OtherStrategy}, initialize=..., on_tick=..., on_order=..., on_trade=..., on_timer=...)`
+*   回测多 slot 与策略级风控映射建议使用集中式 `BacktestConfig(strategy_config=StrategyConfig(...))`：`docs/zh/advanced/multi_strategy_migration.md`
 *   broker_live 函数式下单示例：`examples/39_live_broker_submit_order_demo.py`
 *   函数式多策略 slot + 风控示例：`examples/40_functional_multi_slot_risk_demo.py`
 *   LiveRunner 多策略 slot 编排示例：`examples/41_live_multi_slot_orchestration_demo.py`
