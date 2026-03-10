@@ -8,7 +8,22 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from akquant import Indicator, Strategy, run_grid_search
+from akquant import (
+    Indicator,
+    IntParam,
+    ParamModel,
+    Strategy,
+    get_strategy_param_schema,
+    run_grid_search,
+    validate_strategy_params,
+)
+
+
+class SMACrossParams(ParamModel):
+    """双均线参数模型."""
+
+    fast_period: int = IntParam(10, ge=2, le=200, title="快线周期")
+    slow_period: int = IntParam(30, ge=3, le=500, title="慢线周期")
 
 
 class SMACrossStrategy(Strategy):
@@ -19,6 +34,8 @@ class SMACrossStrategy(Strategy):
         fast_period (int): 快线周期
         slow_period (int): 慢线周期
     """
+
+    PARAM_MODEL = SMACrossParams
 
     def __init__(self, fast_period: int = 10, slow_period: int = 30):
         """初始化策略."""
@@ -74,6 +91,13 @@ if __name__ == "__main__":
 
     # 2. 运行优化
     print("Starting optimization...")
+    schema = get_strategy_param_schema(SMACrossStrategy)
+    print(f"Schema fields: {sorted(schema.get('properties', {}).keys())}")
+    validated = validate_strategy_params(
+        SMACrossStrategy,
+        {"fast_period": 12, "slow_period": 36},
+    )
+    print(f"Validated params demo: {validated}")
 
     # 定义参数网格
     param_grid = {

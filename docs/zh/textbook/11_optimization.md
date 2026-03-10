@@ -78,13 +78,39 @@ $$ P(\text{至少一次伪显著}) = 1 - (1 - 0.05)^{100} \approx 99.4\% $$
 
 `akquant` 提供了 `run_grid_search` 函数，支持并行计算。
 
-### 11.4.1 代码示例
+### 11.4.1 参数模型驱动（适合页面化）
+
+在面向页面配置、策略市场、研究平台等场景中，推荐采用以下分层：
+
+*   **参数模型层**：在策略类中声明 `PARAM_MODEL`（基于 `akquant.params.ParamModel`）。
+    *   用于参数类型约束、默认值管理、前端 JSON Schema 导出。
+*   **优化搜索层**：继续使用 `run_grid_search(param_grid=...)`。
+    *   `param_grid` 只负责离散候选值，不承担复杂对象校验。
+
+推荐这样做的核心原因是：**运行参数校验**与**参数组合搜索**在职责上是不同问题，拆开后更清晰、更稳健。
+
+策略示意（节选）：
+
+```python
+from akquant import IntParam, ParamModel, Strategy
+
+
+class SmaParams(ParamModel):
+    fast_period: int = IntParam(10, ge=2, le=200)
+    slow_period: int = IntParam(30, ge=3, le=500)
+
+
+class SmaStrategy(Strategy):
+    PARAM_MODEL = SmaParams
+```
+
+### 11.4.2 代码示例
 
 ```python
 --8<-- "examples/textbook/ch11_optimization.py"
 ```
 
-### 11.4.2 结果分析
+### 11.4.3 结果分析
 
 运行上述代码后，我们会得到一个按夏普比率排序的参数表。
 

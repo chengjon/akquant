@@ -48,6 +48,54 @@ results = run_grid_search(
 print(results.head())
 ```
 
+### 参数模型驱动优化（推荐）
+
+当你需要把策略接入页面配置（例如 Web UI / API）时，建议采用 **`PARAM_MODEL + param_grid` 双层结构**：
+
+1. `PARAM_MODEL`（来自 `akquant.params`）用于**单次回测参数校验与 schema 导出**；
+2. `param_grid`（`run_grid_search` 原生接口）用于**离散参数组合搜索**。
+
+这样既保留了优化内核的稳定性，也能让前端自动生成参数表单。
+
+```python
+from akquant import (
+    IntParam,
+    ParamModel,
+    Strategy,
+    get_strategy_param_schema,
+    validate_strategy_params,
+    run_grid_search,
+)
+
+
+class SmaParams(ParamModel):
+    fast_period: int = IntParam(10, ge=2, le=200, title="快线")
+    slow_period: int = IntParam(30, ge=3, le=500, title="慢线")
+
+
+class SmaStrategy(Strategy):
+    PARAM_MODEL = SmaParams
+
+    def __init__(self, fast_period: int = 10, slow_period: int = 30):
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+
+
+schema = get_strategy_param_schema(SmaStrategy)
+runtime_params = validate_strategy_params(
+    SmaStrategy,
+    {"fast_period": 12, "slow_period": 36},
+)
+
+results = run_grid_search(
+    strategy=SmaStrategy,
+    data=df,
+    param_grid={"fast_period": [5, 10, 15], "slow_period": [20, 30, 60]},
+)
+```
+
+如果策略没有声明 `PARAM_MODEL`，适配层会回退到 `__init__` 签名做基础推断，以兼容历史策略。
+
 ### 多目标优化 (Multi-Objective Optimization)
 
 在实际交易中，单一指标往往存在局限性（例如仅看夏普比率可能选出只交易一次的幸存者）。AKQuant 支持基于多个指标进行排序：

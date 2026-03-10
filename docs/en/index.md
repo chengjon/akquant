@@ -213,6 +213,13 @@ run_backtest(strategy=MyStrategy, data=df, symbol="600000")
 
 For more examples, please refer to the `examples/` directory.
 
+## Parameter Modeling Entry
+
+*   Optimization guide (recommended workflow): [Parameter-Model-Driven Optimization](guide/optimization.md)
+*   Examples guide (UI-driven setup): [UI-Driven Strategy Parameterization (PARAM_MODEL)](guide/examples.md)
+*   API best practices (frontend-backend consistency): [UI-Driven Parameter Input](reference/api.md)
+*   Example script entry: [`examples/02_parameter_optimization.py`](../../examples/02_parameter_optimization.py)
+
 ## Quick Links
 
 *   Phase-5 migration FAQ (quickstart): [Phase-5 Migration FAQ](start/quickstart.md#phase-5-migration-faq)

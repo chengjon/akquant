@@ -9,6 +9,133 @@
 
 > Data Source Convention: Unless otherwise specified (e.g. simulated data), examples on this page default to using AKShare to fetch real market data.
 
+### UI-Driven Strategy Parameterization (PARAM_MODEL)
+
+For UI/API integration scenarios, you can declare a strategy-side parameter model and keep optimization search space separate:
+
+```python
+from akquant import (
+    IntParam,
+    ParamModel,
+    Strategy,
+    get_strategy_param_schema,
+    validate_strategy_params,
+    run_grid_search,
+)
+
+
+class SmaParams(ParamModel):
+    fast_period: int = IntParam(10, ge=2, le=200)
+    slow_period: int = IntParam(30, ge=3, le=500)
+
+
+class SmaStrategy(Strategy):
+    PARAM_MODEL = SmaParams
+
+    def __init__(self, fast_period: int = 10, slow_period: int = 30):
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+
+
+schema = get_strategy_param_schema(SmaStrategy)
+validated = validate_strategy_params(
+    SmaStrategy,
+    {"fast_period": 12, "slow_period": 36},
+)
+
+results = run_grid_search(
+    strategy=SmaStrategy,
+    data=df,
+    param_grid={"fast_period": [5, 10, 15], "slow_period": [20, 30, 60]},
+)
+```
+
+### Parameter Routing Flow (frontend params -> backtest call)
+
+```mermaid
+flowchart TD
+    A[Frontend submits params<br/>for example fast_period/slow_period/date_range] --> B[validate_strategy_params]
+    B --> C[strategy_params<br/>injected into strategy.__init__]
+    A --> D[extract_runtime_kwargs]
+    D --> E[runtime_kwargs<br/>for example start_time/end_time]
+    C --> F[run_backtest]
+    E --> F
+```
+
+Notes:
+
+* `strategy_params` contains strategy construction parameters (strategy-logic related, such as MA periods).
+* `runtime_kwargs` contains runtime backtest parameters (execution-window related, such as `start_time` and `end_time`).
+* Current default mapping rule is `date_range -> start_time/end_time`.
+
+### API Integration Example (HTTP)
+
+1) Fetch schema (frontend uses it to render form fields):
+
+```http
+GET /api/strategies/sma_cross/schema
+```
+
+Example response:
+
+```json
+{
+  "title": "SMACrossParams",
+  "type": "object",
+  "properties": {
+    "fast_period": { "type": "integer", "default": 10, "minimum": 2, "maximum": 200 },
+    "slow_period": { "type": "integer", "default": 30, "minimum": 3, "maximum": 500 },
+    "date_range": {
+      "type": "object",
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
+```
+
+2) Submit params and start backtest:
+
+```http
+POST /api/backtest
+Content-Type: application/json
+```
+
+```json
+{
+  "strategy_id": "sma_cross",
+  "params": {
+    "fast_period": 12,
+    "slow_period": 36,
+    "date_range": {
+      "start": "2023-01-01T00:00:00",
+      "end": "2023-12-31T00:00:00"
+    }
+  }
+}
+```
+
+Example response (showing parameter routing result):
+
+```json
+{
+  "strategy_params": {
+    "fast_period": 12,
+    "slow_period": 36,
+    "date_range": {
+      "start": "2023-01-01T00:00:00",
+      "end": "2023-12-31T00:00:00"
+    }
+  },
+  "runtime_kwargs": {
+    "start_time": "2023-01-01T00:00:00",
+    "end_time": "2023-12-31T00:00:00"
+  }
+}
+```
+
 ## 2. Advanced Examples
 
 *   **Zipline Style Strategy**: Demonstrates how to write strategies using functional API (`initialize`, `on_bar`), suitable for users migrating from Zipline.
