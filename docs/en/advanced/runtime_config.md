@@ -88,6 +88,7 @@ See also: [Warm Start Guide](warm_start.md).
 See runnable demo:
 
 - [22_strategy_runtime_config_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/22_strategy_runtime_config_demo.py)
+- [44_strategy_source_loader_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/44_strategy_source_loader_demo.py)
 
 Expected output markers:
 
@@ -104,3 +105,49 @@ Expected output markers:
 | Runtime config passed but strategy behavior unchanged | `runtime_config_override=False` is enabled | Set `runtime_config_override=True` or remove the flag |
 | Conflict warning appears only once | Warning dedup is per strategy instance and conflict payload | This is expected; create a new strategy instance if you need repeated warning output |
 | Warm-start resume still raises callback exceptions | Restored strategy config remains active and override not applied | Pass `strategy_runtime_config={"error_mode": "continue"}` with `runtime_config_override=True` |
+
+## 9. Dynamic Strategy Loading (`strategy_source` / `strategy_loader`)
+
+`run_backtest(...)` supports loading strategy implementation dynamically at call time:
+
+- `strategy_source`: strategy input, supports file path (`str` / `PathLike`) or `bytes`
+- `strategy_loader`: loader name, defaults to `python_plain`
+- `strategy_loader_options`: loader options dict
+
+Built-in loaders:
+
+- `python_plain`: load strategy from a local Python source file
+- `encrypted_external`: delegate decryption and loading to external callback
+
+### 9.1 `python_plain` example
+
+```python
+result = run_backtest(
+    data=data,
+    strategy=None,
+    strategy_source="my_strategy.py",
+    strategy_loader="python_plain",
+    strategy_loader_options={"strategy_attr": "MyStrategy"},
+)
+```
+
+### 9.2 `encrypted_external` example
+
+```python
+def decrypt_and_load(source, options):
+    ...
+    return MyStrategy
+
+result = run_backtest(
+    data=data,
+    strategy=None,
+    strategy_source=b"...encrypted-bytes...",
+    strategy_loader="encrypted_external",
+    strategy_loader_options={"decrypt_and_load": decrypt_and_load},
+)
+```
+
+### 9.3 Relation to `run_warm_start`
+
+`run_warm_start(...)` currently restores strategy instance from checkpoint and does not
+reload strategy implementation via `strategy_source` / `strategy_loader`.

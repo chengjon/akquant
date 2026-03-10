@@ -1,7 +1,9 @@
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, cast
 
+import pytest
 from akquant.live import LiveRunner
 from akquant.strategy import Strategy
 
@@ -546,6 +548,95 @@ def test_live_runner_builds_functional_strategy_instance() -> None:
     strategy.on_bar(cast(Any, SimpleNamespace(symbol="TEST")))
     strategy.on_stop()
     assert events == ["initialize", "on_start", "bar:7", "on_stop"]
+
+
+def test_live_runner_builds_strategy_instance_from_strategy_source(
+    tmp_path: Path,
+) -> None:
+    """Build strategy instance from configured strategy_source."""
+    strategy_file = tmp_path / "live_source_strategy.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Strategy(Strategy):",
+                "    def __init__(self):",
+                "        self.calls = 0",
+                "",
+                "    def on_bar(self, bar):",
+                "        self.calls += 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.strategy_cls = None
+    runner.strategy_source = str(strategy_file)
+    runner.strategy_loader = "python_plain"
+    runner.strategy_loader_options = None
+    runner.initialize = None
+    runner.on_start = None
+    runner.on_stop = None
+    runner.on_tick = None
+    runner.on_order = None
+    runner.on_trade = None
+    runner.on_timer = None
+    runner.context = {}
+    strategy = runner._build_strategy_instance(runner.strategy_cls)
+
+    assert isinstance(strategy, Strategy)
+    assert type(strategy).__name__ == "Strategy"
+
+
+def test_live_runner_builds_strategy_from_encrypted_external_loader() -> None:
+    """Build strategy instance using encrypted_external loader callback."""
+
+    class _LoadedStrategy(Strategy):
+        def on_bar(self, bar: Any) -> None:
+            _ = bar
+
+    def _decrypt_loader(source: Any, options: dict[str, Any]) -> type[Strategy]:
+        _ = source
+        _ = options
+        return _LoadedStrategy
+
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.strategy_cls = None
+    runner.strategy_source = b"cipher"
+    runner.strategy_loader = "encrypted_external"
+    runner.strategy_loader_options = {"decrypt_and_load": _decrypt_loader}
+    runner.initialize = None
+    runner.on_start = None
+    runner.on_stop = None
+    runner.on_tick = None
+    runner.on_order = None
+    runner.on_trade = None
+    runner.on_timer = None
+    runner.context = {}
+    strategy = runner._build_strategy_instance(runner.strategy_cls)
+
+    assert isinstance(strategy, _LoadedStrategy)
+
+
+def test_live_runner_rejects_missing_strategy_and_source() -> None:
+    """Live runner should fail when both strategy and source are missing."""
+    runner = LiveRunner.__new__(LiveRunner)
+    runner.strategy_cls = None
+    runner.strategy_source = None
+    runner.strategy_loader = None
+    runner.strategy_loader_options = None
+    runner.initialize = None
+    runner.on_start = None
+    runner.on_stop = None
+    runner.on_tick = None
+    runner.on_order = None
+    runner.on_trade = None
+    runner.on_timer = None
+    runner.context = {}
+    with pytest.raises(ValueError, match="Strategy must be provided"):
+        runner._build_strategy_instance(runner.strategy_cls)
 
 
 def test_live_runner_builds_strategy_topology_with_slots() -> None:

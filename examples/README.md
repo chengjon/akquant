@@ -45,6 +45,7 @@
 - [41_live_multi_slot_orchestration_demo.py](./41_live_multi_slot_orchestration_demo.py): LiveRunner 多策略 slot 编排示例（paper）。
 - [42_live_broker_event_audit_demo.py](./42_live_broker_event_audit_demo.py): broker 事件审计与 owner_strategy_id 追踪示例。
 - [43_target_weights_rebalance.py](./43_target_weights_rebalance.py): TopN 动态权重调仓示例（横截面动量 + `order_target_weights`）。
+- [44_strategy_source_loader_demo.py](./44_strategy_source_loader_demo.py): strategy_source + strategy_loader 动态加载示例（明文 + 外部解密）。
 
 ## 流式回测与实时报告
 
@@ -66,4 +67,4 @@
 ## 相关子目录
 
 - [strategies/README.md](./strategies/README.md): 策略示例集合。
-- `textbook/`: 教程章节示例脚本。
+- [textbook/ch15_strategy_loader.py](./textbook/ch15_strategy_loader.py): 教程章节动态策略加载示例。

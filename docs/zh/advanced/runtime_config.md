@@ -86,6 +86,7 @@ result = run_warm_start(
 可直接运行：
 
 - [22_strategy_runtime_config_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/22_strategy_runtime_config_demo.py)
+- [44_strategy_source_loader_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/44_strategy_source_loader_demo.py)
 
 另见：[热启动指南](warm_start.md)。
 
@@ -104,3 +105,49 @@ result = run_warm_start(
 | 传了 runtime 配置但策略行为没变化 | 启用了 `runtime_config_override=False` | 改为 `runtime_config_override=True` 或移除该参数 |
 | 冲突告警只出现一次 | 告警按“同一策略实例 + 同一冲突内容”去重 | 这是预期行为；如需重复观察可新建策略实例 |
 | 热启动后仍抛出回调异常 | 恢复后的策略配置生效，外部覆盖未应用 | 传入 `strategy_runtime_config={"error_mode": "continue"}` 且确保 `runtime_config_override=True` |
+
+## 9. 动态策略加载（strategy_source / strategy_loader）
+
+`run_backtest(...)` 支持在调用时通过策略源码动态加载策略：
+
+- `strategy_source`：策略输入，支持文件路径（`str` / `PathLike`）或 `bytes`
+- `strategy_loader`：加载器名称，默认 `python_plain`
+- `strategy_loader_options`：加载器参数字典
+
+默认加载器：
+
+- `python_plain`：从本地 Python 文件加载策略
+- `encrypted_external`：通过外部回调解密并返回策略对象
+
+### 9.1 python_plain 示例
+
+```python
+result = run_backtest(
+    data=data,
+    strategy=None,
+    strategy_source="my_strategy.py",
+    strategy_loader="python_plain",
+    strategy_loader_options={"strategy_attr": "MyStrategy"},
+)
+```
+
+### 9.2 encrypted_external 示例
+
+```python
+def decrypt_and_load(source, options):
+    ...
+    return MyStrategy
+
+result = run_backtest(
+    data=data,
+    strategy=None,
+    strategy_source=b"...encrypted-bytes...",
+    strategy_loader="encrypted_external",
+    strategy_loader_options={"decrypt_and_load": decrypt_and_load},
+)
+```
+
+### 9.3 与 run_warm_start 的关系
+
+`run_warm_start(...)` 当前从 checkpoint 恢复策略实例，不会通过
+`strategy_source` / `strategy_loader` 重新加载策略实现。

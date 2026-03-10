@@ -37,6 +37,7 @@ from .optimize import OptimizationResult, run_grid_search, run_walk_forward
 from .plot import plot_result
 from .sizer import AllInSizer, FixedSize, PercentSizer, Sizer
 from .strategy import Strategy, StrategyRuntimeConfig
+from .strategy_loader import register_strategy_loader, resolve_strategy_input
 from .utils import fetch_akshare_symbol, load_bar_from_df, prepare_dataframe
 
 __doc__ = _akquant.__doc__
@@ -51,6 +52,8 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "AllInSizer",
         "Strategy",
         "StrategyRuntimeConfig",
+        "register_strategy_loader",
+        "resolve_strategy_input",
         "DataLoader",
         "DataFeedAdapter",
         "FeedSlice",
@@ -96,6 +99,8 @@ else:
         "AllInSizer",
         "Strategy",
         "StrategyRuntimeConfig",
+        "register_strategy_loader",
+        "resolve_strategy_input",
         "DataLoader",
         "DataFeedAdapter",
         "FeedSlice",

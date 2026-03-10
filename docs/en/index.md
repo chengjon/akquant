@@ -218,6 +218,9 @@ For more examples, please refer to the `examples/` directory.
 *   Phase-5 migration FAQ (quickstart): [Phase-5 Migration FAQ](start/quickstart.md#phase-5-migration-faq)
 *   Full compatibility notes (API reference): [Compatibility & Migration Notes](reference/api.md#compatibility--migration-notes)
 *   Multi-strategy migration checklist (advanced): [Multi-Strategy Migration Guide](advanced/multi_strategy_migration.md)
+*   Dynamic strategy loading guide (advanced): [Runtime Config Guide](advanced/runtime_config.md#9-dynamic-strategy-loading-strategy_source--strategy_loader)
+*   Dynamic strategy loading example (examples): [44_strategy_source_loader_demo.py](../../examples/44_strategy_source_loader_demo.py)
+*   Dynamic strategy loading textbook chapter (examples/textbook): [ch15_strategy_loader.py](../../examples/textbook/ch15_strategy_loader.py)
 *   Warm-start state persistence and resume: [Warm Start Guide](advanced/warm_start.md)
 
 ## Strategy Playbook Entry

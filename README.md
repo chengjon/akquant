@@ -32,6 +32,13 @@
 
 👉 **[阅读完整文档](https://akquant.akfamily.xyz/)** | **[English Documentation](https://akquant.akfamily.xyz/en/)**
 
+## 快速导航
+
+*   动态策略加载（明文 / 加密）：[examples/44_strategy_source_loader_demo.py](examples/44_strategy_source_loader_demo.py)
+*   教材章节（动态策略加载）：[examples/textbook/ch15_strategy_loader.py](examples/textbook/ch15_strategy_loader.py)
+*   运行时配置与加载器说明（中文）：[docs/zh/advanced/runtime_config.md](docs/zh/advanced/runtime_config.md#9-动态策略加载strategysource--strategyloader)
+*   Runtime config and loader guide (English): [docs/en/advanced/runtime_config.md](docs/en/advanced/runtime_config.md#9-dynamic-strategy-loading-strategy_source--strategy_loader)
+
 ## 安装说明
 
 **AKQuant** 已发布至 PyPI，无需安装 Rust 环境即可直接使用。

@@ -33,6 +33,7 @@ from ..feed_adapter import DataFeedAdapter, FeedSlice
 from ..log import get_logger, register_logger
 from ..risk import apply_risk_config
 from ..strategy import Strategy, StrategyRuntimeConfig
+from ..strategy_loader import resolve_strategy_input
 from ..utils import df_to_arrays, prepare_dataframe
 from ..utils.inspector import infer_warmup_period
 from .result import BacktestResult
@@ -344,6 +345,9 @@ def _coerce_analyzer_plugins(
 def run_backtest(
     data: Optional[BacktestDataInput] = None,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
+    strategy_source: Optional[Union[str, bytes, os.PathLike[str]]] = None,
+    strategy_loader: Optional[str] = None,
+    strategy_loader_options: Optional[Dict[str, Any]] = None,
     symbol: Union[str, List[str]] = "BENCHMARK",
     initial_cash: Optional[float] = None,
     commission_rate: Optional[float] = None,
@@ -410,6 +414,13 @@ def run_backtest(
                         或 RiskConfig 对象。如果同时提供了 config.strategy_config.risk，
                         此参数将覆盖其中的同名字段。
     :param strategy: 策略类、策略实例或 on_bar 回调函数
+    :param strategy_source: 策略源码输入（路径字符串 / bytes / PathLike），
+                            当 strategy=None 时用于动态加载策略
+    :param strategy_loader: 策略加载器名称，默认 "python_plain"，
+                            可选 "encrypted_external" 或用户注册加载器
+    :param strategy_loader_options: 传给策略加载器的参数字典（可选），
+                                    如 {"strategy_attr": "MyStrategy"} 或
+                                    {"decrypt_and_load": callable}
     :param symbol: 标的代码
     :param initial_cash: 初始资金 (默认 1,000,000.0)
     :param commission_rate: 佣金率 (默认 0.0)
@@ -560,6 +571,21 @@ def run_backtest(
             config_indicator_mode = getattr(strategy_config, "indicator_mode", None)
             if config_indicator_mode is not None:
                 strategy_runtime_config = {"indicator_mode": config_indicator_mode}
+        if strategy_source is None:
+            strategy_source = cast(
+                Optional[Union[str, bytes, os.PathLike[str]]],
+                getattr(strategy_config, "strategy_source", None),
+            )
+        if strategy_loader is None:
+            strategy_loader = cast(
+                Optional[str],
+                getattr(strategy_config, "strategy_loader", None),
+            )
+        if strategy_loader_options is None:
+            strategy_loader_options = cast(
+                Optional[Dict[str, Any]],
+                getattr(strategy_config, "strategy_loader_options", None),
+            )
     if strategies_by_slot is not None and not isinstance(strategies_by_slot, dict):
         raise TypeError("strategies_by_slot must be a dict when provided")
     if strategy_max_order_value is not None and not isinstance(
@@ -767,8 +793,14 @@ def run_backtest(
         strategy_runtime_config = kwargs.pop("strategy_runtime_config")
 
     strategy_kwargs = dict(kwargs)
+    strategy_input = resolve_strategy_input(
+        strategy=strategy,
+        strategy_source=strategy_source,
+        strategy_loader=strategy_loader,
+        strategy_loader_options=strategy_loader_options,
+    )
     strategy_instance = _build_strategy_instance(
-        strategy,
+        strategy_input,
         strategy_kwargs,
         logger,
         initialize,
@@ -1815,6 +1847,11 @@ def run_warm_start(
 ) -> BacktestResult:
     """
     热启动回测 (Warm Start Backtest).
+
+    注意：当前 run_warm_start 的策略实例来自 checkpoint 恢复，
+    不会通过 strategy_source / strategy_loader 重新加载策略类。
+    如需替换策略实现，请优先使用 run_backtest 或在恢复后通过
+    strategies_by_slot 覆盖 slot 策略。
 
     故障速查可参考 docs/zh/advanced/runtime_config.md，
     英文文档参考 docs/en/advanced/runtime_config.md

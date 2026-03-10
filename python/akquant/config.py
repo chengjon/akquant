@@ -232,6 +232,9 @@ class StrategyConfig:
     # Multi-Strategy Topology & Risk Controls
     strategy_id: Optional[str] = None
     strategies_by_slot: Optional[Dict[str, Any]] = None
+    strategy_source: Optional[str] = None
+    strategy_loader: Optional[str] = None
+    strategy_loader_options: Optional[Dict[str, Any]] = None
     strategy_max_order_value: Optional[Dict[str, float]] = None
     strategy_max_order_size: Optional[Dict[str, float]] = None
     strategy_max_position_size: Optional[Dict[str, float]] = None

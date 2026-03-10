@@ -9,6 +9,7 @@ import pytest
 from akquant import (
     BacktestConfig,
     StrategyConfig,
+    register_strategy_loader,
     run_backtest,
     run_warm_start,
     save_snapshot,
@@ -590,6 +591,331 @@ def _make_bars(
             )
         )
     return bars
+
+
+def test_run_backtest_accepts_strategy_source_python_plain(tmp_path: Path) -> None:
+    """run_backtest should load strategy class from python source file."""
+    strategy_file = tmp_path / "strategy_plain.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Strategy(Strategy):",
+                "    def __init__(self):",
+                "        self.calls = 0",
+                "",
+                "    def on_bar(self, bar):",
+                "        self.calls += 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bars = _make_bars("2023-01-01", 3, symbol="PLAIN")
+    result = run_backtest(
+        data=bars,
+        strategy_source=str(strategy_file),
+        strategy_loader="python_plain",
+        symbol="PLAIN",
+        show_progress=False,
+    )
+    strategy = result.strategy
+    assert strategy is not None
+    assert getattr(strategy, "calls", 0) == 3
+
+
+def test_run_backtest_accepts_strategy_source_encrypted_external(
+    tmp_path: Path,
+) -> None:
+    """run_backtest should load strategy via encrypted_external loader hook."""
+    bars = _make_bars("2023-01-01", 2, symbol="ENC")
+    strategy_file = tmp_path / "strategy_encrypted.mock"
+    strategy_file.write_bytes(b"cipher")
+
+    class EncryptedLoadedStrategy(Strategy):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def on_bar(self, bar: Bar) -> None:
+            self.calls += 1
+
+    def _mock_decrypt_loader(source: Any, options: dict[str, Any]) -> type[Strategy]:
+        _ = source
+        _ = options
+        return EncryptedLoadedStrategy
+
+    result = run_backtest(
+        data=bars,
+        strategy_source=str(strategy_file),
+        strategy_loader="encrypted_external",
+        strategy_loader_options={"decrypt_and_load": _mock_decrypt_loader},
+        symbol="ENC",
+        show_progress=False,
+    )
+    strategy = result.strategy
+    assert strategy is not None
+    assert getattr(strategy, "calls", 0) == 2
+
+
+def test_run_backtest_rejects_unknown_strategy_loader_name() -> None:
+    """Unknown strategy loader should fail fast."""
+    bars = _make_bars("2023-01-01", 1, symbol="BAD_LOADER")
+    with pytest.raises(ValueError, match="unknown strategy_loader"):
+        run_backtest(
+            data=bars,
+            strategy_source="missing.py",
+            strategy_loader="not_exist",
+            symbol="BAD_LOADER",
+            show_progress=False,
+        )
+
+
+def test_run_backtest_rejects_invalid_strategy_loader_options_type() -> None:
+    """Invalid strategy_loader_options type should fail fast."""
+    bars = _make_bars("2023-01-01", 1, symbol="BAD_OPT")
+    with pytest.raises(TypeError, match="strategy_loader_options"):
+        run_backtest(
+            data=bars,
+            strategy_source="missing.py",
+            strategy_loader_options=cast(Any, "bad"),
+            symbol="BAD_OPT",
+            show_progress=False,
+        )
+
+
+def test_run_backtest_rejects_invalid_strategy_loader_type() -> None:
+    """Invalid strategy_loader type should fail fast."""
+    bars = _make_bars("2023-01-01", 1, symbol="BAD_LOADER_TYPE")
+    with pytest.raises(TypeError, match="strategy_loader must be str"):
+        run_backtest(
+            data=bars,
+            strategy_source="missing.py",
+            strategy_loader=cast(Any, 123),
+            symbol="BAD_LOADER_TYPE",
+            show_progress=False,
+        )
+
+
+def test_run_backtest_rejects_python_plain_with_bytes_source() -> None:
+    """python_plain loader should reject bytes source."""
+    bars = _make_bars("2023-01-01", 1, symbol="BAD_PLAIN_BYTES")
+    with pytest.raises(TypeError, match="python_plain loader"):
+        run_backtest(
+            data=bars,
+            strategy_source=b"cipher",
+            strategy_loader="python_plain",
+            symbol="BAD_PLAIN_BYTES",
+            show_progress=False,
+        )
+
+
+def test_run_backtest_rejects_encrypted_loader_without_callback() -> None:
+    """encrypted_external loader should require decrypt callback."""
+    bars = _make_bars("2023-01-01", 1, symbol="BAD_ENC_OPT")
+    with pytest.raises(ValueError, match="decrypt_and_load"):
+        run_backtest(
+            data=bars,
+            strategy_source="encrypted.mock",
+            strategy_loader="encrypted_external",
+            symbol="BAD_ENC_OPT",
+            show_progress=False,
+        )
+
+
+def test_run_backtest_python_plain_supports_strategy_attr_selection(
+    tmp_path: Path,
+) -> None:
+    """python_plain loader should support selecting strategy by strategy_attr."""
+    strategy_file = tmp_path / "strategy_multi.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Alpha(Strategy):",
+                "    def __init__(self):",
+                "        self.calls = 0",
+                "",
+                "    def on_bar(self, bar):",
+                "        self.calls += 1",
+                "",
+                "class Beta(Strategy):",
+                "    def __init__(self):",
+                "        self.calls = 0",
+                "",
+                "    def on_bar(self, bar):",
+                "        self.calls += 10",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bars = _make_bars("2023-01-01", 2, symbol="ATTR")
+    result = run_backtest(
+        data=bars,
+        strategy_source=str(strategy_file),
+        strategy_loader="python_plain",
+        strategy_loader_options={"strategy_attr": "Beta"},
+        symbol="ATTR",
+        show_progress=False,
+    )
+    strategy = result.strategy
+    assert strategy is not None
+    assert getattr(strategy, "calls", 0) == 20
+
+
+def test_run_backtest_rejects_python_plain_with_multiple_classes_without_attr(
+    tmp_path: Path,
+) -> None:
+    """python_plain loader should fail on multiple Strategy subclasses without hint."""
+    strategy_file = tmp_path / "strategy_multi_no_attr.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Alpha(Strategy):",
+                "    def on_bar(self, bar):",
+                "        _ = bar",
+                "",
+                "class Beta(Strategy):",
+                "    def on_bar(self, bar):",
+                "        _ = bar",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bars = _make_bars("2023-01-01", 1, symbol="MULTI")
+    with pytest.raises(ValueError, match="multiple Strategy subclasses found"):
+        run_backtest(
+            data=bars,
+            strategy_source=str(strategy_file),
+            strategy_loader="python_plain",
+            symbol="MULTI",
+            show_progress=False,
+        )
+
+
+def test_run_backtest_rejects_missing_strategy_and_strategy_source() -> None:
+    """run_backtest should fail when neither strategy nor strategy_source is given."""
+    bars = _make_bars("2023-01-01", 1, symbol="NO_STRATEGY")
+    with pytest.raises(ValueError, match="Strategy must be provided"):
+        run_backtest(
+            data=bars,
+            strategy=None,
+            strategy_source=None,
+            symbol="NO_STRATEGY",
+            show_progress=False,
+        )
+
+
+def test_run_backtest_accepts_registered_custom_strategy_loader() -> None:
+    """Custom registered loader should be supported."""
+    bars = _make_bars("2023-01-01", 2, symbol="CUSTOM_LOADER")
+
+    class CustomLoadedStrategy(Strategy):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def on_bar(self, bar: Bar) -> None:
+            self.calls += 1
+
+    loader_name = "test_custom_loader_for_source"
+
+    def _loader(source: Any, options: dict[str, Any]) -> type[Strategy]:
+        _ = source
+        _ = options
+        return CustomLoadedStrategy
+
+    register_strategy_loader(loader_name, _loader)
+    result = run_backtest(
+        data=bars,
+        strategy_source=b"mock",
+        strategy_loader=loader_name,
+        symbol="CUSTOM_LOADER",
+        show_progress=False,
+    )
+    strategy = result.strategy
+    assert strategy is not None
+    assert getattr(strategy, "calls", 0) == 2
+
+
+def test_run_backtest_loads_strategy_source_from_config(tmp_path: Path) -> None:
+    """Backtest config should provide strategy_source and loader settings."""
+    strategy_file = tmp_path / "strategy_from_config.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Strategy(Strategy):",
+                "    def __init__(self):",
+                "        self.calls = 0",
+                "",
+                "    def on_bar(self, bar):",
+                "        self.calls += 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bars = _make_bars("2023-01-01", 2, symbol="CFG")
+    cfg = BacktestConfig(
+        strategy_config=StrategyConfig(
+            strategy_source=str(strategy_file),
+            strategy_loader="python_plain",
+        ),
+        show_progress=False,
+    )
+    result = run_backtest(
+        data=bars,
+        strategy=None,
+        symbol="CFG",
+        config=cfg,
+    )
+    strategy = result.strategy
+    assert strategy is not None
+    assert getattr(strategy, "calls", 0) == 2
+
+
+def test_run_backtest_prefers_explicit_strategy_over_strategy_source(
+    tmp_path: Path,
+) -> None:
+    """Explicit strategy argument should win over strategy_source settings."""
+    strategy_file = tmp_path / "ignored_source.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Strategy(Strategy):",
+                "    def __init__(self):",
+                "        self.calls = 0",
+                "",
+                "    def on_bar(self, bar):",
+                "        self.calls += 100",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bars = _make_bars("2023-01-01", 2, symbol="PRIO")
+
+    class ExplicitPriorityStrategy(Strategy):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def on_bar(self, bar: Bar) -> None:
+            self.calls += 1
+
+    result = run_backtest(
+        data=bars,
+        strategy=ExplicitPriorityStrategy,
+        strategy_source=str(strategy_file),
+        strategy_loader="python_plain",
+        symbol="PRIO",
+        show_progress=False,
+    )
+    strategy = result.strategy
+    assert strategy is not None
+    assert getattr(strategy, "calls", 0) == 2
 
 
 def test_run_warm_start_end_to_end_lifecycle(tmp_path: Path) -> None:

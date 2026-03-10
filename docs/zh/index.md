@@ -157,6 +157,9 @@ run_backtest(strategy=MyStrategy, data=df, symbol="600000")
 *   快速查看迁移 FAQ（快速开始）：[快速开始中的阶段 5 迁移 FAQ](start/quickstart.md#阶段-5-迁移-faq)
 *   查看完整兼容说明（API 参考）：[API 兼容与迁移说明](reference/api.md#兼容与迁移说明)
 *   多策略迁移清单（进阶专题）：[多策略迁移指南](advanced/multi_strategy_migration.md)
+*   动态策略加载说明（进阶专题）：[运行时配置指南](advanced/runtime_config.md#9-动态策略加载strategysource--strategyloader)
+*   动态策略加载示例（examples）：[44_strategy_source_loader_demo.py](../../examples/44_strategy_source_loader_demo.py)
+*   动态策略加载教材章节（examples/textbook）：[ch15_strategy_loader.py](../../examples/textbook/ch15_strategy_loader.py)
 
 ## 策略实战入口
 

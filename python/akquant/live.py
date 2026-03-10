@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 from akquant import Bar, DataFeed, Engine, Instrument, Strategy
 from akquant.gateway.factory import create_gateway_bundle
 from akquant.gateway.models import UnifiedOrderRequest
+from akquant.strategy_loader import resolve_strategy_input
 
 
 class _StrategyCallbackFanout:
@@ -68,8 +69,13 @@ class LiveRunner:
 
     def __init__(
         self,
-        strategy_cls: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]],
+        strategy_cls: Optional[
+            Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]
+        ],
         instruments: List[Instrument],
+        strategy_source: Optional[Union[str, bytes]] = None,
+        strategy_loader: Optional[str] = None,
+        strategy_loader_options: Optional[Dict[str, Any]] = None,
         strategy_id: Optional[str] = None,
         strategies_by_slot: Optional[
             Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]
@@ -134,6 +140,9 @@ class LiveRunner:
         :param on_broker_event: Optional broker event observer callback.
         """
         self.strategy_cls = strategy_cls
+        self.strategy_source = strategy_source
+        self.strategy_loader = strategy_loader
+        self.strategy_loader_options = strategy_loader_options
         self.strategy_id = (strategy_id or "_default").strip() or "_default"
         self.strategies_by_slot = strategies_by_slot or {}
         self.instruments = instruments
@@ -284,16 +293,27 @@ class LiveRunner:
             self._print_summary()
 
     def _build_strategy_instance(self, strategy_input: Any) -> Strategy:
-        if isinstance(strategy_input, type) and issubclass(strategy_input, Strategy):
-            return cast(Strategy, strategy_input())
-        if isinstance(strategy_input, Strategy):
-            return strategy_input
-        if callable(strategy_input):
+        resolved_strategy_input = resolve_strategy_input(
+            strategy=cast(
+                Optional[Union[type[Strategy], Strategy, Callable[[Any, Bar], None]]],
+                strategy_input,
+            ),
+            strategy_source=getattr(self, "strategy_source", None),
+            strategy_loader=getattr(self, "strategy_loader", None),
+            strategy_loader_options=getattr(self, "strategy_loader_options", None),
+        )
+        if isinstance(resolved_strategy_input, type) and issubclass(
+            resolved_strategy_input, Strategy
+        ):
+            return cast(Strategy, resolved_strategy_input())
+        if isinstance(resolved_strategy_input, Strategy):
+            return resolved_strategy_input
+        if callable(resolved_strategy_input):
             from akquant.backtest import FunctionalStrategy
 
             return FunctionalStrategy(
                 initialize=self.initialize,
-                on_bar=cast(Callable[[Any, Bar], None], strategy_input),
+                on_bar=cast(Callable[[Any, Bar], None], resolved_strategy_input),
                 on_start=self.on_start,
                 on_stop=self.on_stop,
                 on_tick=self.on_tick,

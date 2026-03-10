@@ -1,3 +1,4 @@
+import os
 from typing import Any, Callable, Dict, List, Literal, Optional, Type, TypedDict, Union
 
 import pandas as pd
@@ -38,6 +39,9 @@ class BacktestStreamEvent(TypedDict):
 def run_backtest(
     data: Optional[BacktestDataInput] = ...,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = ...,
+    strategy_source: Optional[Union[str, bytes, os.PathLike[str]]] = ...,
+    strategy_loader: Optional[str] = ...,
+    strategy_loader_options: Optional[Dict[str, Any]] = ...,
     symbol: Union[str, List[str]] = ...,
     initial_cash: Optional[float] = ...,
     commission_rate: Optional[float] = ...,
