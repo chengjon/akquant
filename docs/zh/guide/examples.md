@@ -9,6 +9,133 @@
 
 > 数据源约定：除特别标注需要模拟数据外，本页示例默认使用 AKShare 获取真实市场数据。
 
+### 页面化参数配置（PARAM_MODEL）
+
+在 Web UI / API 场景中，建议在策略中声明参数模型，并将优化搜索空间保持为独立的 `param_grid`：
+
+```python
+from akquant import (
+    IntParam,
+    ParamModel,
+    Strategy,
+    get_strategy_param_schema,
+    validate_strategy_params,
+    run_grid_search,
+)
+
+
+class SmaParams(ParamModel):
+    fast_period: int = IntParam(10, ge=2, le=200)
+    slow_period: int = IntParam(30, ge=3, le=500)
+
+
+class SmaStrategy(Strategy):
+    PARAM_MODEL = SmaParams
+
+    def __init__(self, fast_period: int = 10, slow_period: int = 30):
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+
+
+schema = get_strategy_param_schema(SmaStrategy)
+validated = validate_strategy_params(
+    SmaStrategy,
+    {"fast_period": 12, "slow_period": 36},
+)
+
+results = run_grid_search(
+    strategy=SmaStrategy,
+    data=df,
+    param_grid={"fast_period": [5, 10, 15], "slow_period": [20, 30, 60]},
+)
+```
+
+### 参数分流流程图（前端 params -> 回测调用）
+
+```mermaid
+flowchart TD
+    A[前端提交 params<br/>例如 fast_period/slow_period/date_range] --> B[validate_strategy_params]
+    B --> C[strategy_params<br/>注入 strategy.__init__]
+    A --> D[extract_runtime_kwargs]
+    D --> E[runtime_kwargs<br/>例如 start_time/end_time]
+    C --> F[run_backtest]
+    E --> F
+```
+
+说明：
+
+* `strategy_params` 负责策略构造参数（策略逻辑相关，如均线周期）。
+* `runtime_kwargs` 负责回测运行参数（回测窗口/运行环境相关，如 `start_time`、`end_time`）。
+* 当前默认映射规则是 `date_range -> start_time/end_time`。
+
+### 接口联调示例（HTTP）
+
+1) 获取参数 schema（前端用于自动渲染表单）：
+
+```http
+GET /api/strategies/sma_cross/schema
+```
+
+示例响应：
+
+```json
+{
+  "title": "SMACrossParams",
+  "type": "object",
+  "properties": {
+    "fast_period": { "type": "integer", "default": 10, "minimum": 2, "maximum": 200 },
+    "slow_period": { "type": "integer", "default": 30, "minimum": 3, "maximum": 500 },
+    "date_range": {
+      "type": "object",
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
+```
+
+2) 提交参数并启动回测：
+
+```http
+POST /api/backtest
+Content-Type: application/json
+```
+
+```json
+{
+  "strategy_id": "sma_cross",
+  "params": {
+    "fast_period": 12,
+    "slow_period": 36,
+    "date_range": {
+      "start": "2023-01-01T00:00:00",
+      "end": "2023-12-31T00:00:00"
+    }
+  }
+}
+```
+
+示例响应（展示参数分流结果）：
+
+```json
+{
+  "strategy_params": {
+    "fast_period": 12,
+    "slow_period": 36,
+    "date_range": {
+      "start": "2023-01-01T00:00:00",
+      "end": "2023-12-31T00:00:00"
+    }
+  },
+  "runtime_kwargs": {
+    "start_time": "2023-01-01T00:00:00",
+    "end_time": "2023-12-31T00:00:00"
+  }
+}
+```
+
 ## 2. 进阶示例 (Advanced Examples)
 
 *   **Zipline 风格策略**: 展示了如何使用函数式 API (`initialize`, `on_bar`) 编写策略，适合从 Zipline 迁移的用户。

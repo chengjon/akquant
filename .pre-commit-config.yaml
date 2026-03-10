@@ -23,4 +23,4 @@ repos:
         pass_filenames: false
         args: ["--config-file=pyproject.toml", "."]
         additional_dependencies:
-          [types-pytz, pandas-stubs, numpy, pytest, polars, quantstats]
+          [types-pytz, pandas-stubs, numpy, pytest, polars, quantstats, pydantic]

@@ -152,6 +152,13 @@ run_backtest(strategy=MyStrategy, data=df, symbol="600000")
 
 更多示例请参考 `examples/` 目录。
 
+## 参数模型化入口
+
+*   参数优化指南（推荐工作流）：[参数模型驱动优化](guide/optimization.md)
+*   示例集合（页面化参数配置）：[页面化参数配置（PARAM_MODEL）](guide/examples.md)
+*   API 最佳实践（前后端联动）：[页面化参数输入](reference/api.md)
+*   示例脚本入口：[`examples/02_parameter_optimization.py`](../../examples/02_parameter_optimization.py)
+
 ## 阶段 5 迁移入口
 
 *   快速查看迁移 FAQ（快速开始）：[快速开始中的阶段 5 迁移 FAQ](start/quickstart.md#阶段-5-迁移-faq)

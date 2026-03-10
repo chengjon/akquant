@@ -48,6 +48,54 @@ results = run_grid_search(
 print(results.head())
 ```
 
+### Parameter-Model-Driven Optimization (Recommended)
+
+When you need to expose strategy parameters in Web UI / API workflows, use a **`PARAM_MODEL + param_grid` dual-layer pattern**:
+
+1. `PARAM_MODEL` (from `akquant.params`) handles **single-run validation and schema export**.
+2. `param_grid` (native `run_grid_search` input) handles **discrete combination search**.
+
+This keeps the optimization engine stable while enabling frontend auto-generated forms.
+
+```python
+from akquant import (
+    IntParam,
+    ParamModel,
+    Strategy,
+    get_strategy_param_schema,
+    validate_strategy_params,
+    run_grid_search,
+)
+
+
+class SmaParams(ParamModel):
+    fast_period: int = IntParam(10, ge=2, le=200, title="Fast Window")
+    slow_period: int = IntParam(30, ge=3, le=500, title="Slow Window")
+
+
+class SmaStrategy(Strategy):
+    PARAM_MODEL = SmaParams
+
+    def __init__(self, fast_period: int = 10, slow_period: int = 30):
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+
+
+schema = get_strategy_param_schema(SmaStrategy)
+runtime_params = validate_strategy_params(
+    SmaStrategy,
+    {"fast_period": 12, "slow_period": 36},
+)
+
+results = run_grid_search(
+    strategy=SmaStrategy,
+    data=df,
+    param_grid={"fast_period": [5, 10, 15], "slow_period": [20, 30, 60]},
+)
+```
+
+If a strategy does not declare `PARAM_MODEL`, the adapter falls back to `__init__` signature inference for backward compatibility.
+
 ### Multi-Objective Optimization
 
 In real trading, a single metric is often insufficient (e.g., Sharpe Ratio alone might select a survivor that traded only once). AKQuant supports sorting based on multiple metrics:

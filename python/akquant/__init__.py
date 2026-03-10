@@ -34,6 +34,22 @@ from .feed_adapter import (
 from .indicator import Indicator, IndicatorSet
 from .log import get_logger, register_logger
 from .optimize import OptimizationResult, run_grid_search, run_walk_forward
+from .params import (
+    BoolParam,
+    ChoiceParam,
+    DateRange,
+    DateRangeParam,
+    FloatParam,
+    IntParam,
+    ParamModel,
+)
+from .params_adapter import (
+    build_param_grid_from_search_space,
+    extract_runtime_kwargs,
+    get_strategy_param_schema,
+    resolve_param_model,
+    validate_strategy_params,
+)
 from .plot import plot_result
 from .sizer import AllInSizer, FixedSize, PercentSizer, Sizer
 from .strategy import Strategy, StrategyRuntimeConfig
@@ -87,6 +103,18 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "ATR",
         "AnalyzerManager",
         "AnalyzerTemplate",
+        "ParamModel",
+        "DateRange",
+        "IntParam",
+        "FloatParam",
+        "BoolParam",
+        "ChoiceParam",
+        "DateRangeParam",
+        "resolve_param_model",
+        "get_strategy_param_schema",
+        "validate_strategy_params",
+        "extract_runtime_kwargs",
+        "build_param_grid_from_search_space",
     ]
 else:
     __all__ = [
@@ -134,6 +162,18 @@ else:
         "ATR",
         "AnalyzerManager",
         "AnalyzerTemplate",
+        "ParamModel",
+        "DateRange",
+        "IntParam",
+        "FloatParam",
+        "BoolParam",
+        "ChoiceParam",
+        "DateRangeParam",
+        "resolve_param_model",
+        "get_strategy_param_schema",
+        "validate_strategy_params",
+        "extract_runtime_kwargs",
+        "build_param_grid_from_search_space",
     ]
 
 
