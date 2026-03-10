@@ -1,6 +1,8 @@
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 from akquant.akquant import StrategyContext
 from akquant.indicator import Indicator
 from akquant.strategy import Strategy
@@ -21,9 +23,6 @@ class MyTimerStrategy(Strategy):
 
     def __init__(self) -> None:
         """Initialize."""
-        # Auto-discovery test
-        self.sma5 = SMA(5)
-        self.sma10 = SMA(10)
         self.timer_triggered = False
 
     def on_start(self) -> None:
@@ -109,22 +108,98 @@ def test_timer_registration() -> None:
     assert (daily_ts_2, "__daily__|14:55:00|daily_timer") in clean_call_args
 
 
-def test_indicator_autodiscovery() -> None:
-    """Test indicator autodiscovery."""
+def test_register_precomputed_indicator() -> None:
+    """Registers precomputed indicator under precompute mode."""
     strategy = MyTimerStrategy()
+    strategy.indicator_mode = "precompute"
+    indicator = SMA(5)
 
-    # Mock context to prevent RuntimeError in on_start
-    strategy.ctx = MagicMock(spec=StrategyContext)
+    strategy.register_precomputed_indicator("sma5", indicator)
 
-    # Simulate internal start sequence
-    strategy._on_start_internal()
+    assert getattr(strategy, "sma5") is indicator
+    assert indicator in strategy._precomputed_indicators
 
-    # Verify indicators are registered
-    assert len(strategy._indicators) == 2
-    assert strategy.sma5 in strategy._indicators
-    assert strategy.sma10 in strategy._indicators
 
-    # Verify names
-    names = [ind.name for ind in strategy._indicators]
-    assert "sma5" in names
-    assert "sma10" in names
+def test_register_incremental_indicator_requires_incremental_mode() -> None:
+    """Rejects incremental registration when mode is precompute."""
+    strategy = MyTimerStrategy()
+    strategy.indicator_mode = "precompute"
+
+    with pytest.raises(ValueError, match="indicator_mode='incremental'"):
+        strategy.register_incremental_indicator("sma5", MagicMock())
+
+
+def test_register_precomputed_indicator_requires_precompute_mode() -> None:
+    """Rejects precomputed registration when mode is incremental."""
+    strategy = MyTimerStrategy()
+    strategy.indicator_mode = "incremental"
+
+    with pytest.raises(ValueError, match="indicator_mode='precompute'"):
+        strategy.register_precomputed_indicator("sma5", SMA(5))
+
+
+def test_incremental_indicator_updates_from_bar_close() -> None:
+    """Updates incremental indicator from close price source."""
+
+    class IncrementalIndicator:
+        def __init__(self) -> None:
+            self.values: list[float] = []
+
+        def update(self, value: float) -> None:
+            self.values.append(value)
+
+    class FakeBar:
+        def __init__(self, close: float) -> None:
+            self.open = 0.0
+            self.high = 0.0
+            self.low = 0.0
+            self.close = close
+            self.volume = 0.0
+
+    strategy = MyTimerStrategy()
+    strategy.indicator_mode = "incremental"
+    indicator = IncrementalIndicator()
+    strategy.register_incremental_indicator("inc_sma", indicator, source="close")
+
+    strategy._update_incremental_indicators(FakeBar(close=12.5))  # type: ignore[arg-type]
+
+    assert indicator.values == [12.5]
+
+
+def test_incremental_indicator_symbol_filter() -> None:
+    """Updates only when bar symbol is in configured filter."""
+
+    class IncrementalIndicator:
+        def __init__(self) -> None:
+            self.values: list[float] = []
+
+        def update(self, value: float) -> None:
+            self.values.append(value)
+
+    class FakeBar:
+        def __init__(self, symbol: str, close: float) -> None:
+            self.symbol = symbol
+            self.open = 0.0
+            self.high = 0.0
+            self.low = 0.0
+            self.close = close
+            self.volume = 0.0
+
+    strategy = MyTimerStrategy()
+    strategy.indicator_mode = "incremental"
+    indicator = IncrementalIndicator()
+    strategy.register_incremental_indicator(
+        "inc_sma",
+        indicator,
+        source="close",
+        symbols=["000001.SZ_1D"],
+    )
+
+    strategy._update_incremental_indicators(
+        cast(Any, FakeBar(symbol="000001.SZ", close=12.5))
+    )
+    strategy._update_incremental_indicators(
+        cast(Any, FakeBar(symbol="000001.SZ_1D", close=13.0))
+    )
+
+    assert indicator.values == [13.0]

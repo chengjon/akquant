@@ -143,7 +143,7 @@ class MultiFrequencyAdapter:
             if not daily.empty:
                 daily = daily.copy()
                 tz_name = request.timezone or "Asia/Shanghai"
-                local_index = daily.index
+                local_index = pd.DatetimeIndex(daily.index)
                 if local_index.tz is None:
                     local_index = local_index.tz_localize("UTC")
                 local_index = local_index.tz_convert(tz_name)
@@ -173,9 +173,17 @@ class MultiFreqStrategy(aq.Strategy):
     def __init__(self) -> None:
         """Initialize the strategy."""
         super().__init__()
+        self.indicator_mode = "incremental"
         self.daily_trend = 0  # 1 for Up, -1 for Down, 0 for Neutral
         self.ma_window = 3  # Short MA for demo
-        self.daily_prices: List[float] = []
+        self.daily_symbol = "000001.SZ_1D"
+        self.daily_sma = aq.SMA(self.ma_window)
+        self.register_incremental_indicator(
+            "daily_sma",
+            self.daily_sma,
+            source="close",
+            symbols=[self.daily_symbol],
+        )
 
         # Track position manually for simple demo (optional, akquant handles it)
         self.has_position = False
@@ -196,7 +204,7 @@ class MultiFreqStrategy(aq.Strategy):
         # Use helper for formatted string (Default: %Y-%m-%d %H:%M:%S)
         ts_str = self.format_time(bar.timestamp)
 
-        if bar.symbol == "000001.SZ_1D":
+        if bar.symbol == self.daily_symbol:
             print(f"\n{'=' * 60}")
             print(
                 f"EVENT: Daily Bar Arrived | {ts_str} (BJ) | "
@@ -213,15 +221,8 @@ class MultiFreqStrategy(aq.Strategy):
 
     def _handle_daily_bar(self, bar: aq.Bar) -> None:
         """Process Daily Bar: Update Trend."""
-        self.daily_prices.append(bar.close)
-
-        # Keep only needed history
-        if len(self.daily_prices) > self.ma_window + 5:
-            self.daily_prices.pop(0)
-
-        # Calculate MA
-        if len(self.daily_prices) >= self.ma_window:
-            ma = sum(self.daily_prices[-self.ma_window :]) / self.ma_window
+        ma = self.daily_sma.value
+        if ma is not None:
             prev_trend = self.daily_trend
 
             # Determine Trend
@@ -241,8 +242,7 @@ class MultiFreqStrategy(aq.Strategy):
             )
         else:
             print(
-                f"[Logic 1D] Collecting history... "
-                f"({len(self.daily_prices)}/{self.ma_window})"
+                f"[Logic 1D] Collecting history... (need {self.ma_window} daily bars)"
             )
 
     def _handle_minute_bar(self, bar: aq.Bar, ts_bj: pd.Timestamp) -> None:
@@ -308,7 +308,10 @@ if __name__ == "__main__":
     from akquant import BacktestConfig, StrategyConfig
 
     config = BacktestConfig(
-        strategy_config=StrategyConfig(initial_cash=100_000.0),
+        strategy_config=StrategyConfig(
+            initial_cash=100_000.0,
+            indicator_mode="incremental",
+        ),
         instruments_config=[stock_1m_config],
         show_progress=True,
     )

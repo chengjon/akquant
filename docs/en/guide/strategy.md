@@ -443,32 +443,51 @@ Supported Indicators: `SMA`, `EMA`, `MACD`, `RSI`, `BollingerBands`, `ATR`.
 
 ### 7.1 Registration and Usage
 
-AKQuant supports **Auto-Discovery**. You can simply assign indicators to `self` in `__init__`, and they will be registered automatically.
+AKQuant follows a dual-platform and single-strategy style. Each strategy must explicitly set `indicator_mode` and use the matching registration API:
+
+* `indicator_mode="precompute"` + `register_precomputed_indicator(...)`
+* `indicator_mode="incremental"` + `register_incremental_indicator(...)`
 
 ```python
-from akquant import Strategy
-from akquant.indicators import SMA, RSI
+from akquant import Bar, SMA, Strategy
 
 class IndicatorStrategy(Strategy):
     def __init__(self):
-        # Method 1: Auto-Discovery (Recommended)
-        # Assign to self.xxx, automatically registered and calculated
+        self.indicator_mode = "precompute"
         self.sma20 = SMA(20)
-        self.rsi14 = RSI(14)
+        self.register_precomputed_indicator("sma20", self.sma20)
 
     def on_start(self):
         self.subscribe("AAPL")
 
-        # Method 2: Manual Registration
-        # self.register_indicator("sma20", SMA(20))
+    def on_bar(self, bar: Bar):
+        val = self.sma20.get_value(bar.symbol, bar.timestamp)
+        if bar.close > val:
+            self.buy(bar.symbol, 100)
+```
+
+```python
+from akquant import Bar, SMA, Strategy
+
+class IncrementalIndicatorStrategy(Strategy):
+    def __init__(self):
+        self.indicator_mode = "incremental"
+        self.sma20 = SMA(20)
+        self.register_incremental_indicator(
+            "sma20",
+            self.sma20,
+            source="close",
+            symbols=["AAPL"],
+        )
 
     def on_bar(self, bar: Bar):
-        # Access value via property
-        if bar.close > self.sma20.value:
+        if bar.symbol != "AAPL":
+            return
+        val = self.sma20.value
+        if val is None:
+            return
+        if bar.close > val:
             self.buy(bar.symbol, 100)
-
-        # Or get historical value
-        # val = self.sma20.get_value(bar.symbol, bar.timestamp)
 ```
 
 ## 7. Strategy Cookbook

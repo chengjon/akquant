@@ -563,32 +563,51 @@ def on_bar(self, bar: Bar):
 
 ### 7.2 指标 (Indicators)
 
-AKQuant 支持**自动发现**机制，你可以直接在 `__init__` 中将指标赋值给 `self` 属性，系统会自动完成注册。
+AKQuant 采用“平台双主流、策略单主流”模式。每个策略需要显式设置 `indicator_mode`，并使用对应注册接口：
+
+*   `indicator_mode="precompute"` + `register_precomputed_indicator(...)`
+*   `indicator_mode="incremental"` + `register_incremental_indicator(...)`
 
 ```python
-from akquant import Strategy
-from akquant.indicators import SMA, RSI
+from akquant import Bar, SMA, Strategy
 
 class IndicatorStrategy(Strategy):
     def __init__(self):
-        # 方式 1: 自动注册 (推荐)
-        # 只要赋值给 self.xxx，系统会自动发现并计算
+        self.indicator_mode = "precompute"
         self.sma20 = SMA(20)
-        self.rsi14 = RSI(14)
+        self.register_precomputed_indicator("sma20", self.sma20)
 
     def on_start(self):
         self.subscribe("AAPL")
 
-        # 方式 2: 手动注册 (传统方式)
-        # self.register_indicator("sma20", SMA(20))
+    def on_bar(self, bar: Bar):
+        val = self.sma20.get_value(bar.symbol, bar.timestamp)
+        if bar.close > val:
+            self.buy(bar.symbol, 100)
+```
+
+```python
+from akquant import Bar, SMA, Strategy
+
+class IncrementalIndicatorStrategy(Strategy):
+    def __init__(self):
+        self.indicator_mode = "incremental"
+        self.sma20 = SMA(20)
+        self.register_incremental_indicator(
+            "sma20",
+            self.sma20,
+            source="close",
+            symbols=["AAPL"],
+        )
 
     def on_bar(self, bar: Bar):
-        # 直接通过属性访问指标值
-        if bar.close > self.sma20.value:
+        if bar.symbol != "AAPL":
+            return
+        val = self.sma20.value
+        if val is None:
+            return
+        if bar.close > val:
             self.buy(bar.symbol, 100)
-
-        # 或者通过 get_value 获取历史值
-        # val = self.sma20.get_value(bar.symbol, bar.timestamp)
 
 ## 8. 高级特性：热启动 (Warm Start)
 

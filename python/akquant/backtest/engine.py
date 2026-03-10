@@ -246,6 +246,7 @@ def _coerce_strategy_runtime_config(
             portfolio_update_eps=value.portfolio_update_eps,
             error_mode=value.error_mode,
             re_raise_on_error=value.re_raise_on_error,
+            indicator_mode=value.indicator_mode,
         )
     if isinstance(value, dict):
         unknown_fields = sorted(set(value.keys()) - _RUNTIME_CONFIG_FIELDS)
@@ -275,6 +276,10 @@ def _runtime_config_conflicts(
         if before != after:
             conflicts.append(f"{key}: {before} -> {after}")
     return conflicts
+
+
+def _should_prepare_precomputed_indicators(strategy_instance: Strategy) -> bool:
+    return str(strategy_instance.indicator_mode).strip().lower() == "precompute"
 
 
 def _apply_strategy_runtime_config(
@@ -551,6 +556,10 @@ def run_backtest(
                 Optional[float],
                 getattr(strategy_config, "portfolio_risk_budget", None),
             )
+        if strategy_runtime_config is None:
+            config_indicator_mode = getattr(strategy_config, "indicator_mode", None)
+            if config_indicator_mode is not None:
+                strategy_runtime_config = {"indicator_mode": config_indicator_mode}
     if strategies_by_slot is not None and not isinstance(strategies_by_slot, dict):
         raise TypeError("strategies_by_slot must be a dict when provided")
     if strategy_max_order_value is not None and not isinstance(
@@ -1136,21 +1145,6 @@ def run_backtest(
             if hasattr(current_strategy, "_trading_day_bounds"):
                 current_strategy._trading_day_bounds = day_bounds
 
-    # 3.5 Pre-calculate indicators
-    # Inject data into indicators so they can be accessed in on_bar via get_value()
-    if data_map_for_indicators:
-        for current_strategy in all_strategy_instances:
-            if hasattr(current_strategy, "_indicators"):
-                for symbol_key, df_val in data_map_for_indicators.items():
-                    for ind in current_strategy._indicators:
-                        try:
-                            ind(df_val, symbol_key)
-                        except Exception as e:
-                            logger.error(
-                                f"Failed to calculate indicator {ind.name} "
-                                f"for {symbol_key}: {e}"
-                            )
-
     # 4. 配置引擎
     engine = Engine()
     for current_strategy in all_strategy_instances:
@@ -1720,10 +1714,12 @@ def run_backtest(
         for current_strategy in all_strategy_instances:
             current_strategy.set_history_depth(effective_depth)
 
-    # 7.5 Prepare Indicators (Vectorized Pre-calculation)
+    # 7.5 Prepare Indicators (Precompute mode only)
     if data_map_for_indicators:
         for current_strategy in all_strategy_instances:
-            if hasattr(current_strategy, "_prepare_indicators"):
+            if _should_prepare_precomputed_indicators(current_strategy) and hasattr(
+                current_strategy, "_prepare_indicators"
+            ):
                 current_strategy._prepare_indicators(data_map_for_indicators)
 
     try:
@@ -1896,6 +1892,10 @@ def run_warm_start(
                 Optional[float],
                 getattr(strategy_config, "portfolio_risk_budget", None),
             )
+        if strategy_runtime_config is None:
+            config_indicator_mode = getattr(strategy_config, "indicator_mode", None)
+            if config_indicator_mode is not None:
+                strategy_runtime_config = {"indicator_mode": config_indicator_mode}
     if strategies_by_slot is not None and not isinstance(strategies_by_slot, dict):
         raise TypeError("strategies_by_slot must be a dict when provided")
     if strategy_max_order_value is not None and not isinstance(
@@ -2498,14 +2498,6 @@ def run_warm_start(
             stream_mode,
         )
 
-    if data_map_for_indicators:
-        for current_strategy in all_strategy_instances:
-            if hasattr(current_strategy, "_prepare_indicators"):
-                try:
-                    current_strategy._prepare_indicators(data_map_for_indicators)
-                except Exception as e:
-                    logger.error(f"Failed to update indicators for warm start: {e}")
-
     if hasattr(strategy_instance, "_on_start_internal"):
         strategy_instance._on_start_internal()
     elif hasattr(strategy_instance, "on_start"):
@@ -2521,6 +2513,16 @@ def run_warm_start(
                 if hasattr(slot_strategy, "on_resume"):
                     slot_strategy.on_resume()
             slot_strategy.on_start()
+
+    if data_map_for_indicators:
+        for current_strategy in all_strategy_instances:
+            if _should_prepare_precomputed_indicators(current_strategy) and hasattr(
+                current_strategy, "_prepare_indicators"
+            ):
+                try:
+                    current_strategy._prepare_indicators(data_map_for_indicators)
+                except Exception as e:
+                    logger.error(f"Failed to update indicators for warm start: {e}")
 
     # 4. 运行
     try:

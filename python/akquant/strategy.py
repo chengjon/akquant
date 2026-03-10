@@ -169,6 +169,7 @@ class StrategyRuntimeConfig:
     portfolio_update_eps: float = 0.0
     error_mode: Literal["raise", "continue", "legacy"] = "raise"
     re_raise_on_error: bool = True
+    indicator_mode: Literal["incremental", "precompute"] = "precompute"
 
     def __post_init__(self) -> None:
         """校验并标准化配置."""
@@ -179,6 +180,10 @@ class StrategyRuntimeConfig:
         if mode not in {"raise", "continue", "legacy"}:
             raise ValueError("error_mode must be one of: raise, continue, legacy")
         self.error_mode = cast(Literal["raise", "continue", "legacy"], mode)
+        indicator_mode = str(self.indicator_mode).strip().lower()
+        if indicator_mode not in {"incremental", "precompute"}:
+            raise ValueError("indicator_mode must be one of: incremental, precompute")
+        self.indicator_mode = cast(Literal["incremental", "precompute"], indicator_mode)
         self.enable_precise_day_boundary_hooks = bool(
             self.enable_precise_day_boundary_hooks
         )
@@ -201,7 +206,8 @@ class Strategy:
     # Rust maintains HistoryBuffer for indicator calculation.
     # Python side accesses it via self.ctx.history() (efficient copy).
     # No duplicate storage in Python.
-    _indicators: List["Indicator"]
+    _precomputed_indicators: List["Indicator"]
+    _incremental_indicators: Dict[str, Dict[str, Any]]
     _subscriptions: List[str]
     _last_prices: Dict[str, float]
     _rolling_train_window: int
@@ -252,7 +258,8 @@ class Strategy:
         instance.sizer = FixedSize(100)
         instance.current_bar = None
         instance.current_tick = None
-        instance._indicators = []
+        instance._precomputed_indicators = []
+        instance._incremental_indicators = {}
         instance._subscriptions = []
         instance._last_prices = {}
         instance._known_orders = {}
@@ -268,6 +275,7 @@ class Strategy:
         class_portfolio_eps = cls.__dict__.get("portfolio_update_eps", 0.0)
         class_error_mode = cls.__dict__.get("error_mode", "raise")
         class_re_raise = cls.__dict__.get("re_raise_on_error", True)
+        class_indicator_mode = cls.__dict__.get("indicator_mode", "precompute")
         if isinstance(raw_runtime_config, dict):
             instance.runtime_config = StrategyRuntimeConfig(**raw_runtime_config)
         elif isinstance(raw_runtime_config, StrategyRuntimeConfig):
@@ -276,6 +284,7 @@ class Strategy:
                 portfolio_update_eps=raw_runtime_config.portfolio_update_eps,
                 error_mode=raw_runtime_config.error_mode,
                 re_raise_on_error=raw_runtime_config.re_raise_on_error,
+                indicator_mode=raw_runtime_config.indicator_mode,
             )
         else:
             instance.runtime_config = StrategyRuntimeConfig(
@@ -285,6 +294,9 @@ class Strategy:
                     Literal["raise", "continue", "legacy"], str(class_error_mode)
                 ),
                 re_raise_on_error=bool(class_re_raise),
+                indicator_mode=cast(
+                    Literal["incremental", "precompute"], str(class_indicator_mode)
+                ),
             )
         instance._last_event_type = ""
         instance._trading_days = []
@@ -386,6 +398,10 @@ class Strategy:
                     str(self.__dict__.pop("error_mode", "raise")),
                 ),
                 re_raise_on_error=bool(self.__dict__.pop("re_raise_on_error", True)),
+                indicator_mode=cast(
+                    Literal["incremental", "precompute"],
+                    str(self.__dict__.pop("indicator_mode", "precompute")),
+                ),
             )
         self.ctx = None
         self.current_bar = None
@@ -429,6 +445,7 @@ class Strategy:
                 portfolio_update_eps=value.portfolio_update_eps,
                 error_mode=value.error_mode,
                 re_raise_on_error=value.re_raise_on_error,
+                indicator_mode=value.indicator_mode,
             )
             return
         if isinstance(value, dict):
@@ -452,6 +469,7 @@ class Strategy:
             portfolio_update_eps=cfg.portfolio_update_eps,
             error_mode=cfg.error_mode,
             re_raise_on_error=cfg.re_raise_on_error,
+            indicator_mode=cfg.indicator_mode,
         )
 
     @property
@@ -468,6 +486,7 @@ class Strategy:
             portfolio_update_eps=float(value),
             error_mode=cfg.error_mode,
             re_raise_on_error=cfg.re_raise_on_error,
+            indicator_mode=cfg.indicator_mode,
         )
 
     @property
@@ -484,6 +503,7 @@ class Strategy:
             portfolio_update_eps=cfg.portfolio_update_eps,
             error_mode=cast(Literal["raise", "continue", "legacy"], value),
             re_raise_on_error=cfg.re_raise_on_error,
+            indicator_mode=cfg.indicator_mode,
         )
 
     @property
@@ -500,6 +520,23 @@ class Strategy:
             portfolio_update_eps=cfg.portfolio_update_eps,
             error_mode=cfg.error_mode,
             re_raise_on_error=bool(value),
+            indicator_mode=cfg.indicator_mode,
+        )
+
+    @property
+    def indicator_mode(self) -> Literal["incremental", "precompute"]:
+        """返回指标执行模式."""
+        return self.runtime_config.indicator_mode
+
+    @indicator_mode.setter
+    def indicator_mode(self, value: Literal["incremental", "precompute"]) -> None:
+        cfg = self.runtime_config
+        self.runtime_config = StrategyRuntimeConfig(
+            enable_precise_day_boundary_hooks=cfg.enable_precise_day_boundary_hooks,
+            portfolio_update_eps=cfg.portfolio_update_eps,
+            error_mode=cfg.error_mode,
+            re_raise_on_error=cfg.re_raise_on_error,
+            indicator_mode=value,
         )
 
     @property
@@ -527,7 +564,7 @@ class Strategy:
         pass
 
     def _on_start_internal(self) -> None:
-        """内部启动回调，用于自动发现指标等."""
+        """内部启动回调."""
         if self._start_initialized:
             return
 
@@ -536,20 +573,7 @@ class Strategy:
             self.on_resume()
 
         self.on_start()
-        self._discover_indicators()
         self._start_initialized = True
-
-    def _discover_indicators(self) -> None:
-        """自动发现并注册 self 属性中的指标."""
-        from .indicator import Indicator
-
-        # Scan instance attributes
-        for name, value in self.__dict__.items():
-            if isinstance(value, Indicator):
-                # Avoid duplicate registration
-                if value not in self._indicators:
-                    self.register_indicator(name, value)
-                    # print(f"Auto-registered indicator: {name}")
 
     def on_stop(self) -> None:
         """
@@ -761,7 +785,39 @@ class Strategy:
         This allows accessing the indicator via self.name and ensures it is
         calculated before the backtest starts.
         """
-        self._indicators.append(indicator)
+        self.register_precomputed_indicator(name, indicator)
+
+    def register_precomputed_indicator(self, name: str, indicator: "Indicator") -> None:
+        """注册预计算指标."""
+        if self.indicator_mode != "precompute":
+            raise ValueError(
+                "register_precomputed_indicator requires indicator_mode='precompute'"
+            )
+        if indicator not in self._precomputed_indicators:
+            self._precomputed_indicators.append(indicator)
+        setattr(self, name, indicator)
+
+    def register_incremental_indicator(
+        self,
+        name: str,
+        indicator: Any,
+        source: str = "close",
+        symbols: Optional[Union[str, List[str], Tuple[str, ...], set[str]]] = None,
+    ) -> None:
+        """注册增量指标."""
+        if self.indicator_mode != "incremental":
+            raise ValueError(
+                "register_incremental_indicator requires indicator_mode='incremental'"
+            )
+        source_key = str(source).strip().lower()
+        if source_key not in {"open", "high", "low", "close", "volume"}:
+            raise ValueError("source must be one of: open, high, low, close, volume")
+        symbol_filter = self._normalize_indicator_symbols(symbols)
+        self._incremental_indicators[name] = {
+            "indicator": indicator,
+            "source": source_key,
+            "symbols": symbol_filter,
+        }
         setattr(self, name, indicator)
 
     def subscribe(self, instrument_id: str) -> None:
@@ -774,14 +830,53 @@ class Strategy:
             self._subscriptions.append(instrument_id)
 
     def _prepare_indicators(self, data: Dict[str, pd.DataFrame]) -> None:
-        """Pre-calculate indicators."""
-        if not self._indicators:
+        """Pre-calculate indicators for precompute mode."""
+        if self.indicator_mode != "precompute":
+            return
+        if not self._precomputed_indicators:
             return
 
-        for ind in self._indicators:
+        for ind in self._precomputed_indicators:
             for sym, df in data.items():
                 # Calculate and cache inside indicator
                 ind(df, sym)
+
+    def _update_incremental_indicators(self, bar: Bar) -> None:
+        if self.indicator_mode != "incremental":
+            return
+        if not self._incremental_indicators:
+            return
+        for item in self._incremental_indicators.values():
+            symbol_filter = item["symbols"]
+            if symbol_filter is not None and bar.symbol not in symbol_filter:
+                continue
+            ind = item["indicator"]
+            source = item["source"]
+            value = getattr(bar, source)
+            ind.update(value)
+
+    def _normalize_indicator_symbols(
+        self,
+        symbols: Optional[Union[str, List[str], Tuple[str, ...], set[str]]],
+    ) -> Optional[set[str]]:
+        if symbols is None:
+            return None
+        if isinstance(symbols, str):
+            symbol_text = symbols.strip()
+            if not symbol_text:
+                raise ValueError("symbols cannot contain empty symbol")
+            return {symbol_text}
+        if isinstance(symbols, (list, tuple, set)):
+            normalized: set[str] = set()
+            for symbol in symbols:
+                symbol_text = str(symbol).strip()
+                if not symbol_text:
+                    raise ValueError("symbols cannot contain empty symbol")
+                normalized.add(symbol_text)
+            if not normalized:
+                raise ValueError("symbols cannot be empty")
+            return normalized
+        raise TypeError("symbols must be str, list[str], tuple[str, ...], set[str]")
 
     def on_order(self, order: Any) -> None:
         """

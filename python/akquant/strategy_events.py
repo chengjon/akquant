@@ -49,6 +49,8 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
     previous_price = strategy._last_prices.get(bar.symbol)
     strategy.current_bar = bar
     strategy.current_tick = None
+    if hasattr(strategy, "_update_incremental_indicators"):
+        strategy._update_incremental_indicators(bar)
     strategy._last_prices[bar.symbol] = bar.close
     if current_pos != 0 and previous_price is not None and previous_price != bar.close:
         mark_portfolio_dirty(strategy)
