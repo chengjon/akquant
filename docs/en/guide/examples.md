@@ -5,7 +5,7 @@
 *   [Examples Directory Index](https://github.com/akfamily/akquant/blob/main/examples/README.md): Quick entry to all scripts under `examples/`, including scenario-based shortest run paths.
 *   [Quick Start](../start/quickstart.md): Complete workflow covering manual data backtesting and AKShare data backtesting.
 *   [Simple SMA Strategy](strategy.md#class-based): Demonstrates how to write a strategy in class style and perform simple trading logic in `on_bar`.
-*   [Shortest Path for Multi-Asset Target Weights](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py): Focuses on `order_target_weights` and demonstrates one-shot portfolio rebalance after collecting a full timestamp bucket.
+*   [Shortest Path for Multi-Asset Target Weights](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py): TopN dynamic rebalance example using momentum ranking and one-shot portfolio adjustment.
 
 > Data Source Convention: Unless otherwise specified (e.g. simulated data), examples on this page default to using AKShare to fetch real market data.
 
@@ -339,5 +339,5 @@ The `examples/` directory contains more scripts demonstrating AKShare integratio
     *   Prints `bundle.metadata` to confirm the custom broker is resolved by factory.
 
 *   **[43_target_weights_rebalance.py](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py)**:
-    *   Demonstrates a minimal runnable `order_target_weights` flow: rebalance once after collecting all symbols for the same timestamp bucket.
-    *   Shows practical usage of `liquidate_unmentioned` and `rebalance_tolerance`, then prints `final_positions` / `final_equity`.
+    *   Demonstrates TopN dynamic weights: rank symbols by momentum, select winners, then rebalance with `order_target_weights`.
+    *   Shows practical usage of `liquidate_unmentioned` and `rebalance_tolerance`, then prints `selected_history` / `final_positions` / `final_equity`.

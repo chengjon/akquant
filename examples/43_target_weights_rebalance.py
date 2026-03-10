@@ -41,40 +41,61 @@ def make_data() -> dict[str, pd.DataFrame]:
 
 
 class TargetWeightsRebalanceStrategy(Strategy):
-    """Minimal target-weights rebalance demo."""
+    """TopN 动态权重调仓示例策略."""
 
     def __init__(self, symbols: list[str]) -> None:
-        """Initialize timestamp bucket and rebalance state."""
+        """初始化横截面计算所需状态."""
         super().__init__()
         self.symbols = symbols
         self.pending: dict[int, set[str]] = defaultdict(set)
-        self.rebalance_count = 0
+        self.lookback = 3
+        self.top_n = 2
+        self.target_total_weight = 0.9
+        self.selected_history: list[tuple[int, list[str], dict[str, float]]] = []
 
     def on_bar(self, bar: Bar) -> None:
-        """Run rebalance once per complete timestamp."""
+        """收齐同一时间切片后，按动量选 TopN 并调仓."""
+        # on_bar 会按 symbol 逐个触发，这里先缓存，确保每个时间点只调仓一次
         bucket = self.pending[bar.timestamp]
         bucket.add(bar.symbol)
         if len(bucket) < len(self.symbols):
             return
         self.pending.pop(bar.timestamp, None)
 
-        if self.rebalance_count == 0:
-            weights = {"AAA": 0.6, "BBB": 0.3}
-        elif self.rebalance_count == 1:
-            weights = {"AAA": 0.2, "BBB": 0.6, "CCC": 0.1}
-        else:
-            weights = {"BBB": 0.7}
+        # 1) 计算每个标的的简单动量：最新收盘 / 窗口首收盘 - 1
+        scores: dict[str, float] = {}
+        for symbol in self.symbols:
+            closes = self.get_history(count=self.lookback, symbol=symbol, field="close")
+            if len(closes) < self.lookback:
+                return
+            first_close = float(closes[0])
+            last_close = float(closes[-1])
+            if first_close <= 0:
+                return
+            scores[symbol] = last_close / first_close - 1.0
 
+        # 2) 选出 TopN 强势标的
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        selected = [symbol for symbol, _ in ranked[: self.top_n]]
+        if not selected:
+            return
+
+        # 3) 生成目标权重：TopN 等权，总仓位上限由 target_total_weight 控制
+        each_weight = self.target_total_weight / float(len(selected))
+        target_weights = {symbol: each_weight for symbol in selected}
+
+        # 4) 一次调用完成组合调仓
+        #    liquidate_unmentioned=True 会把不在 target_weights 的持仓清到 0
         self.order_target_weights(
-            target_weights=weights,
+            target_weights=target_weights,
             liquidate_unmentioned=True,
             rebalance_tolerance=0.01,
         )
-        self.rebalance_count += 1
+        self.selected_history.append((bar.timestamp, selected, target_weights))
 
 
 def main() -> None:
-    """Run demo and print key outputs."""
+    """运行示例并打印调仓轨迹与最终状态."""
     symbols = ["AAA", "BBB", "CCC"]
     result = aq.run_backtest(
         data=make_data(),
@@ -88,8 +109,17 @@ def main() -> None:
         min_commission=0.0,
         lot_size=1,
         execution_mode="current_close",
+        # get_history 依赖历史缓存深度，这里设置为 lookback 对应长度
+        history_depth=3,
         show_progress=False,
     )
+
+    strategy = result.strategy
+    if strategy is not None:
+        print("selected_history")
+        for ts, selected, weights in strategy.selected_history:
+            local_ts = pd.Timestamp(ts, tz="UTC").tz_convert("Asia/Shanghai")
+            print(f"{local_ts} selected={selected} weights={weights}")
 
     print("final_positions")
     print(result.positions.iloc[-1])

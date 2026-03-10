@@ -44,7 +44,7 @@
 - [40_functional_multi_slot_risk_demo.py](./40_functional_multi_slot_risk_demo.py): 函数式 + 多策略 slot + 风控限制端到端示例。
 - [41_live_multi_slot_orchestration_demo.py](./41_live_multi_slot_orchestration_demo.py): LiveRunner 多策略 slot 编排示例（paper）。
 - [42_live_broker_event_audit_demo.py](./42_live_broker_event_audit_demo.py): broker 事件审计与 owner_strategy_id 追踪示例。
-- [43_target_weights_rebalance.py](./43_target_weights_rebalance.py): 多标的 `order_target_weights` 目标权重调仓示例。
+- [43_target_weights_rebalance.py](./43_target_weights_rebalance.py): TopN 动态权重调仓示例（横截面动量 + `order_target_weights`）。
 
 ## 流式回测与实时报告
 
