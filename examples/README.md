@@ -47,6 +47,7 @@
 - [42_live_broker_event_audit_demo.py](./42_live_broker_event_audit_demo.py): broker 事件审计与 owner_strategy_id 追踪示例。
 - [43_target_weights_rebalance.py](./43_target_weights_rebalance.py): TopN 动态权重调仓示例（横截面动量 + `order_target_weights`）。
 - [44_strategy_source_loader_demo.py](./44_strategy_source_loader_demo.py): strategy_source + strategy_loader 动态加载示例（明文 + 外部解密）。
+- [45_talib_indicator_playbook_demo.py](./45_talib_indicator_playbook_demo.py): TA-Lib 指标组合模板示例（趋势跟随 + 均值回归 + 风险过滤，支持 `--data-source synthetic|akshare`）。
 
 ## 流式回测与实时报告
 

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Sequence
 
-from akquant import DataFeed
-
+from ..akquant import DataFeed
 from .base import GatewayBundle
 
 GatewayBuilder = Callable[[DataFeed, Sequence[str], bool], GatewayBundle]

@@ -175,7 +175,7 @@ class FSMStrategy(Strategy):
 
 ## 5.5 自定义指标开发 (Custom Indicators)
 
-虽然 `akquant` 内置了常用的 TA-Lib 指标，但在实战中，我们经常需要开发私有指标。
+`akquant` 目前已经提供了 `akquant.talib` 兼容层，并支持 `python/rust` 双后端；但在实战中，我们仍会频繁遇到需要开发私有指标或策略专用信号的场景。
 
 ### 5.5.1 继承 `Indicator` 基类
 
@@ -210,6 +210,122 @@ def on_bar(self, bar):
     if not math.isnan(mom_value) and mom_value > 0:
         # Do something...
 ```
+
+### 5.5.3 使用 `akquant.talib` 双后端
+
+当策略从 TA-Lib 迁移时，建议先保持函数签名不变，再通过 `backend` 参数切换执行后端。
+
+```python
+from akquant import talib as ta
+
+close = df["close"].to_numpy()
+high = df["high"].to_numpy()
+low = df["low"].to_numpy()
+
+# python 后端（兼容基线）
+rsi_py = ta.RSI(close, timeperiod=14, backend="python")
+
+# rust 后端（高性能）
+rsi_rs = ta.RSI(close, timeperiod=14, backend="rust")
+adx_rs = ta.ADX(high, low, close, timeperiod=14, backend="rust")
+slowk_rs, slowd_rs = ta.STOCH(
+    high,
+    low,
+    close,
+    fastk_period=5,
+    slowk_period=3,
+    slowd_period=3,
+    backend="rust",
+)
+```
+
+当前 `rust` backend 已覆盖：
+
+- 单输出：`SMA/EMA/RSI/ATR/ROC/WILLR/CCI/ADX/MFI/OBV/TRIX/MOM/DEMA/TEMA/KAMA/NATR/SAR`
+- 多输出：`MACD/BBANDS/STOCH`
+
+批次 B/C 的常见调用示例：
+
+```python
+volume = df["volume"].to_numpy()
+
+mfi_rs = ta.MFI(high, low, close, volume, timeperiod=14, backend="rust")
+obv_rs = ta.OBV(close, volume, backend="rust")
+trix_rs = ta.TRIX(close, timeperiod=15, backend="rust")
+mom_rs = ta.MOM(close, period=10, backend="rust")
+dema_rs = ta.DEMA(close, timeperiod=20, backend="rust")
+
+tema_rs = ta.TEMA(close, timeperiod=20, backend="rust")
+kama_rs = ta.KAMA(close, period=10, backend="rust")
+natr_rs = ta.NATR(high, low, close, timeperiod=14, backend="rust")
+sar_rs = ta.SAR(high, low, acceleration=0.02, maximum=0.2, backend="rust")
+```
+
+在策略里使用时，建议显式处理 warmup 区段：
+
+```python
+import numpy as np
+
+signal = ta.TEMA(close, timeperiod=20, backend="rust")
+last_signal = signal[-1]
+if np.isnan(last_signal):
+    return
+```
+
+在工程实践中，推荐流程是：
+
+1. 先用 `backend="python"` 与原策略对齐结果；
+2. 再切换 `backend="rust"` 做性能提速；
+3. 用固定数据集回归验证 warmup 与输出形态（单值或 tuple）一致。
+4. 对支持 `period` 别名的指标优先沿用旧参数命名，降低迁移成本。
+
+### 5.5.4 指标选型与组合模板
+
+实战里不建议“单指标决策”，更推荐“趋势 + 动量 + 波动率/风险”组合。
+
+| 场景 | 推荐组合 | 起步参数（可回测微调） | 说明 |
+| :--- | :--- | :--- | :--- |
+| 趋势跟随 | `EMA` + `ADX` + `NATR` | `EMA(20/60)`, `ADX(14)`, `NATR(14)` | 用 ADX 过滤震荡，用 NATR 控制仓位 |
+| 均值回归 | `BBANDS` + `RSI` | `BBANDS(20,2,2)`, `RSI(14)` | 价格触带 + RSI 极值联合触发 |
+| 量价确认 | `OBV` + `MFI` + `ROC` | `MFI(14)`, `ROC(10)` | 方向信号由价给出，量能决定是否放行 |
+| 跟踪止损 | `SAR` + `ATR` | `SAR(0.02,0.2)`, `ATR(14)` | 用 SAR 跟踪趋势，用 ATR 定义止损宽度 |
+
+组合模板示例（趋势跟随）：
+
+```python
+ema_fast = ta.EMA(close, timeperiod=20, backend="rust")
+ema_slow = ta.EMA(close, timeperiod=60, backend="rust")
+adx = ta.ADX(high, low, close, timeperiod=14, backend="rust")
+natr = ta.NATR(high, low, close, timeperiod=14, backend="rust")
+
+if np.isnan(ema_fast[-1]) or np.isnan(adx[-1]) or np.isnan(natr[-1]):
+    return
+
+trend_up = ema_fast[-1] > ema_slow[-1]
+trend_strong = adx[-1] >= 20
+risk_ok = natr[-1] < 4.0
+
+if trend_up and trend_strong and risk_ok:
+    self.buy(symbol, 100)
+```
+
+组合模板示例（均值回归）：
+
+```python
+upper, middle, lower = ta.BBANDS(close, timeperiod=20, backend="rust")
+rsi = ta.RSI(close, timeperiod=14, backend="rust")
+
+if np.isnan(lower[-1]) or np.isnan(rsi[-1]):
+    return
+
+long_signal = close[-1] < lower[-1] and rsi[-1] < 30
+exit_signal = close[-1] > middle[-1]
+```
+
+延伸阅读：
+- [指标组合实战手册](../guide/talib_indicator_playbook.md)
+- [可运行示例：45_talib_indicator_playbook_demo.py](https://github.com/akfamily/akquant/blob/main/examples/45_talib_indicator_playbook_demo.py)
+- 可选真实数据模式：`python examples/45_talib_indicator_playbook_demo.py --data-source akshare --symbol sh600000 --start-date 20240101 --end-date 20260301`
 
 ## 5.6 高级风控管理 (Risk Management)
 

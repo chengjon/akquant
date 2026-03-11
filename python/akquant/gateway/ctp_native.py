@@ -8,7 +8,7 @@ This module provides CTP (China Futures) connectivity using openctp-ctp library.
 import time
 from typing import Any, Dict, List, Optional
 
-from akquant import Bar, BarAggregator, DataFeed
+from ..akquant import Bar, BarAggregator, DataFeed
 
 try:
     from openctp_ctp import thostmduserapi as mdapi  # type: ignore

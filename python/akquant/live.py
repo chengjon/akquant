@@ -3,10 +3,11 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
-from akquant import Bar, DataFeed, Engine, Instrument, Strategy
-from akquant.gateway.factory import create_gateway_bundle
-from akquant.gateway.models import UnifiedOrderRequest
-from akquant.strategy_loader import resolve_strategy_input
+from .akquant import Bar, DataFeed, Engine, Instrument
+from .gateway.factory import create_gateway_bundle
+from .gateway.models import UnifiedOrderRequest
+from .strategy import Strategy
+from .strategy_loader import resolve_strategy_input
 
 
 class _StrategyCallbackFanout:

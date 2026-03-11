@@ -1,11 +1,17 @@
 import os
 import pickle
+from importlib import metadata
 from typing import Any, Optional, Tuple
 
-import akquant as aq
+from .akquant import DataFeed, Engine
+
+try:
+    _VERSION = metadata.version("akquant")
+except metadata.PackageNotFoundError:
+    _VERSION = "0.0.0+unknown"
 
 
-def save_snapshot(engine: aq.Engine, strategy: Any, filepath: str) -> None:
+def save_snapshot(engine: Engine, strategy: Any, filepath: str) -> None:
     """
     保存当前运行状态到文件.
 
@@ -62,7 +68,7 @@ def save_snapshot(engine: aq.Engine, strategy: Any, filepath: str) -> None:
             "default_strategy_id": default_strategy_id,
             "slot_ids": slot_ids,
         },
-        "version": aq.__version__,
+        "version": _VERSION,
     }
 
     transient_backups: dict[str, Any] = {}
@@ -80,8 +86,8 @@ def save_snapshot(engine: aq.Engine, strategy: Any, filepath: str) -> None:
 
 
 def warm_start(
-    filepath: str, data_feed: Optional[aq.DataFeed] = None
-) -> Tuple[aq.Engine, Any]:
+    filepath: str, data_feed: Optional[DataFeed] = None
+) -> Tuple[Engine, Any]:
     """
     从快照恢复并热启动.
 
@@ -102,7 +108,7 @@ def warm_start(
         topology = {}
 
     # 2. Initialize new Engine
-    engine = aq.Engine()
+    engine = Engine()
 
     # 3. Set DataFeed if provided
     if data_feed:

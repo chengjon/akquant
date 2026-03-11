@@ -3,8 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Sequence
 
-from akquant import DataFeed
-
+from ..akquant import DataFeed
 from .ctp_native import CTPMarketGateway, CTPTraderGateway
 from .mapper import BrokerEventMapper, create_default_mapper
 from .models import (

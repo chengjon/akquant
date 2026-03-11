@@ -11,6 +11,7 @@ except metadata.PackageNotFoundError:
 __engine_rule_version__ = "1.0.0"  # Increment on behavior-changing updates
 
 from . import akquant as _akquant
+from . import talib
 from .akquant import *  # noqa: F403
 from .akquant import ATR, EMA, MACD, RSI, SMA, BollingerBands
 from .analyzer_plugin import AnalyzerManager, AnalyzerTemplate
@@ -115,6 +116,7 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "validate_strategy_params",
         "extract_runtime_kwargs",
         "build_param_grid_from_search_space",
+        "talib",
     ]
 else:
     __all__ = [
@@ -174,6 +176,7 @@ else:
         "validate_strategy_params",
         "extract_runtime_kwargs",
         "build_param_grid_from_search_space",
+        "talib",
     ]
 
 

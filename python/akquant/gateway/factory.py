@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from akquant import DataFeed
-
+from ..akquant import DataFeed
 from .base import GatewayBundle, MarketGateway, TraderGateway
 from .ctp_adapter import CTPMarketAdapter, CTPTraderAdapter
 from .miniqmt import MiniQMTMarketGateway, MiniQMTTraderGateway

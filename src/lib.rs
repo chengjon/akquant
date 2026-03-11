@@ -26,7 +26,10 @@ use analysis::{BacktestResult, ClosedTrade, PerformanceMetrics, TradePnL};
 use context::StrategyContext;
 use data::{BarAggregator, DataFeed, from_arrays};
 use engine::Engine;
-use indicators::{ATR, BollingerBands, EMA, MACD, RSI, SMA};
+use indicators::{
+    ADX, ATR, BollingerBands, CCI, DEMA, EMA, KAMA, MACD, MFI, MOM, NATR, OBV, ROC, RSI, SAR,
+    SMA, STOCH, TEMA, TRIX, WILLR,
+};
 use model::{
     AssetType, Bar, ExecutionMode, Instrument, OptionType, Order, OrderRole, OrderSide,
     OrderStatus, OrderType, SettlementType, Tick, TimeInForce, Trade, TradingSession,
@@ -71,6 +74,20 @@ fn akquant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<EMA>()?;
     m.add_class::<MACD>()?;
     m.add_class::<RSI>()?;
+    m.add_class::<ROC>()?;
+    m.add_class::<MOM>()?;
+    m.add_class::<OBV>()?;
+    m.add_class::<WILLR>()?;
+    m.add_class::<TRIX>()?;
+    m.add_class::<DEMA>()?;
+    m.add_class::<TEMA>()?;
+    m.add_class::<KAMA>()?;
+    m.add_class::<NATR>()?;
+    m.add_class::<SAR>()?;
+    m.add_class::<MFI>()?;
+    m.add_class::<CCI>()?;
+    m.add_class::<ADX>()?;
+    m.add_class::<STOCH>()?;
     m.add_class::<BollingerBands>()?;
     m.add_class::<ATR>()?;
     Ok(())

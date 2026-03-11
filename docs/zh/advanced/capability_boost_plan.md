@@ -16,7 +16,7 @@
 | 统一数据适配层 | **已落地 v1**：`DataFeedAdapter` + `CSV/Parquet` + `run_backtest(data=adapter)` | [feed_adapter.py](https://github.com/akfamily/akquant/blob/main/python/akquant/feed_adapter.py), [test_feed_adapter.py](https://github.com/akfamily/akquant/blob/main/tests/test_feed_adapter.py) | P1 |
 | 多时间框架重采样/重放 | **已落地 v1**：`resample/replay`、`align/day_mode/session_windows` 可用并有测试 | [feed_adapter.py](https://github.com/akfamily/akquant/blob/main/python/akquant/feed_adapter.py), [test_feed_adapter.py](https://github.com/akfamily/akquant/blob/main/tests/test_feed_adapter.py), [multi_timeframe_feed_api.md](./multi_timeframe_feed_api.md) | P1 |
 | Broker 可扩展与本地接入 | **已落地 v1**：内置 `ctp/miniqmt/ptrade` + 注册机制 + 桥接测试 | [factory.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/factory.py), [registry.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/registry.py), [test_gateway_registry.py](https://github.com/akfamily/akquant/blob/main/tests/test_gateway_registry.py), [test_live_runner_broker_bridge.py](https://github.com/akfamily/akquant/blob/main/tests/test_live_runner_broker_bridge.py) | P1 |
-| 指标库与 TA-Lib 迁移 | **基础可用**：已内建核心指标，兼容层仍待补齐 | [indicators.rs](https://github.com/akfamily/akquant/blob/main/src/indicators.rs), [talib_top20_plan.md](./talib_top20_plan.md) | P2 |
+| 指标库与 TA-Lib 迁移 | **批次 A/B/C 已完成**：Top20（`ADX/CCI/STOCH/WILLR/ROC/MFI/OBV/TRIX/MOM/DEMA/TEMA/KAMA/NATR/SAR`）已双后端可用 | [indicators.rs](https://github.com/akfamily/akquant/blob/main/src/indicators.rs), [funcs.py](https://github.com/akfamily/akquant/blob/main/python/akquant/talib/funcs.py), [test_talib_backend.py](https://github.com/akfamily/akquant/blob/main/tests/test_talib_backend.py), [talib_top20_plan.md](./talib_top20_plan.md) | P2 |
 | Analyzer 插件生态 | **已落地 v1**：插件协议 + `run_backtest(analyzer_plugins=...)` + 输出落地 | [analyzer_plugin.py](https://github.com/akfamily/akquant/blob/main/python/akquant/analyzer_plugin.py), [backtest/engine.py](https://github.com/akfamily/akquant/blob/main/python/akquant/backtest/engine.py), [test_engine.py](https://github.com/akfamily/akquant/blob/main/tests/test_engine.py), [analyzer_plugin_spec.md](./analyzer_plugin_spec.md) | P2 |
 | 流式统一内核 | **阶段 5 已完成迁移语义**：保持 `run_backtest` 入口不变，支持 `on_event` | [README.md](https://github.com/akfamily/akquant/blob/main/README.md), [stream_observability.md](./stream_observability.md), [test_engine.py](https://github.com/akfamily/akquant/blob/main/tests/test_engine.py) | 持续观察 |
 
@@ -85,11 +85,11 @@
 ### P2：指标兼容与插件生态（从“接口可用”走向“生态可增长”）
 
 现状：
-- 指标层已有核心集合，TA-Lib 兼容清单明确。
+- 指标层已完成批次 A/B/C，Top20 指标已全部接入 `akquant.talib` 的 `rust` backend。
 - Analyzer 插件生命周期已接入回测主流程并可输出结果。
 
 本阶段目标：
-- 按 Top20 清单分批补齐 TA-Lib 迁移高频指标。
+- 将 Top20 指标补齐 warmup 说明、参数别名与迁移映射示例。
 - 增加 analyzer 插件分发能力（entry points、版本约束、模板仓）。
 
 代码入口：
@@ -107,7 +107,7 @@
 - `v0.A (4~6 周)`：P0 复杂订单引擎图最小可用 + 回放一致性测试。
 - `v0.B (4~6 周)`：P1 数据生态扩展（Yahoo + feed 校验入口 + 缓存规范）。
 - `v0.C (4~6 周)`：P1 broker 国际化首批闭环（IB/Oanda 至少其一可用）。
-- `v0.D (4~6 周)`：P2 指标兼容层批次 A + analyzer 插件分发最小闭环。
+- `v0.D (4~6 周)`：P2 指标兼容层文档收敛（warmup/映射/示例）+ analyzer 插件分发最小闭环。
 
 ## 风险与缓解
 
@@ -124,5 +124,5 @@
 - 增加 `YahooFeedAdapter` 与对应单测/示例。
 - 新增 `feed validate` 命令或等价 API（先覆盖 schema 与时区校验）。
 - 为 IB/Oanda/CCXT 生成统一契约测试模板并优先接入 1 个官方实现。
-- 完成 TA-Lib 兼容批次 A（`ADX/CCI/STOCH/WILLR/ROC`）。
+- 为 Top20 指标补齐 warmup/参数别名迁移示例并建立统一对照测试清单。
 - 增加 analyzer 插件 entry points 发现与版本约束原型。

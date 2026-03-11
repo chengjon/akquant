@@ -872,6 +872,207 @@ class RSI:
         """
         ...
 
+class ROC:
+    r"""变化率指标 (ROC)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "ROC": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ROC 值
+        """
+        ...
+
+class MOM:
+    r"""动量指标 (MOM)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MOM": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 MOM 值
+        """
+        ...
+
+class OBV:
+    r"""能量潮指标 (OBV)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "OBV": ...
+    def update(self, close: float, volume: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param close: 收盘价
+        :param volume: 成交量
+        :return: 当前 OBV 值
+        """
+        ...
+
+class DEMA:
+    r"""双指数移动平均线 (DEMA)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "DEMA": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 DEMA 值
+        """
+        ...
+
+class TRIX:
+    r"""三重指数平滑变动率 (TRIX)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "TRIX": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 TRIX 值
+        """
+        ...
+
+class MFI:
+    r"""资金流量指标 (MFI)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MFI": ...
+    def update(
+        self, high: float, low: float, close: float, volume: float
+    ) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :param volume: 成交量
+        :return: 当前 MFI 值
+        """
+        ...
+
+class TEMA:
+    r"""三重指数移动平均线 (TEMA)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "TEMA": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 TEMA 值
+        """
+        ...
+
+class KAMA:
+    r"""考夫曼自适应均线 (KAMA)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "KAMA": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 KAMA 值
+        """
+        ...
+
+class NATR:
+    r"""标准化真实波幅均值 (NATR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "NATR": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 NATR 值
+        """
+        ...
+
+class SAR:
+    r"""抛物线转向指标 (SAR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, acceleration: float, maximum: float) -> "SAR": ...
+    def update(self, high: float, low: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :return: 当前 SAR 值
+        """
+        ...
+
+class CCI:
+    r"""顺势指标 (CCI)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int, c: float) -> "CCI": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 CCI 值
+        """
+        ...
+
+class ADX:
+    r"""平均趋向指标 (ADX)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "ADX": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 ADX 值
+        """
+        ...
+
+class STOCH:
+    r"""随机指标 (STOCH)."""
+
+    value: typing.Optional[tuple[float, float]]
+    def __new__(
+        cls, fastk_period: int, slowk_period: int, slowd_period: int
+    ) -> "STOCH": ...
+    def update(
+        self, high: float, low: float, close: float
+    ) -> typing.Optional[tuple[float, float]]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 (slowk, slowd)
+        """
+        ...
+
 class RiskConfig:
     r"""风控配置."""
 
@@ -907,6 +1108,22 @@ class SMA:
 
         :param value: 新数据点
         :return: 当前 SMA 值 (如果数据不足则返回 None)
+        """
+        ...
+
+class WILLR:
+    r"""威廉指标 (WILLR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "WILLR": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 WILLR 值
         """
         ...
 
