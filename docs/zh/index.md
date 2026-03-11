@@ -157,16 +157,17 @@ run_backtest(strategy=MyStrategy, data=df, symbol="600000")
 *   参数优化指南（推荐工作流）：[参数模型驱动优化](guide/optimization.md)
 *   示例集合（页面化参数配置）：[页面化参数配置（PARAM_MODEL）](guide/examples.md)
 *   API 最佳实践（前后端联动）：[页面化参数输入](reference/api.md)
-*   示例脚本入口：[`examples/02_parameter_optimization.py`](../../examples/02_parameter_optimization.py)
+*   示例脚本入口：[examples/02_parameter_optimization.py](https://github.com/akfamily/akquant/blob/main/examples/02_parameter_optimization.py)
 
-## 阶段 5 迁移入口
+## 快速入口
 
-*   快速查看迁移 FAQ（快速开始）：[快速开始中的阶段 5 迁移 FAQ](start/quickstart.md#阶段-5-迁移-faq)
-*   查看完整兼容说明（API 参考）：[API 兼容与迁移说明](reference/api.md#兼容与迁移说明)
+*   快速查看迁移 FAQ（快速开始）：[快速开始中的阶段 5 迁移 FAQ](start/quickstart.md)
+*   查看完整兼容说明（API 参考）：[API 兼容与迁移说明](reference/api.md)
 *   多策略迁移清单（进阶专题）：[多策略迁移指南](advanced/multi_strategy_migration.md)
-*   动态策略加载说明（进阶专题）：[运行时配置指南](advanced/runtime_config.md#9-动态策略加载strategysource--strategyloader)
-*   动态策略加载示例（examples）：[44_strategy_source_loader_demo.py](../../examples/44_strategy_source_loader_demo.py)
-*   动态策略加载教材章节（examples/textbook）：[ch15_strategy_loader.py](../../examples/textbook/ch15_strategy_loader.py)
+*   动态策略加载说明（进阶专题）：[运行时配置指南](advanced/runtime_config.md)
+*   动态策略加载示例（examples）：[44_strategy_source_loader_demo.py](https://github.com/akfamily/akquant/blob/main/examples/44_strategy_source_loader_demo.py)
+*   动态策略加载教材章节（examples/textbook）：[ch15_strategy_loader.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_strategy_loader.py)
+*   热启动状态持久化与恢复：[热启动指南](advanced/warm_start.md)
 
 ## 策略实战入口
 

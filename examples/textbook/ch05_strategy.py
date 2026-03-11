@@ -1,5 +1,5 @@
 """
-第 4 章：构建第一个策略 (Strategy).
+第 5 章：构建第一个策略 (Strategy).
 
 本示例详细展示了一个完整策略的结构，重点介绍：
 1. **策略生命周期**：`__init__`, `on_start`, `on_bar`, `on_stop`
@@ -152,7 +152,7 @@ class MyFirstStrategy(Strategy):
 if __name__ == "__main__":
     df = generate_mock_data()
 
-    print("开始运行第 4 章示例策略...")
+    print("开始运行第 5 章示例策略...")
     result = aq.run_backtest(
         strategy=MyFirstStrategy,
         data=df,

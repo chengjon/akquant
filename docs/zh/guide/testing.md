@@ -95,6 +95,19 @@ pytest -q tests/test_engine.py
 
 # 黄金测试（含流式与非流式一致性套件）
 pytest -q tests/golden/test_golden.py
+
+# 文档链接合规检查
+python scripts/check_docs_links.py
+
+# 文档示例 API 合规检查
+python scripts/check_docs_api_examples.py
+
+# 仅检查本次变更文档（可选）
+python scripts/check_docs_links.py --changed-only --from-rev origin/main --to-rev HEAD
+python scripts/check_docs_api_examples.py --changed-only --from-rev origin/main --to-rev HEAD
+
+# 文档严格构建
+mkdocs build --strict
 ```
 
 ---

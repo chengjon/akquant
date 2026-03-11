@@ -2,6 +2,24 @@
 
 量化策略通常包含若干参数（如均线周期、止损阈值）。参数的选择对策略表现有着决定性影响。本章将探讨如何通过科学的**参数优化 (Parameter Optimization)** 寻找最优解，并深入分析**过拟合 (Overfitting)** 的成因与防范措施。
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch11_optimization.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch11_optimization.py)
+- 进阶示例：[examples/02_parameter_optimization.py](https://github.com/akfamily/akquant/blob/main/examples/02_parameter_optimization.py)
+- 对应指南：[优化指南](../guide/optimization.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch11_optimization.py
+```
+
+验收要点：
+
+1. 脚本可完成参数搜索并输出最优参数组合。
+2. 输出中可比较样本内与样本外表现差异。
+3. 改变搜索范围后，最优参数与结果变化具有一致性。
+
 ## 11.1 参数优化理论
 
 ### 11.1.1 目标函数 (Objective Function)
@@ -216,7 +234,20 @@ $$ MinTRL \approx \frac{1.25}{\widehat{SR}^2} \left( \frac{\Phi^{-1}(1-\alpha) -
 
 **Deflated Sharpe Ratio** 正是为了解决这个问题，它要求你在评估那 5 个成功策略时，必须考虑到背后还有 95 个失败的尝试。
 
----
+## 本章小结
 
-**本章小结**：
-参数优化是一把双刃剑。它能提升策略表现，也能导致严重的过拟合。量化投资的艺术在于**在欠拟合与过拟合之间寻找平衡**。记住：**宁要模糊的正确，不要精确的错误**。
+1. 参数优化的目标是提升稳健性，不是追求样本内极值。
+2. WFO、交叉验证和防数据窥探是控制过拟合的关键手段。
+3. 实盘可用策略必须在多区间、多口径下保持一致表现。
+
+## 课后练习
+
+1. 扩展一组参数搜索区间，比较样本内外指标变化。
+2. 设计一个滚动窗口回测并记录每段最优参数漂移。
+3. 计算一次 Deflated Sharpe Ratio 并对比普通夏普结论。
+
+## 常见错误与排查
+
+1. 样本内过高收益：优先检查是否发生参数数据泄漏。
+2. 样本外断崖下滑：确认是否存在过窄参数空间或过拟合。
+3. 结果不可复现：固定随机种子并记录数据与代码版本。

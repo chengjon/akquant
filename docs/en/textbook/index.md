@@ -2,8 +2,30 @@
 
 *This textbook is currently available in Chinese only. English translation is planned for future releases.*
 
-Please refer to the [Chinese Version](../../textbook/index.md) for the full content.
+Please refer to the [Chinese Version](../../zh/textbook/index.md) for the full content.
 
-Latest update in Chinese textbook:
+## English Chapter Skeleton
 
-* Chapter 11 now includes the `PARAM_MODEL + param_grid` workflow for UI-driven parameter configuration and optimization.
+You can still browse the full chapter structure in English and jump to the Chinese source chapter from each page:
+
+- [Chapter 1: Quantitative Investment Overview and Environment Setup](01_foundations.md)
+- [Chapter 2: Programming Survival Guide](02_programming.md)
+- [Chapter 3: Financial Data Acquisition and Processing](03_data.md)
+- [Chapter 4: Event-Driven Backtesting Principles](04_backtest_engine.md)
+- [Chapter 5: Strategy Development in Practice](05_strategy.md)
+- [Chapter 6: A-Share Market Microstructure and Strategy Practice](06_stock_a.md)
+- [Chapter 7: Futures Market and Derivatives Strategies](07_futures.md)
+- [Chapter 8: Options Pricing and Volatility Strategies](08_options.md)
+- [Chapter 9: Fund Investment and Asset Allocation Theory](09_funds.md)
+- [Chapter 10: Strategy Evaluation Framework and Risk Metrics](10_analysis.md)
+- [Chapter 11: Parameter Optimization and Robustness Validation](11_optimization.md)
+- [Chapter 12: Machine Learning in Quantitative Investing](12_ml.md)
+- [Chapter 13: Strategy Visualization and Report Analysis](13_visualization.md)
+- [Chapter 14: High-Performance Factor Mining and Expression Engine](14_factor.md)
+- [Chapter 15: Live Trading Systems and Operations](15_live_trading.md)
+
+Recent updates in the Chinese textbook:
+
+* Chapter 11 includes the `PARAM_MODEL + param_grid` workflow for UI-driven parameter optimization.
+* Chapter 15 has been aligned with current live-trading APIs, including warm-start and strategy-loader paths.
+* Textbook chapter structure and example chapter labels are now synchronized.

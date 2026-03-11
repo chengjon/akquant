@@ -1,0 +1,10 @@
+# Chapter 6: A-Share Market Microstructure and Strategy Practice
+
+This chapter is currently maintained in Chinese first.
+
+- Chinese chapter: [第 6 章：A 股市场微观结构与策略实战](../../zh/textbook/06_stock_a.md)
+- Textbook home: [Chinese textbook index](../../zh/textbook/index.md)
+- Practice links:
+  - Primary example: [examples/textbook/ch06_stock_a.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch06_stock_a.py)
+  - Extended example: [examples/20_risk_management_demo.py](https://github.com/akfamily/akquant/blob/main/examples/20_risk_management_demo.py)
+  - Guide: [Quant Basics Guide](../guide/quant_basics.md)

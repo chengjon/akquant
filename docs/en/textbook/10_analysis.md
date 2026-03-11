@@ -1,0 +1,10 @@
+# Chapter 10: Strategy Evaluation Framework and Risk Metrics
+
+This chapter is currently maintained in Chinese first.
+
+- Chinese chapter: [第 10 章：策略评价体系与风险指标](../../zh/textbook/10_analysis.md)
+- Textbook home: [Chinese textbook index](../../zh/textbook/index.md)
+- Practice links:
+  - Primary example: [examples/textbook/ch10_analysis.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch10_analysis.py)
+  - Extended example: [examples/33_report_and_analysis_outputs.py](https://github.com/akfamily/akquant/blob/main/examples/33_report_and_analysis_outputs.py)
+  - Guide: [Analysis Guide](../guide/analysis.md)

@@ -1,5 +1,5 @@
 """
-第 7 章：策略评价体系 (Strategy Analysis).
+第 10 章：策略评价体系 (Strategy Analysis).
 
 本示例展示了如何深入分析回测结果，通过关键指标评估策略的优劣：
 1. **夏普比率 (Sharpe Ratio)**：收益与风险的比值。
@@ -8,7 +8,7 @@
 4. **盈亏比 (Profit/Loss Ratio)**：平均盈利与平均亏损的比值。
 
 示例策略：
-- 使用第 4 章的均线策略作为基准。
+- 使用第 5 章的均线策略作为基准。
 - 演示如何访问 `result.metrics_df` (总体指标) 和 `result.trades_df` (逐笔交易)。
 """
 
@@ -125,7 +125,7 @@ def analyze_results(result: Any) -> None:
 if __name__ == "__main__":
     df = generate_mock_data()
 
-    print("开始运行第 7 章分析示例...")
+    print("开始运行第 10 章分析示例...")
     result = aq.run_backtest(
         strategy=AnalysisStrategy, data=df, initial_cash=100_000, commission_rate=0.0003
     )

@@ -1,0 +1,50 @@
+name: Docs Quality
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "scripts/check_docs_links.py"
+      - "scripts/check_docs_api_examples.py"
+      - ".github/workflows/docs-quality.yml"
+      - ".github/workflows/deploy-docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "scripts/check_docs_links.py"
+      - "scripts/check_docs_api_examples.py"
+      - ".github/workflows/docs-quality.yml"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install mkdocs mkdocs-material mkdocs-static-i18n
+      - name: Check docs links (changed files)
+        if: github.event_name == 'pull_request'
+        run: python scripts/check_docs_links.py --changed-only --from-rev "${{ github.event.pull_request.base.sha }}" --to-rev "${{ github.sha }}"
+      - name: Check docs api examples (changed files)
+        if: github.event_name == 'pull_request'
+        run: python scripts/check_docs_api_examples.py --changed-only --from-rev "${{ github.event.pull_request.base.sha }}" --to-rev "${{ github.sha }}"
+      - name: Check docs links (full)
+        if: github.event_name != 'pull_request'
+        run: python scripts/check_docs_links.py
+      - name: Check docs api examples (full)
+        if: github.event_name != 'pull_request'
+        run: python scripts/check_docs_api_examples.py
+      - run: mkdocs build --strict

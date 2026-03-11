@@ -1,5 +1,5 @@
 """
-第 6 章附录：商品期权策略 (Commodity Options).
+第 8 章：期权与衍生品策略 (Options & Derivatives).
 
 本示例展示了期权交易的核心特性，特别是如何利用期权构建非线性损益结构。
 示例策略：**备兑看涨 (Covered Call)**

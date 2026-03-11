@@ -1,5 +1,23 @@
 # 第 3 章：金融数据获取与处理
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch03_data.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch03_data.py)
+- 进阶示例：[examples/37_feed_replay_alignment_demo.py](https://github.com/akfamily/akquant/blob/main/examples/37_feed_replay_alignment_demo.py)
+- 对应指南：[数据指南](../guide/data.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch03_data.py
+```
+
+验收要点：
+
+1. 脚本可成功拉取并处理一段历史行情数据。
+2. 输出中能看到数据行数、时间范围或字段结构等基本信息。
+3. 数据可被后续回测脚本直接复用。
+
 ## 3.1 AkShare：量化投资的开源数据基石
 
 在量化投资中，数据质量决定了策略的上限 (Garbage In, Garbage Out)。对于中国市场，[AkShare](https://akshare.akfamily.xyz/) 是目前最流行的开源金融数据接口库。它提供了从股票、期货、期权、基金到宏观经济的全维度数据。
@@ -106,16 +124,16 @@ print(df.head())
 
 下面的代码演示了完整的 ETL 流程：从 AkShare 提取数据，清洗为标准格式，并保存为 Parquet 文件。
 
-创建文件 `examples/textbook/ch02_data.py`：
+创建文件 `examples/textbook/ch03_data.py`：
 
 ```python
---8<-- "examples/textbook/ch02_data.py"
+--8<-- "examples/textbook/ch03_data.py"
 ```
 
 ### 运行结果
 
 ```bash
-python examples/textbook/ch02_data.py
+python examples/textbook/ch03_data.py
 ```
 
 你将在控制台看到数据清洗前后的对比，并在 `data/` 目录下找到生成的 `.parquet` 文件。
@@ -174,4 +192,20 @@ ORDER BY (symbol, datetime);
 
 ---
 
-**本章小结**：
+## 本章小结
+
+1. 数据质量决定策略上限，清洗和对齐是回测前置条件。
+2. OHLCV、复权、停牌处理是 A 股数据工程的三大关键点。
+3. 从离线存储到实时流式处理，需要统一字段与时间语义。
+
+## 课后练习
+
+1. 下载同一标的的日线与分钟线，比较字段与时间粒度差异。
+2. 对一段数据分别做前复权与不复权，观察价格序列变化。
+3. 编写一个最小校验脚本，自动检查缺失值与重复时间戳。
+
+## 常见错误与排查
+
+1. 时间列错位：确认时区和交易日历是否一致。
+2. 价格跳变异常：检查是否遗漏复权处理。
+3. 回测读不到数据：核对本地缓存路径与字段命名是否与引擎约定一致。

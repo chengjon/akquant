@@ -1,5 +1,5 @@
 """
-第 6 章：期货与衍生品策略 (Futures & Derivatives).
+第 7 章：期货与衍生品策略 (Futures & Derivatives).
 
 本示例展示了期货交易的核心特性：
 1. **保证金 (Margin)**：只需缴纳少量资金即可控制大额合约。
@@ -112,7 +112,7 @@ class FuturesTrendStrategy(Strategy):
 if __name__ == "__main__":
     df = generate_futures_data()
 
-    print("开始运行第 6 章期货策略示例...")
+    print("开始运行第 7 章期货策略示例...")
 
     # 1. 定义期货合约属性 (关键步骤)
     # 螺纹钢：乘数 10，保证金 10%

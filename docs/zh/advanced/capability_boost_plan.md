@@ -1,189 +1,128 @@
-# 能力补强路线图（按收益排序）
+# 能力补强路线图（2026-03 本地状态更新）
 
-本文档将六个补强方向整理为可执行方案，目标是在保持 AKQuant 现有性能优势的同时，快速补齐与 backtrader 在生态和易用性上的差距。
+本文档基于当前仓库代码与测试现状更新，替换早期“草案视角”为“已落地 + 待补强”视角。
 
-## 目标与原则
+## 更新原则
 
-- 目标：3 个版本周期内完成 P0/P1 主干能力，P2 形成可扩展插件生态雏形。
-- 原则：先补“交易语义完整性”，再补“数据与连接器广度”，最后扩展“指标与分析生态”。
-- 约束：不破坏现有 `Strategy` API 兼容；新增能力默认可选开启。
-- 验收：每个能力都提供最小可用 API、示例、测试、迁移说明。
+- 保持 `Strategy` API 兼容，不引入破坏性重构。
+- 先推进“可直接提升用户成功率”的能力，再推进生态扩张。
+- 每个方向均给出状态、证据入口、下一阶段目标。
 
-## 优先级拆解
+## 能力状态总览
 
-## 优先补强（按收益排序）摘要
-
-| 优先级 | 能力项 | 当前差距 | 收益判断 |
+| 方向 | 当前状态 | 代码/测试证据 | 下一步优先级 |
 | :--- | :--- | :--- | :--- |
-| P0 | 原生复杂订单族 | 仅 `Market/Limit/StopMarket/StopLimit`，`OCO/Bracket` 仍偏策略层拼装 | 直接提升交易语义完整性，最影响策略迁移体验 |
-| P1 | 统一数据源适配层 | 回测入口虽灵活，但数据接入依赖用户 ETL | 降低接入门槛，扩大可用数据生态 |
-| P1 | 多时间框架重采样/重放 | 多频策略仍依赖手工 `pandas.resample` | 明显减少样板代码，统一多时框语义 |
-| P1 | Broker 生态国际化 | 官方适配器覆盖偏本地生态 | 提升实盘可达性与国际用户覆盖 |
-| P2 | 指标库规模与兼容层 | 内建指标偏核心集合 | 降低 backtrader/TA-Lib 迁移成本 |
-| P2 | 分析器插件生态 | 分析能力强但扩展接口不足 | 形成社区插件增长飞轮 |
+| 复杂订单语义 | **部分完成**：`OCO/Bracket/Trailing` 在策略层助手可用，`OrderType` 已含 `StopTrail/StopTrailLimit` | [strategy.py](https://github.com/akfamily/akquant/blob/main/python/akquant/strategy.py), [types.rs](https://github.com/akfamily/akquant/blob/main/src/model/types.rs), [test_strategy_extras.py](https://github.com/akfamily/akquant/blob/main/tests/test_strategy_extras.py) | P0 |
+| 统一数据适配层 | **已落地 v1**：`DataFeedAdapter` + `CSV/Parquet` + `run_backtest(data=adapter)` | [feed_adapter.py](https://github.com/akfamily/akquant/blob/main/python/akquant/feed_adapter.py), [test_feed_adapter.py](https://github.com/akfamily/akquant/blob/main/tests/test_feed_adapter.py) | P1 |
+| 多时间框架重采样/重放 | **已落地 v1**：`resample/replay`、`align/day_mode/session_windows` 可用并有测试 | [feed_adapter.py](https://github.com/akfamily/akquant/blob/main/python/akquant/feed_adapter.py), [test_feed_adapter.py](https://github.com/akfamily/akquant/blob/main/tests/test_feed_adapter.py), [multi_timeframe_feed_api.md](./multi_timeframe_feed_api.md) | P1 |
+| Broker 可扩展与本地接入 | **已落地 v1**：内置 `ctp/miniqmt/ptrade` + 注册机制 + 桥接测试 | [factory.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/factory.py), [registry.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/registry.py), [test_gateway_registry.py](https://github.com/akfamily/akquant/blob/main/tests/test_gateway_registry.py), [test_live_runner_broker_bridge.py](https://github.com/akfamily/akquant/blob/main/tests/test_live_runner_broker_bridge.py) | P1 |
+| 指标库与 TA-Lib 迁移 | **基础可用**：已内建核心指标，兼容层仍待补齐 | [indicators.rs](https://github.com/akfamily/akquant/blob/main/src/indicators.rs), [talib_top20_plan.md](./talib_top20_plan.md) | P2 |
+| Analyzer 插件生态 | **已落地 v1**：插件协议 + `run_backtest(analyzer_plugins=...)` + 输出落地 | [analyzer_plugin.py](https://github.com/akfamily/akquant/blob/main/python/akquant/analyzer_plugin.py), [backtest/engine.py](https://github.com/akfamily/akquant/blob/main/python/akquant/backtest/engine.py), [test_engine.py](https://github.com/akfamily/akquant/blob/main/tests/test_engine.py), [analyzer_plugin_spec.md](./analyzer_plugin_spec.md) | P2 |
+| 流式统一内核 | **阶段 5 已完成迁移语义**：保持 `run_backtest` 入口不变，支持 `on_event` | [README.md](https://github.com/akfamily/akquant/blob/main/README.md), [stream_observability.md](./stream_observability.md), [test_engine.py](https://github.com/akfamily/akquant/blob/main/tests/test_engine.py) | 持续观察 |
 
-## 关键代码入口映射
+## 分方向更新
 
-- P0 原生复杂订单族
-  - 核心类型定义：[types.rs](file:///Users/albert/Documents/trae_projects/akquant/src/model/types.rs)
-  - 复杂订单示例：[06_complex_orders.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/06_complex_orders.py)
-- P1 统一数据源适配层
-  - API 文档入口：[api.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/reference/api.md)
-  - 数据入口实现：[data.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/data.py)
-- P1 多时间框架重采样/重放
-  - 现有多频示例：[14_multi_frequency.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/14_multi_frequency.py)
-- P1 Broker 生态国际化
-  - 工厂入口：[factory.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/gateway/factory.py)
-  - 注册入口：[registry.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/gateway/registry.py)
-- P2 指标库规模与兼容层
-  - 指标实现入口：[indicators.rs](file:///Users/albert/Documents/trae_projects/akquant/src/indicator/indicators.rs)
-- P2 分析器插件生态
-  - 对外说明入口：[README.md](file:///Users/albert/Documents/trae_projects/akquant/README.md)
-
-### P0：原生复杂订单族
+### P0：复杂订单引擎化（从“策略助手”走向“引擎原生图”）
 
 现状：
-- 核心订单类型集中在 `Market/Limit/StopMarket/StopLimit`。
-- `OCO/Bracket` 目前主要由策略层逻辑拼装。
+- 用户侧已可直接使用 OCO、Bracket、Trailing 助手。
+- 复杂订单联动仍主要在策略层管理，尚未完全下沉为引擎原生订单图。
 
-目标：
-- 在引擎层引入统一的订单图（Order Graph）与关联订单状态机。
-- 原生支持 `OCO/Bracket/StopTrail/StopTrailLimit`。
+本阶段目标：
+- 在订单管理层引入可复用的 `ComplexOrderGraph` 状态机。
+- 统一回测与实盘桥接中的复杂订单状态迁移语义。
 
-工作包：
-- `WP0-1` 订单模型扩展：在 Rust 类型层新增复合订单定义与关联关系字段。
-- `WP0-2` 撮合联动：任一子单状态变化触发图内规则（取消、激活、跟随更新）。
-- `WP0-3` Python API：保留现有 `create_oco_order_group/place_bracket_order`，补齐 `trail` 系列接口。
-- `WP0-4` 回放一致性：回测与实盘路径共享同一状态迁移规则。
+代码入口：
+- [strategy.py](https://github.com/akfamily/akquant/blob/main/python/akquant/strategy.py)
+- [types.rs](https://github.com/akfamily/akquant/blob/main/src/model/types.rs)
+- [order_manager.rs](https://github.com/akfamily/akquant/blob/main/src/order_manager.rs)
+- [complex_order_graph.md](./complex_order_graph.md)
 
 验收标准：
-- 复杂订单全链路单测 + 回测集成测试通过。
-- 在相同行情下，策略层手写 OCO 与引擎原生 OCO 行为一致。
-- 文档、示例、迁移指南齐全。
+- OCO/Bracket/Trail 在“策略助手路径”与“引擎图路径”行为一致。
+- 复杂订单联动逻辑不依赖策略端手写回调。
 
----
-
-### P1：统一数据源适配层
+### P1：数据接入与多时框（从“草案”升级为“产品化”）
 
 现状：
-- 回测入口主要消费 `DataFrame/Dict/List[Bar]`。
-- 数据准备依赖用户自行 ETL。
+- `DataFeedAdapter`、`CSVFeedAdapter`、`ParquetFeedAdapter`、`resample/replay` 已在主干可用并有回归测试。
+- 当前短板从“有没有”转为“生态覆盖与校验工具不足”。
 
-目标：
-- 建立官方 `Feed Adapter` 层与标准缓存协议，降低数据接入门槛。
+本阶段目标：
+- 增加官方适配器 `Yahoo`（以及后续 `IB/Oanda/Polygon/ClickHouse` 分批推进）。
+- 增加 `feed validate` 等价校验入口（schema、时区、重复索引、缺失值、企业行为字段）。
+- 补齐缓存目录规范与重建命令。
 
-工作包：
-- `WP1-1` 统一数据契约：定义 `DataFeedAdapter` 抽象（schema、timezone、corporate action）。
-- `WP1-2` 官方适配器首批：`CSV/Parquet/Yahoo`。
-- `WP1-3` 增量适配器第二批：`IB/Oanda/Polygon/ClickHouse`。
-- `WP1-4` 缓存规范：目录布局、版本签名、过期策略、重建命令。
+代码入口：
+- [feed_adapter.py](https://github.com/akfamily/akquant/blob/main/python/akquant/feed_adapter.py)
+- [test_feed_adapter.py](https://github.com/akfamily/akquant/blob/main/tests/test_feed_adapter.py)
+- [data_feed_adapter_spec.md](./data_feed_adapter_spec.md)
 
 验收标准：
-- 同一标的同一区间，从任意官方适配器拉取后可无缝回测。
-- 适配器均提供最小示例和错误诊断信息。
-- 新增 `feed validate` 或等价校验入口。
+- 官方适配器输出统一 schema，可直接回测。
+- 多时框聚合在关键场景与 pandas 基线误差可控。
 
----
-
-### P1：多时间框架内建重采样/重放
+### P1：Broker 生态国际化（从“可注册”走向“可交易”）
 
 现状：
-- 多频策略常依赖 `pandas.resample` 手工处理后双路喂数。
+- 本地生态适配器与 registry 机制已成型。
+- 国际 broker 仍处于能力矩阵与方案阶段。
 
-目标：
-- 在 feed 层提供内建 `resample/replay`，减少样板代码并保证一致语义。
+本阶段目标：
+- 优先落地 `IB -> Oanda -> CCXT` 的最小交易闭环（行情、下单、回报、撤单、账户）。
+- 用契约测试固定 `TIF/订单类型/错误码` 语义。
 
-工作包：
-- `WP1-5` `feed.resample(freq, agg=...)`：统一聚合规则和边界处理。
-- `WP1-6` `feed.replay(freq, align=...)`：以低频节奏重放高频流。
-- `WP1-7` 多时框事件对齐：统一时区、会话、缺口补齐策略。
+代码入口：
+- [factory.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/factory.py)
+- [registry.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/registry.py)
+- [broker_capability_matrix.md](./broker_capability_matrix.md)
+- [custom_broker_registry.md](./custom_broker_registry.md)
 
 验收标准：
-- 示例策略无需手写 pandas 重采样即可运行。
-- 重采样结果与 pandas 基线在允许误差内一致。
-- 支持回测与实时流路径一致调用方式。
+- 每个官方 broker 有最小可运行示例与契约测试。
+- 缺失能力可解释失败，不做静默降级。
 
----
-
-### P1：Broker 生态国际化
+### P2：指标兼容与插件生态（从“接口可用”走向“生态可增长”）
 
 现状：
-- 内置 broker 更偏本地生态，注册机制已具备但官方适配器覆盖面不足。
+- 指标层已有核心集合，TA-Lib 兼容清单明确。
+- Analyzer 插件生命周期已接入回测主流程并可输出结果。
 
-目标：
-- 补齐国际常用连接器，先实现“行情 + 下单 + 回报”最小闭环。
+本阶段目标：
+- 按 Top20 清单分批补齐 TA-Lib 迁移高频指标。
+- 增加 analyzer 插件分发能力（entry points、版本约束、模板仓）。
 
-工作包：
-- `WP1-8` 官方优先顺序：`IB -> Oanda -> CCXT`。
-- `WP1-9` 能力矩阵：明确每个 broker 支持的订单类型、TIF、账户字段。
-- `WP1-10` 连接器测试桩：离线模拟网关 + 契约测试。
-
-验收标准：
-- 每个官方 broker 提供最小实盘/仿真示例。
-- 下单、撤单、成交回报在统一 API 下可运行。
-- 能力缺失时返回可解释错误而非静默降级。
-
----
-
-### P2：指标库规模与兼容层
-
-现状：
-- 内建指标仍偏核心集合，生态规模与 backtrader 有差距。
-
-目标：
-- 扩容内建指标并提供 TA-Lib 兼容层，降低迁移成本。
-
-工作包：
-- `WP2-1` 指标注册表：统一命名、参数、元数据、输出维度。
-- `WP2-2` TA-Lib 兼容包装：优先覆盖高频使用指标。
-- `WP2-3` 指标一致性校验：对比 pandas/TA-Lib 基线输出。
+代码入口：
+- [indicators.rs](https://github.com/akfamily/akquant/blob/main/src/indicators.rs)
+- [talib_top20_plan.md](./talib_top20_plan.md)
+- [analyzer_plugin.py](https://github.com/akfamily/akquant/blob/main/python/akquant/analyzer_plugin.py)
+- [analyzer_plugin_spec.md](./analyzer_plugin_spec.md)
 
 验收标准：
-- 核心迁移指标清单覆盖率达标。
-- 指标文档自动生成，含参数和 warmup 说明。
-- 指标性能基准不回退。
+- 指标输出与基线工具（TA-Lib/pandas）偏差可控。
+- 第三方 analyzer 能以插件包形式接入并在报告层展示。
 
----
+## 版本节奏建议（更新）
 
-### P2：分析器插件生态
-
-现状：
-- 分析结果强，但以固定输出为主，可扩展性不足。
-
-目标：
-- 提供 Analyzer 插件接口与社区分发机制，形成可持续扩展生态。
-
-工作包：
-- `WP2-4` Analyzer 生命周期接口：`on_start/on_bar/on_trade/on_finish`。
-- `WP2-5` 插件注册与发现：本地包、entry points、版本约束。
-- `WP2-6` 官方首批插件：风险分解、容量评估、归因扩展。
-
-验收标准：
-- 第三方 analyzer 可在不改内核代码情况下接入。
-- 报告层支持挂载插件输出。
-- 插件示例仓与模板可用。
-
-## 版本节奏建议
-
-- `v0.A (4~6 周)`：完成 P0（复杂订单引擎化）+ 文档迁移。
-- `v0.B (4~6 周)`：完成 P1 的数据适配首批与多时框基础 API。
-- `v0.C (4~6 周)`：完成 P1 的 broker 国际化首批闭环。
-- `v0.D (4~6 周)`：推进 P2（指标兼容层 + Analyzer 插件接口）。
+- `v0.A (4~6 周)`：P0 复杂订单引擎图最小可用 + 回放一致性测试。
+- `v0.B (4~6 周)`：P1 数据生态扩展（Yahoo + feed 校验入口 + 缓存规范）。
+- `v0.C (4~6 周)`：P1 broker 国际化首批闭环（IB/Oanda 至少其一可用）。
+- `v0.D (4~6 周)`：P2 指标兼容层批次 A + analyzer 插件分发最小闭环。
 
 ## 风险与缓解
 
-- 风险：复杂订单状态机引入边界条件爆炸。
-  - 缓解：状态转移表驱动实现 + 属性测试（property-based test）。
-- 风险：不同 broker 语义不一致导致 API 表面一致但行为分叉。
-  - 缓解：能力矩阵显式暴露 + 缺失能力强校验失败。
-- 风险：数据适配器质量不均导致回测漂移。
-  - 缓解：统一数据契约校验与回放基线测试。
+- 风险：复杂订单状态机边界爆炸。
+  - 缓解：状态转移表驱动 + 属性测试 + 回放对齐测试。
+- 风险：不同 broker 语义不一致导致“表面统一”。
+  - 缓解：能力矩阵显式化 + 契约测试 + 缺失能力强失败。
+- 风险：数据适配质量差异导致回测漂移。
+  - 缓解：统一校验入口 + 关键场景基线集。
 
-## 立即执行清单（本周）
+## 立即执行清单（本轮）
 
-- 建立 `ComplexOrderGraph` 设计文档与状态转移表。见 [complex_order_graph.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/advanced/complex_order_graph.md)
-- 定义 `DataFeedAdapter` 抽象接口与最小 CSV/Parquet 适配器草案。见 [data_feed_adapter_spec.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/advanced/data_feed_adapter_spec.md) 与 [feed_adapter.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/feed_adapter.py)
-- 输出 `feed.resample/feed.replay` API 草案并锁定事件对齐语义。见 [multi_timeframe_feed_api.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/advanced/multi_timeframe_feed_api.md)
-- 起草 `Broker Capability Matrix` 模板并先覆盖 IB/Oanda/CCXT。见 [broker_capability_matrix.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/advanced/broker_capability_matrix.md)
-- 盘点 TA-Lib 迁移优先指标 Top20 清单。见 [talib_top20_plan.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/advanced/talib_top20_plan.md)
-- 定义 Analyzer 插件最小生命周期接口与示例模板。见 [analyzer_plugin_spec.md](file:///Users/albert/Documents/trae_projects/akquant/docs/zh/advanced/analyzer_plugin_spec.md) 与 [analyzer_plugin.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/analyzer_plugin.py)
+- 将复杂订单“图模型”落地到订单管理层最小实现。
+- 增加 `YahooFeedAdapter` 与对应单测/示例。
+- 新增 `feed validate` 命令或等价 API（先覆盖 schema 与时区校验）。
+- 为 IB/Oanda/CCXT 生成统一契约测试模板并优先接入 1 个官方实现。
+- 完成 TA-Lib 兼容批次 A（`ADX/CCI/STOCH/WILLR/ROC`）。
+- 增加 analyzer 插件 entry points 发现与版本约束原型。

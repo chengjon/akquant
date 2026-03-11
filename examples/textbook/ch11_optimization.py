@@ -1,5 +1,5 @@
 """
-第 8 章：参数优化与过拟合 (Optimization & Overfitting).
+第 11 章：参数优化与过拟合 (Optimization & Overfitting).
 
 本示例展示了如何使用 AKQuant 的网格搜索 (Grid Search) 功能来寻找最优的策略参数。
 同时，我们也会探讨过度优化带来的风险。
@@ -77,7 +77,7 @@ class OptStrategy(Strategy):
 if __name__ == "__main__":
     df = generate_mock_data()
 
-    print("开始运行第 8 章参数优化示例...")
+    print("开始运行第 11 章参数优化示例...")
     print("正在进行网格搜索 (Grid Search)...")
 
     # 定义参数网格

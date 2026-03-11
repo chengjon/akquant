@@ -126,6 +126,13 @@
     ```bash
     ruff check .
     mypy .
+    python scripts/check_docs_links.py
+    python scripts/check_docs_api_examples.py
+    ```
+    如需仅检查本次变更文档，可使用：
+    ```bash
+    python scripts/check_docs_links.py --changed-only --from-rev origin/main --to-rev HEAD
+    python scripts/check_docs_api_examples.py --changed-only --from-rev origin/main --to-rev HEAD
     ```
 
 ---
@@ -136,6 +143,8 @@
 
 - [ ] 代码可以通过 `maturin develop` 编译成功。
 - [ ] 运行了 `ruff check .` 和 `mypy .` 没有报错。
+- [ ] 运行了 `python scripts/check_docs_links.py` 且通过。
+- [ ] 运行了 `python scripts/check_docs_api_examples.py` 且通过。
 - [ ] 如果是新功能，是否添加了简单的测试或示例？
 - [ ] 文档是否已更新？
 

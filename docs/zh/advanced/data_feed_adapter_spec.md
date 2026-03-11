@@ -37,7 +37,7 @@ class DataFeedAdapter(Protocol):
   - 输出：标准 schema DataFrame
 
 实现位置：
-- [feed_adapter.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/feed_adapter.py)
+- [feed_adapter.py](https://github.com/akfamily/akquant/blob/main/python/akquant/feed_adapter.py)
 
 ## 缓存规范 v0
 

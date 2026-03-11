@@ -87,8 +87,8 @@ See also: [Warm Start Guide](warm_start.md).
 
 See runnable demo:
 
-- [22_strategy_runtime_config_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/22_strategy_runtime_config_demo.py)
-- [44_strategy_source_loader_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/44_strategy_source_loader_demo.py)
+- [22_strategy_runtime_config_demo.py](https://github.com/akfamily/akquant/blob/main/examples/22_strategy_runtime_config_demo.py)
+- [44_strategy_source_loader_demo.py](https://github.com/akfamily/akquant/blob/main/examples/44_strategy_source_loader_demo.py)
 
 Expected output markers:
 

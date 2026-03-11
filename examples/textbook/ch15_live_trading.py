@@ -1,26 +1,24 @@
 """
-第 11 章：实盘交易系统 (Live Trading).
+第 15 章：实盘交易系统 (Live Trading).
 
 本示例展示了如何将策略部署到实盘环境。
-AKQuant 支持通过 CTP 接口连接期货公司柜台，实现行情接收和自动交易。
+AKQuant 支持通过内置 broker 网关（ctp/miniqmt/ptrade）接入行情与交易链路。
 
 注意：
-1. 实盘交易涉及真实资金，请务必在模拟盘 (SimNow) 充分测试。
-2. 本代码仅为配置演示，无法直接运行，因为需要有效的 CTP 账户信息。
-3. 你需要安装 CTP 驱动 (通常只支持 Linux/Windows)。
+1. 实盘交易涉及真实资金，请务必在模拟盘充分测试。
+2. 本代码仅为配置演示，无法直接运行，因为需要有效账户信息。
 
 配置流程：
-1. 准备 CTP 账户 (BrokerID, UserID, Password, AuthCode, AppID)。
-2. 获取前置机地址 (MD Front, TD Front)。
+1. 准备对应 broker 的账户凭证与连接参数。
+2. 获取行情与交易前置地址（若 broker 需要）。
 3. 配置 LiveRunner 并启动。
 """
 
 import akquant as aq
 from akquant import Bar, Instrument, Strategy
-from akquant.live import LiveRunner  # 导入实盘运行器
+from akquant.live import LiveRunner
 
 
-# 定义一个简单的策略 (与回测完全一致)
 class LiveDemoStrategy(Strategy):
     """实盘演示策略."""
 
@@ -28,7 +26,6 @@ class LiveDemoStrategy(Strategy):
         """收到 Bar 事件的回调."""
         self.log(f"[Live] Received Bar: {bar.symbol} @ {bar.close}")
 
-        # 简单的双均线逻辑
         closes = self.get_history(20, bar.symbol, "close")
         if len(closes) < 20:
             return
@@ -49,8 +46,6 @@ class LiveDemoStrategy(Strategy):
 if __name__ == "__main__":
     print("正在配置实盘环境...")
 
-    # 1. 定义交易标的
-    # 实盘中，合约乘数等信息通常可以从柜台自动查询，但显式配置更安全
     rb2310 = Instrument(
         symbol="rb2310",
         asset_type=aq.AssetType.Futures,
@@ -58,10 +53,9 @@ if __name__ == "__main__":
         margin_ratio=0.1,
     )
 
-    # 2. CTP 账户配置 (请替换为你的真实账户或 SimNow 模拟账户)
     CTP_CONFIG = {
-        "md_front": "tcp://180.168.146.187:10131",  # SimNow 行情前置
-        "td_front": "tcp://180.168.146.187:10130",  # SimNow 交易前置
+        "md_front": "tcp://180.168.146.187:10131",
+        "td_front": "tcp://180.168.146.187:10130",
         "broker_id": "9999",
         "user_id": "YOUR_USER_ID",
         "password": "YOUR_PASSWORD",
@@ -69,7 +63,6 @@ if __name__ == "__main__":
         "auth_code": "0000000000000000",
     }
 
-    # 3. 创建实盘运行器
     try:
         runner = LiveRunner(
             strategy_cls=LiveDemoStrategy,
@@ -83,8 +76,6 @@ if __name__ == "__main__":
             auth_code=CTP_CONFIG["auth_code"],
         )
 
-        # 4. 启动实盘
-        # run() 会阻塞主线程，直到手动停止 (Ctrl+C)
         print("启动 CTP 接口...")
         runner.run(cash=500_000)
 

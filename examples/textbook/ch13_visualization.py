@@ -1,5 +1,5 @@
 """
-第 10 章：可视化与报告 (Visualization).
+第 13 章：可视化与报告 (Visualization).
 
 本示例展示了如何将回测结果可视化，生成包含权益曲线、回撤图和日收益分布的综合图表。
 AKQuant 内置了基于 `matplotlib` 的绘图工具，可以一键生成专业级报表。
@@ -75,7 +75,7 @@ class PlotStrategy(Strategy):
 if __name__ == "__main__":
     df = generate_mock_data()
 
-    print("开始运行第 11 章可视化示例...")
+    print("开始运行第 13 章可视化示例...")
     result = aq.run_backtest(
         strategy=PlotStrategy, data=df, initial_cash=100_000, commission_rate=0.0003
     )

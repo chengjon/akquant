@@ -114,7 +114,7 @@ Built-in indicators (`SMA`, `EMA`, etc.) support pickle serialization. For custo
 
 ## 5. Full Example
 
-See [21_warm_start_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/21_warm_start_demo.py) for a complete runnable example.
+See [21_warm_start_demo.py](https://github.com/akfamily/akquant/blob/main/examples/21_warm_start_demo.py) for a complete runnable example.
 
 ```python
 class MyStrategy(Strategy):

@@ -2,6 +2,24 @@
 
 量化投资是金融与计算机的交叉学科。对于金融背景的同学来说，编程往往是最大的拦路虎。本章不求把你培养成软件工程师，只求教给你在量化战场上**生存**所需的最小技能集。
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch02_programming.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch02_programming.py)
+- 进阶示例：[examples/17_readme_demo.py](https://github.com/akfamily/akquant/blob/main/examples/17_readme_demo.py)
+- 对应指南：[Python 基础](../guide/python_basics.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch02_programming.py
+```
+
+验收要点：
+
+1. 脚本完整运行，无语法错误或依赖错误。
+2. 输出包含 Pandas、NumPy 或类型注解相关演示结果。
+3. 能独立修改一段参数并重新运行验证结果变化。
+
 ## 2.1 Python for Quant
 
 Python 之所以成为量化领域的霸主，归功于其强大的科学计算生态。你必须熟练掌握以下三个库：**Pandas**, **NumPy**, **Matplotlib**。
@@ -164,65 +182,6 @@ if __name__ == '__main__':
 
 `akquant` 的优化模块已内置了并行计算支持。
 
-## 2.4 向量化进阶 (Advanced Vectorization)
-
-在量化中，速度就是生命。除了基本的数组运算，你还需要掌握更高级的技巧。
-
-### 2.4.1 条件选择：`np.where`
-
-替代 Python 的 `if-else`。
-```python
-# 如果收益率 > 0，标记为 1 (Win)，否则为 0 (Loss)
-wins = np.where(returns > 0, 1, 0)
-```
-
-### 2.4.2 快速查找：`np.searchsorted`
-
-在一个有序数组中查找插入位置（二分查找），复杂度 $O(\log N)$。
-这在回测撮合引擎中非常有用：比如查找订单价格在 LOB 中的位置。
-
-### 2.4.3 表达式加速：`pd.eval`
-
-Pandas 在计算复杂表达式时会产生大量中间临时变量，占用内存且拖慢速度。`pd.eval` 使用 NumExpr 后端，一次性计算整个表达式。
-
-```python
-# 传统写法
-df['result'] = (df['A'] + df['B']) * (df['C'] - df['D'])
-
-# 加速写法
-df.eval('result = (A + B) * (C - D)', inplace=True)
-```
-
-## 2.5 设计模式 (Design Patterns)
-
-虽然量化代码不像企业级软件那么庞大，但良好的设计模式能让策略更易扩展。
-
-1.  **工厂模式 (Factory)**：用于创建不同类型的对象。
-    *   例如 `IndicatorFactory.create("RSI", period=14)`，根据字符串创建具体的指标对象，避免写一堆 `if type == "RSI": ... elif ...`。
-2.  **单例模式 (Singleton)**：确保全局只有一个实例。
-    *   例如 `GlobalConfig` 或 `Logger`，整个回测系统中只需要一份配置。
-3.  **观察者模式 (Observer)**：解耦事件源与处理逻辑。
-    *   `akquant` 的核心架构就是观察者模式。`EventBus` 是被观察者，`Strategy` 和 `RiskManager` 是观察者。当有新行情 (`MarketEvent`) 时，总线通知所有观察者，而不是硬编码调用 `strategy.on_bar()`。
-
-## 2.6 并行计算 (Parallel Computing)
-
-Python 的全局解释器锁 (GIL) 限制了多线程的 CPU 密集型任务。但在参数优化 (Grid Search) 时，我们可以利用多进程 (Multiprocessing) 跑满所有 CPU 核心。
-
-```python
-from multiprocessing import Pool
-
-def backtest_one_param(param):
-    # 回测逻辑...
-    return sharpe_ratio
-
-if __name__ == '__main__':
-    params = [10, 20, 30, ..., 100]
-    with Pool(processes=8) as pool:
-        results = pool.map(backtest_one_param, params)
-```
-
-`akquant` 的优化模块已内置了并行计算支持。
-
 ## 2.7 代码演练
 
 下面的脚本演示了 Pandas 和 NumPy 的核心操作，以及如何在 Python 中使用 Type Hints 模拟强类型编程。
@@ -233,4 +192,20 @@ if __name__ == '__main__':
 
 ---
 
-**小结**：编程是量化投资的工具，而非目的。不要沉迷于各种炫酷的语法糖，**Pandas + NumPy** 足以解决 90% 的数据处理问题。熟练掌握它们，你的量化之路就成功了一半。
+## 本章小结
+
+1. Python 在量化中的关键能力是数据处理、数值计算和可视化。
+2. 类型注解和基础工程规范可以显著降低策略迭代成本。
+3. 多进程是参数优化阶段的重要加速手段。
+
+## 课后练习
+
+1. 把示例中的滚动窗口从 `20` 改为 `10`，观察输出差异。
+2. 给一个函数补充完整类型注解并运行静态检查。
+3. 用 `multiprocessing.Pool` 改写一个小型参数扫描脚本。
+
+## 常见错误与排查
+
+1. 切片结果异常：优先检查 `loc` 与 `iloc` 的使用场景是否混淆。
+2. 维度报错：确认 NumPy 向量形状一致后再计算。
+3. 进程卡死：把多进程入口放在 `if __name__ == "__main__":` 下。

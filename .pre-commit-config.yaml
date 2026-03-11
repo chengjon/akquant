@@ -24,3 +24,18 @@ repos:
         args: ["--config-file=pyproject.toml", "."]
         additional_dependencies:
           [types-pytz, pandas-stubs, numpy, pytest, polars, quantstats, pydantic]
+
+  - repo: local
+    hooks:
+      - id: check-docs-links
+        name: check docs links
+        entry: python scripts/check_docs_links.py
+        language: python
+        language_version: python3
+        pass_filenames: false
+      - id: check-docs-api-examples
+        name: check docs api examples
+        entry: python scripts/check_docs_api_examples.py
+        language: python
+        language_version: python3
+        pass_filenames: false

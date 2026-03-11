@@ -2,6 +2,24 @@
 
 在理解了事件驱动引擎的原理后，我们来动手构建一个真正可用的交易策略。本章将详细拆解策略代码的结构，重点介绍**策略生命周期 (Lifecycle)**、**交易接口 (Trading API)** 以及如何实现复杂的**风控逻辑**。
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch05_strategy.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch05_strategy.py)
+- 进阶示例：[examples/23_functional_callbacks_demo.py](https://github.com/akfamily/akquant/blob/main/examples/23_functional_callbacks_demo.py)
+- 对应指南：[策略指南](../guide/strategy.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch05_strategy.py
+```
+
+验收要点：
+
+1. 脚本可完成策略初始化、信号生成、下单与回测统计输出。
+2. 日志中可观察到订单状态变化与关键风控触发信息。
+3. 调整均线参数后，回测结果会出现可解释的变化。
+
 ## 5.1 策略类结构与继承
 
 一个标准的 `akquant` 策略通常继承自 `akquant.Strategy` 基类，并重写以下几个核心回调方法 (Callbacks)：
@@ -35,6 +53,38 @@
 3.  **状态检查 (State Inspection)**：获取当前持仓 (`self.get_position`) 和账户资金。
 4.  **决策逻辑 (Decision Making)**：根据指标和持仓状态，判断是否买入或卖出。
 5.  **订单执行 (Order Routing)**：调用下单函数 (`self.buy`, `self.sell` 等)。
+
+### 5.2.3 类风格与函数式入口边界
+
+`akquant` 同时支持两种策略入口：
+
+1.  **类风格**：`strategy=MyStrategy`，适合中长期维护、复杂状态管理。
+2.  **函数式**：`strategy=on_bar` + `initialize=...`，适合快速原型、脚本化调试。
+
+函数式入口示例：
+
+```python
+import akquant as aq
+
+def initialize(ctx):
+    ctx.counter = 0
+
+def on_bar(ctx, bar):
+    ctx.counter += 1
+    if ctx.get_position(bar.symbol) == 0:
+        ctx.buy(bar.symbol, 1)
+    else:
+        ctx.sell(bar.symbol, 1)
+
+result = aq.run_backtest(
+    data=data_feed,
+    strategy=on_bar,
+    initialize=initialize,
+    symbol="TEST",
+)
+```
+
+当你需要 `on_start/on_stop/on_order/on_trade` 等完整生命周期并封装为可复用组件时，优先使用类风格；当你需要快速验证交易逻辑和参数时，函数式入口更轻量。
 
 ## 5.3 交易接口详解 (Trading API)
 
@@ -165,7 +215,7 @@ def on_bar(self, bar):
 
 风控是量化交易的生命线。除了基本的止损，我们还需要更高级的仓位管理技术。
 
-> **提示**：本节讨论的是**策略层**的风控（如根据波动率动态调整仓位）。如果你需要**引擎层**的硬性风控（如限制单股持仓不超过 10%、总杠杆不超过 1.5倍），请参考 **[4.6 风控引擎](04_backtest_engine.md#46-risk-engine)**。
+> **提示**：本节讨论的是**策略层**的风控（如根据波动率动态调整仓位）。如果你需要**引擎层**的硬性风控（如限制单股持仓不超过 10%、总杠杆不超过 1.5倍），请参考 **[4.8 风控引擎](04_backtest_engine.md#48-risk-engine)**。
 
 ### 5.6.1 凯利公式 (Kelly Criterion)
 
@@ -204,31 +254,6 @@ leverage = min(leverage, 1.5)
 self.order_target_percent(symbol, leverage)
 ```
 
-## 5.7 事件回调处理 (Event Handling)
-
-除了 `on_bar`，`akquant` 还提供了丰富的事件回调，让你能精确控制交易流程。
-
-### 5.7.1 `on_order_status`
-
-当订单状态发生变化时（如从 `Pending` 变为 `Filled`，或被交易所 `Rejected`）触发。
-
-```python
-def on_order_status(self, order: Order):
-    if order.status == OrderStatus.FILLED:
-        self.log(f"订单成交: {order.symbol} {order.filled_qty} @ {order.avg_price}")
-    elif order.status == OrderStatus.REJECTED:
-        self.log(f"订单被拒: {order.reason}", level="ERROR")
-        # 可以在这里实现重试逻辑
-```
-
-### 5.7.2 `on_trade`
-
-当发生实际成交时触发。与 `on_order_status` 的区别在于，一笔大单可能会分多次成交，每次成交都会触发 `on_trade`，而 `on_order_status` 通常只在状态跃迁时触发。
-
----
-
-**本章小结**：
-
 ### 5.6.3 止损逻辑 (Stop-Loss)
 
 本章示例展示了一个简单的**固定比例止损**：
@@ -243,6 +268,45 @@ if pnl_pct < -self.stop_loss_pct:
     self.close_position(symbol) # 清仓
 ```
 
+## 5.7 事件回调处理 (Event Handling)
+
+除了 `on_bar`，`akquant` 还提供了丰富的事件回调，让你能精确控制交易流程。
+
+### 5.7.1 `on_order`
+
+当订单状态发生变化时（如从 `Submitted` 到 `Filled`，或被风控/交易所 `Rejected`）触发。
+
+```python
+def on_order(self, order):
+    if str(order.status) == "Filled":
+        self.log(f"订单成交: {order.symbol} {order.filled_quantity} @ {order.average_filled_price}")
+    elif str(order.status) == "Rejected":
+        self.log(f"订单被拒: {order.reject_reason}", level="ERROR")
+        # 可以在这里实现重试逻辑
+```
+
+### 5.7.2 `on_trade`
+
+当发生实际成交时触发。与 `on_order` 的区别在于，一笔大单可能会分多次成交，每次成交都会触发 `on_trade`，而 `on_order` 更关注订单状态流转。
+
+### 5.7.3 `on_event`：策略外的统一事件流
+
+如果你需要把回测事件推送到日志系统、监控看板或告警服务，可在 `run_backtest` 入口直接传入 `on_event`，统一消费事件流。
+
+```python
+events = []
+result = aq.run_backtest(
+    data=data_feed,
+    strategy=MyStrategy,
+    symbol="AAPL",
+    on_event=events.append,
+)
+```
+
+该方式不要求改动策略类内部代码，适合将“交易逻辑”和“可观测性管道”分层维护。
+
+---
+
 ## 5.8 调试与日志 (Debugging & Logging)
 
 策略开发中最痛苦的莫过于逻辑不符合预期。`akquant` 提供了完善的日志系统。
@@ -252,4 +316,20 @@ if pnl_pct < -self.stop_loss_pct:
 
 ---
 
-**小结**：通过本章的学习，你已经掌握了编写一个完整策略所需的所有基础知识，包括生命周期管理、交易接口、高级模式和风控逻辑。下一章，我们将进入实战环节，探讨中国 A 股特有的交易规则（T+1、涨跌停）在回测中如何处理。
+## 本章小结
+
+1. 生命周期回调是策略执行的主骨架，`on_bar` 是核心决策入口。
+2. 下单接口与风控规则必须协同设计，才能避免策略“能跑但不可交易”。
+3. 事件回调与日志体系是策略调试和可观测性的基础设施。
+
+## 课后练习
+
+1. 给双均线策略新增一个成交量过滤条件并对比结果。
+2. 在 `on_order` 中增加拒单分类统计，输出拒单原因分布。
+3. 增加一个策略级最大回撤止损并验证触发逻辑。
+
+## 常见错误与排查
+
+1. 无交易发生：检查信号条件是否过严或数据窗口不足。
+2. 订单被拒绝：核对现金、持仓、最小交易单位和交易方向约束。
+3. 回测结果异常抖动：确认是否存在未来函数或未对齐的数据字段。

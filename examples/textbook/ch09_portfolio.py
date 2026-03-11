@@ -1,5 +1,5 @@
 """
-第 8 章：基金与资产配置 (Funds & Asset Allocation).
+第 9 章：基金与资产配置 (Funds & Asset Allocation).
 
 本示例展示了经典的 **股债平衡策略 (60/40 Portfolio)**。
 这是资产配置中最基础也最有效的策略之一。
@@ -114,7 +114,7 @@ class RebalanceStrategy(Strategy):
 if __name__ == "__main__":
     df = generate_portfolio_data()
 
-    print("开始运行第 8 章 股债平衡策略示例...")
+    print("开始运行第 9 章 股债平衡策略示例...")
 
     result = aq.run_backtest(
         strategy=RebalanceStrategy,

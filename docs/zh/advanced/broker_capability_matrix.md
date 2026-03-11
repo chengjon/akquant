@@ -38,6 +38,6 @@
 
 ## 关联代码入口
 
-- [factory.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/gateway/factory.py)
-- [registry.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/gateway/registry.py)
-- [base.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/gateway/base.py)
+- [factory.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/factory.py)
+- [registry.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/registry.py)
+- [base.py](https://github.com/akfamily/akquant/blob/main/python/akquant/gateway/base.py)

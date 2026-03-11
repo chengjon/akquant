@@ -649,7 +649,7 @@ Using `InstrumentConfig` allows you to conveniently configure these attributes f
 Suppose we want to backtest a portfolio containing "Stock A" and "Stock Index Futures IF":
 
 ```python
-from akquant import InstrumentConfig, run_backtest
+from akquant import BacktestConfig, InstrumentConfig, run_backtest
 
 # 1. Define Futures Configuration
 future_config = InstrumentConfig(
@@ -662,12 +662,13 @@ future_config = InstrumentConfig(
 
 # 2. Run Backtest
 # Note: Unconfigured instruments (e.g., STOCK_A) will use default parameters (Stock, Multiplier 1, Margin 100%)
+config = BacktestConfig(instruments_config=[future_config])
 run_backtest(
     data=data_dict,
     strategy=MyStrategy,
-    instruments_config=[future_config], # Pass config list
+    config=config, # Pass config object
     # ...
 )
 ```
 
-For detailed code, please refer to the [Mixed Asset Backtest Example](examples.md#mixed-asset).
+For detailed code, please refer to the [Mixed Asset Backtest Example](examples.md).

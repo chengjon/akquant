@@ -17,7 +17,7 @@ class AnalyzerPlugin(Protocol):
 ```
 
 实现草案：
-- [analyzer_plugin.py](file:///Users/albert/Documents/trae_projects/akquant/python/akquant/analyzer_plugin.py)
+- [analyzer_plugin.py](https://github.com/akfamily/akquant/blob/main/python/akquant/analyzer_plugin.py)
 
 ## 插件管理
 

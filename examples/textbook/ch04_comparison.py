@@ -1,5 +1,5 @@
 """
-第 3 章：回测框架对比 (Pandas vs Backtrader vs AKQuant).
+第 4 章：回测框架对比 (Pandas vs Backtrader vs AKQuant).
 
 本脚本通过实现同一个简单的“双均线策略” (Golden Cross)，展示三种不同风格的回测实现方式：
 1. **Pandas (向量化)**：利用 DataFrame 进行全量矩阵运算，速度极快但细节模拟能力弱。

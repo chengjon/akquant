@@ -129,8 +129,8 @@ if __name__ == "__main__":
         data=df,
         strategy=DualMAStrategy, # 传入我们的策略类
         strategy_params={"fast_window": 10, "slow_window": 30}, # 调整参数
-        cash=100_000.0,    # 初始资金 10万
-        commission=0.0003  # 佣金万分之三
+        initial_cash=100_000.0,    # 初始资金 10万
+        commission_rate=0.0003  # 佣金万分之三
     )
 
     # 3. 打印结果
@@ -193,8 +193,8 @@ results_df = run_optimization(
     strategy=DualMAStrategy,
     param_grid=param_grid,
     data=df,
-    cash=100_000.0,
-    commission=0.0003,
+    initial_cash=100_000.0,
+    commission_rate=0.0003,
     sort_by="total_return", # 按收益率排序
     ascending=False
 )

@@ -122,7 +122,7 @@ AKQuant 内置的指标（如 `SMA`, `EMA`）已经支持 Pickle 序列化。如
 
 ## 5. 完整示例
 
-请参考项目中的 [21_warm_start_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/21_warm_start_demo.py) 获取完整的可运行代码。
+请参考项目中的 [21_warm_start_demo.py](https://github.com/akfamily/akquant/blob/main/examples/21_warm_start_demo.py) 获取完整的可运行代码。
 
 ```python
 # 示例摘要

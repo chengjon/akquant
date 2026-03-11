@@ -28,5 +28,8 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - run: pip install mkdocs-material mkdocs-static-i18n
+      - run: pip install mkdocs mkdocs-material mkdocs-static-i18n
+      - run: python scripts/check_docs_links.py
+      - run: python scripts/check_docs_api_examples.py
+      - run: mkdocs build --strict
       - run: mkdocs gh-deploy --force
