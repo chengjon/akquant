@@ -2,6 +2,24 @@
 
 期权 (Options) 是金融工程皇冠上的明珠。它不仅是一种非线性 (Non-linear) 的衍生品，更是交易“波动率 (Volatility)”和“时间 (Time)”的工具。本章将从经典的 Black-Scholes-Merton (BSM) 定价模型出发，深入剖析希腊字母 (Greeks) 的数学含义与风控应用，并展示如何在 `akquant` 中构建专业的期权策略。
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch08_options.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch08_options.py)
+- 进阶示例：[examples/07_option_test.py](https://github.com/akfamily/akquant/blob/main/examples/07_option_test.py)
+- 对应指南：[量化基础](../guide/quant_basics.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch08_options.py
+```
+
+验收要点：
+
+1. 脚本可完成期权策略回测并输出核心统计指标。
+2. 输出中可观察到 Greeks 或波动率变化对策略表现的影响。
+3. 修改执行价或到期参数后，结果变化符合期权定价直觉。
+
 ## 8.1 期权基础与定价理论 (Pricing Theory)
 
 ### 8.1.1 核心要素
@@ -200,7 +218,20 @@ $$ Profit \approx \text{Vega} \times (IV_{sold} - IV_{bought}) + \frac{1}{2} \te
 *   **Put Buying**：定期买入深度虚值 (Deep OTM) Put。虽然长期亏损权利金（像买保险一样），但在崩盘时能获得百倍回报，对冲股票多头的亏损。
 *   **VIX Call**：买入 VIX 看涨期权。VIX 指数通常与股市负相关。
 
----
+## 本章小结
 
-**本章小结**：
-期权交易不仅是对方向的判断，更是对概率分布的交易。理解 BSM 模型和 Greeks 是构建高级波动率策略（如跨式套利 Straddle、蝶式套利 Butterfly）的前提。掌握了本章内容，你已经迈入了专业量化交易的门槛。
+1. 期权策略本质是对方向、波动率和时间三维风险的联合交易。
+2. BSM 模型与 Greeks 是定价、对冲和风控的统一语言。
+3. 波动率套利与尾部对冲可以显著提升组合的风险管理能力。
+
+## 课后练习
+
+1. 调整隐含波动率参数，比较同一策略的收益和回撤变化。
+2. 实现一个最小 Delta 对冲流程，观察组合净敞口变化。
+3. 对比买入保护性看跌与空仓两种下行风险管理方式。
+
+## 常见错误与排查
+
+1. 定价偏差过大：检查无风险利率、到期时间和波动率输入。
+2. 保证金不足：核对卖方策略的仓位规模与资金占用。
+3. 风险暴露失控：优先检查 Delta、Gamma、Vega 是否超出阈值。

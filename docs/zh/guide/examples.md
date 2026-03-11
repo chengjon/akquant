@@ -142,11 +142,11 @@ Content-Type: application/json
     *   参考 [策略指南](strategy.md#style-selection)。
 
 *   **多品种回测 (Multi-Asset)**:
-    *   **期货策略**: 展示期货回测配置（保证金、乘数）。参考 [策略指南](strategy.md#multi-asset)。
-    *   **期权策略**: 展示期权回测配置（权利金、按张收费）。参考 [策略指南](strategy.md#multi-asset)。
+    *   **期货策略**: 展示期货回测配置（保证金、乘数）。参考 [策略指南](strategy.md)。
+    *   **期权策略**: 展示期权回测配置（权利金、按张收费）。参考 [策略指南](strategy.md)。
 
 *   **向量化指标 (Vectorized Indicators)**:
-    *   展示如何使用 `IndicatorSet` 预计算指标以提高回测速度。参考 [策略指南](strategy.md#indicatorset)。
+    *   展示如何使用 `IndicatorSet` 预计算指标以提高回测速度。参考 [策略指南](strategy.md)。
 
 ### 使用 AKShare 获取 A 股日线数据 (stock_zh_a_daily)
 

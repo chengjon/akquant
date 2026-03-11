@@ -1,0 +1,10 @@
+# Chapter 4: Event-Driven Backtesting Principles
+
+This chapter is currently maintained in Chinese first.
+
+- Chinese chapter: [第 4 章：事件驱动回测原理 (Event-Driven Architecture)](../../zh/textbook/04_backtest_engine.md)
+- Textbook home: [Chinese textbook index](../../zh/textbook/index.md)
+- Practice links:
+  - Primary example: [examples/textbook/ch04_comparison.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch04_comparison.py)
+  - Extended example: [examples/25_streaming_backtest_demo.py](https://github.com/akfamily/akquant/blob/main/examples/25_streaming_backtest_demo.py)
+  - Guide: [Stream Observability Guide](../advanced/stream_observability.md)

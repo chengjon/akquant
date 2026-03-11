@@ -58,7 +58,7 @@ print(bundle.metadata)
 
 See runnable example:
 
-- [35_custom_broker_registry_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/35_custom_broker_registry_demo.py)
+- [35_custom_broker_registry_demo.py](https://github.com/akfamily/akquant/blob/main/examples/35_custom_broker_registry_demo.py)
 
 ## 5. Recommended Constraints
 

@@ -2,6 +2,24 @@
 
 数据可视化 (Data Visualization) 不仅是展示结果的手段，更是**探索性数据分析 (Exploratory Data Analysis, EDA)** 的核心工具。通过高质量的图表，我们可以直观地识别策略的风险特征、收益来源以及潜在的过拟合迹象。本章将介绍如何使用 `akquant` 及第三方工具生成专业的量化回测报告。
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch13_visualization.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch13_visualization.py)
+- 进阶示例：[examples/11_plot_visualization.py](https://github.com/akfamily/akquant/blob/main/examples/11_plot_visualization.py)
+- 对应指南：[可视化指南](../guide/visualization.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch13_visualization.py
+```
+
+验收要点：
+
+1. 脚本可生成至少一组回测图表或可视化产物。
+2. 图表包含收益曲线与回撤维度信息。
+3. 修改参数后图表形态变化可用于解释策略风险特征。
+
 ## 13.1 可视化原则与核心图表
 
 ### 13.1.1 权益曲线 (Equity Curve)
@@ -178,76 +196,20 @@ ax.set_zlabel('Implied Volatility')
     *   如果亏损交易的 MAE 很大，说明止损设置过宽，或者执行拖沓。
     *   **黄金法则**：截断亏损 (Cut Loss)，让利润奔跑 (Let Profit Run)。这就意味着在图上，左下角的点（止损单）应该密集且受控，右上角的点（盈利单）应该发散且无上限。
 
-## 13.6 专业 K 线图绘制 (Professional Candlestick Charts)
+## 本章小结
 
-虽然折线图能展示大致趋势，但量化交易员更习惯看 K 线图 (Candlestick)。Python 中最专业的库是 `mplfinance`。
+1. 可视化是策略诊断工具，不只是结果展示页面。
+2. 收益、回撤、分布与交易行为应通过多图联动分析。
+3. 高质量图表能显著提升策略复盘效率和沟通透明度。
 
-### 13.6.1 基础 K 线与成交量
+## 课后练习
 
-```python
-import mplfinance as mpf
+1. 为同一策略分别绘制线性与对数权益曲线并比较解读差异。
+2. 增加一个收益分布图，分析左尾风险变化。
+3. 为交易记录生成 MAE/MFE 图并据此调整止损阈值。
 
-# 准备数据 (必须包含 Open, High, Low, Close, Volume 列)
-df.index.name = 'Date'
+## 常见错误与排查
 
-# 绘制蜡烛图 + 成交量
-mpf.plot(df, type='candle', volume=True, style='yahoo')
-```
-
-### 13.6.2 叠加买卖点信号
-
-在 K 线图上标注买入 (Buy) 和卖出 (Sell) 信号，直观复盘交易逻辑。
-
-```python
-# 生成买卖点标记
-buys = [price if sig == 1 else np.nan for price, sig in zip(df['low'], df['buy_signal'])]
-sells = [price if sig == -1 else np.nan for price, sig in zip(df['high'], df['sell_signal'])]
-
-# 添加到副图
-apds = [
-    mpf.make_addplot(buys, type='scatter', markersize=100, marker='^', color='r'),
-    mpf.make_addplot(sells, type='scatter', markersize=100, marker='v', color='g')
-]
-
-mpf.plot(df, addplot=apds)
-```
-
-## 13.7 3D 波动率曲面 (3D Volatility Surface)
-
-对于期权交易员，仅仅看 IV 曲线是不够的，我们需要看到整个曲面（Strike x Expiry）。
-
-```python
-from mpl_toolkits.mplot3d import Axes3D
-
-fig = plt.figure(figsize=(10, 6))
-ax = fig.add_subplot(111, projection='3d')
-
-# X: 行权价, Y: 到期时间, Z: 隐含波动率
-ax.plot_surface(X, Y, Z, cmap='viridis')
-
-ax.set_xlabel('Strike Price')
-ax.set_ylabel('Time to Expiry')
-ax.set_zlabel('Implied Volatility')
-```
-**观察要点**：
-
-*   **Smile/Skew**：沿 Strike 轴的弯曲程度。
-*   **Term Structure**：沿 Time 轴的倾斜程度。
-
-## 13.8 交易分析图表 (Trade Analysis)
-
-### 13.8.1 MAE/MFE 散点图
-
-最大不利偏离 (MAE) 与最大有利偏离 (MFE) 的散点图是优化止盈止损的神器。
-
-*   **X轴**：MAE（最大浮亏）。
-*   **Y轴**：最终盈亏 (PnL)。
-*   **分析**：
-    *   如果大量盈利交易的 MAE 都很小（如 < 1%），说明入场点非常精准。
-    *   如果亏损交易的 MAE 很大，说明止损设置过宽，或者执行拖沓。
-    *   **黄金法则**：截断亏损 (Cut Loss)，让利润奔跑 (Let Profit Run)。这就意味着在图上，左下角的点（止损单）应该密集且受控，右上角的点（盈利单）应该发散且无上限。
-
----
-
-**本章小结**：
-一张好的图表胜过千言万语。通过多维度的可视化分析，我们不仅能向投资者展示策略的**收益能力**，更能诚实地剖析策略的**风险特征**。记住：**不要试图用图表掩盖风险，而要用图表揭示风险**。
+1. 图表结论偏差：确认时间轴与收益频率是否一致。
+2. 指标与图形不一致：核对绘图数据源和统计口径是否统一。
+3. 图表过于拥挤：拆分子图并统一色彩与尺度规范。

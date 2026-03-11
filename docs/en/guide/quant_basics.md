@@ -183,15 +183,15 @@ if __name__ == "__main__":
     # Run Backtest
     print("Starting backtest...")
     result = run_backtest(
-        strategy_class=DualMovingAverageStrategy,
+        strategy=DualMovingAverageStrategy,
         data=df,
         initial_cash=10000.0 # Initial capital 10k
     )
 
     # Print summary
     print("\nBacktest finished!")
-    print(f"Final Value: {result.final_value:.2f}")
-    print(f"Total Return: {result.total_return * 100:.2f}%")
+    print(f"Final Value: {result.metrics.end_market_value:.2f}")
+    print(f"Total Return: {result.metrics.total_return * 100:.2f}%")
 ```
 
 ### 3.2 Advanced: How to Get Real Data?
@@ -216,7 +216,7 @@ df['symbol'] = "AAPL" # Add symbol column
 
 # Pass directly to run_backtest
 result = run_backtest(
-    strategy_class=DualMovingAverageStrategy,
+    strategy=DualMovingAverageStrategy,
     data=df,
     initial_cash=10000.0
 )

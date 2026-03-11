@@ -1,5 +1,5 @@
 """
-第 9 章：机器学习在量化中的应用 (Machine Learning).
+第 12 章：机器学习在量化中的应用 (Machine Learning).
 
 本示例展示了如何将机器学习 (ML) 融入到 AKQuant 策略中：
 1. **特征工程 (Feature Engineering)**：构造滞后收益率、均线偏离度等因子。
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     else:
         df = generate_mock_data()
 
-        print("开始运行第 9 章 ML 策略示例...")
+        print("开始运行第 12 章 ML 策略示例...")
         result = aq.run_backtest(
             strategy=MLStrategy, data=df, initial_cash=100_000, commission_rate=0.0003
         )

@@ -89,6 +89,15 @@ plugins:
             Strategy Style Decision Guide: 策略风格决策指南
             Custom Broker Registry: 自定义 Broker 注册
             Custom Broker Production Checklist: 自定义 Broker 生产接入清单
+            Cross-Section Checklist: 横截面策略清单
+            Stream Observability: 流式可观测性
+            Multi-Timeframe Feed API: 多时间框架 Feed API
+            Data Feed Adapter Spec: 数据适配层规范
+            Broker Capability Matrix: Broker 能力矩阵
+            Complex Order Graph: 复杂订单图模型
+            Analyzer Plugin Spec: Analyzer 插件规范
+            TA-Lib Top20 Plan: TA-Lib Top20 迁移计划
+            Capability Boost Plan: 能力补强路线图
             Timezone Handling: 时区处理
             Testing Guide: 测试指南
             API Reference: API 参考
@@ -102,21 +111,21 @@ plugins:
             Strategies: 第三部分：策略篇
             Advanced: 第四部分：高阶篇
             Live Trading: 第五部分：实盘篇
-            01_Overview & Setup: 第1章：概述与环境
-            02_Programming Guide: 第2章：编程生存指南
-            03_Data Acquisition: 第3章：数据获取
-            04_Backtest Engine: 第4章：回测引擎
-            05_Strategy & Order: 第5章：构建策略
-            06_Stock A-Share: 第6章：A股实战
-            07_Futures: 第7章：期货策略
-            08_Options & Derivatives: 第8章：期权与衍生品
-            09_Funds & Asset Allocation: 第9章：基金与资产配置
-            10_Evaluation Metrics: 第10章：策略评价
-            11_Optimization: 第11章：参数优化
-            12_Machine Learning: 第12章：机器学习
-            13_Visualization: 第13章：可视化
-            14_Factor Expression: 第14章：因子表达式引擎
-            15_Live Trading: 第15章：实盘交易
+            01_Overview & Setup: 第1章：量化投资概述与环境搭建
+            02_Programming Guide: 第2章：编程生存指南 (Programming Survival Guide)
+            03_Data Acquisition: 第3章：金融数据获取与处理
+            04_Backtest Engine: 第4章：事件驱动回测原理 (Event-Driven Architecture)
+            05_Strategy & Order: 第5章：策略开发实战 (Strategy Implementation)
+            06_Stock A-Share: 第6章：A 股市场微观结构与策略实战
+            07_Futures: 第7章：期货市场与衍生品策略
+            08_Options & Derivatives: 第8章：期权定价与波动率策略
+            09_Funds & Asset Allocation: 第9章：基金投资与资产配置理论
+            10_Evaluation Metrics: 第10章：策略评价体系与风险指标
+            11_Optimization: 第11章：参数优化与稳健性检验
+            12_Machine Learning: 第12章：机器学习在量化中的应用 (Machine Learning)
+            13_Visualization: 第13章：策略可视化与报表分析
+            14_Factor Expression: 第14章：高性能因子挖掘与表达式引擎
+            15_Live Trading: 第15章：实盘交易系统与运维
         - locale: en
           name: English
           build: true
@@ -134,17 +143,27 @@ plugins:
             Factor Engine Guide: Factor Engine Guide
             Visualization: Visualization
             Result Analysis: Result Analysis
-            Optimization Guide: Parameter Optimization
+            Optimization Guide: Optimization Guide
             Examples: Examples
             Advanced Topics: Advanced Topics
             ML Guide: ML Guide
             LLM Guide: LLM Guide
             Runtime Config Guide: Runtime Config Guide
+            Warm Start Guide: Warm Start Guide
             Multi-Strategy Migration Guide: Multi-Strategy Migration Guide
             Live Functional Quickstart: Live Functional Quickstart
             Strategy Style Decision Guide: Strategy Style Decision Guide
             Custom Broker Registry: Custom Broker Registry
             Custom Broker Production Checklist: Custom Broker Production Checklist
+            Cross-Section Checklist: Cross-Section Checklist
+            Stream Observability: Stream Observability
+            Multi-Timeframe Feed API: Multi-Timeframe Feed API
+            Data Feed Adapter Spec: Data Feed Adapter Spec
+            Broker Capability Matrix: Broker Capability Matrix
+            Complex Order Graph: Complex Order Graph
+            Analyzer Plugin Spec: Analyzer Plugin Spec
+            TA-Lib Top20 Plan: TA-Lib Top20 Plan
+            Capability Boost Plan: Capability Boost Plan
             Timezone Handling: Timezone Handling
             Testing Guide: Testing Guide
             API Reference: API Reference
@@ -158,21 +177,21 @@ plugins:
             Strategies: Part 3 - Strategies
             Advanced: Part 4 - Advanced
             Live Trading: Part 5 - Live Trading
-            01_Overview & Setup: Chap 1 - Overview & Setup
-            02_Programming Guide: Chap 2 - Programming Guide
-            03_Data Acquisition: Chap 3 - Data Acquisition
-            04_Backtest Engine: Chap 4 - Backtest Engine
-            05_Strategy & Order: Chap 5 - Strategy & Order
-            06_Stock A-Share: Chap 6 - Stock A-Share
-            07_Futures: Chap 7 - Futures
-            08_Options & Derivatives: Chap 8 - Options & Derivatives
-            09_Funds & Asset Allocation: Chap 9 - Funds & Asset Allocation
-            10_Evaluation Metrics: Chap 10 - Evaluation Metrics
-            11_Optimization: Chap 11 - Optimization
-            12_Machine Learning: Chap 12 - Machine Learning
-            13_Visualization: Chap 13 - Visualization
-            14_Factor Expression: Chap 14 - Factor Expression
-            15_Live Trading: Chap 15 - Live Trading
+            01_Overview & Setup: Chap 1 - Quantitative Investment Overview and Environment Setup
+            02_Programming Guide: Chap 2 - Programming Survival Guide
+            03_Data Acquisition: Chap 3 - Financial Data Acquisition and Processing
+            04_Backtest Engine: Chap 4 - Event-Driven Backtesting Principles
+            05_Strategy & Order: Chap 5 - Strategy Development in Practice
+            06_Stock A-Share: Chap 6 - A-Share Market Microstructure and Strategy Practice
+            07_Futures: Chap 7 - Futures Market and Derivatives Strategies
+            08_Options & Derivatives: Chap 8 - Options Pricing and Volatility Strategies
+            09_Funds & Asset Allocation: Chap 9 - Fund Investment and Asset Allocation Theory
+            10_Evaluation Metrics: Chap 10 - Strategy Evaluation Framework and Risk Metrics
+            11_Optimization: Chap 11 - Parameter Optimization and Robustness Validation
+            12_Machine Learning: Chap 12 - Machine Learning in Quantitative Investing
+            13_Visualization: Chap 13 - Strategy Visualization and Report Analysis
+            14_Factor Expression: Chap 14 - High-Performance Factor Mining and Expression Engine
+            15_Live Trading: Chap 15 - Live Trading Systems and Operations
 
 nav:
   - Home: index.md
@@ -209,6 +228,7 @@ nav:
       - Data Guide: guide/data.md
       - Factor Engine Guide: guide/factor.md
       - Strategy Manual: guide/strategy.md
+      - Cross-Section Checklist: guide/cross_section_checklist.md
       - Result Analysis: guide/analysis.md
       - Visualization: guide/visualization.md
       - Optimization Guide: guide/optimization.md
@@ -224,6 +244,14 @@ nav:
       - Strategy Style Decision Guide: advanced/strategy_style_decision.md
       - Custom Broker Registry: advanced/custom_broker_registry.md
       - Custom Broker Production Checklist: advanced/custom_broker_production_checklist.md
+      - Stream Observability: advanced/stream_observability.md
+      - Multi-Timeframe Feed API: advanced/multi_timeframe_feed_api.md
+      - Data Feed Adapter Spec: advanced/data_feed_adapter_spec.md
+      - Broker Capability Matrix: advanced/broker_capability_matrix.md
+      - Complex Order Graph: advanced/complex_order_graph.md
+      - Analyzer Plugin Spec: advanced/analyzer_plugin_spec.md
+      - TA-Lib Top20 Plan: advanced/talib_top20_plan.md
+      - Capability Boost Plan: advanced/capability_boost_plan.md
       - Timezone Handling: advanced/timezone.md
   - API Reference: reference/api.md
   - Architecture & Internals:

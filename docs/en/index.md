@@ -124,8 +124,8 @@ result = run_backtest(
     strategy=MyStrategy,  # Pass class or instance
     data=df,              # Explicitly pass data
     symbol="600000",      # SPD Bank
-    cash=500_000.0,       # Initial cash
-    commission=0.0003     # 0.03% commission
+    initial_cash=500_000.0,       # Initial cash
+    commission_rate=0.0003     # 0.03% commission
 )
 
 # 4. View Results
@@ -218,18 +218,19 @@ For more examples, please refer to the `examples/` directory.
 *   Optimization guide (recommended workflow): [Parameter-Model-Driven Optimization](guide/optimization.md)
 *   Examples guide (UI-driven setup): [UI-Driven Strategy Parameterization (PARAM_MODEL)](guide/examples.md)
 *   API best practices (frontend-backend consistency): [UI-Driven Parameter Input](reference/api.md)
-*   Example script entry: [`examples/02_parameter_optimization.py`](../../examples/02_parameter_optimization.py)
+*   Example script entry: [examples/02_parameter_optimization.py](https://github.com/akfamily/akquant/blob/main/examples/02_parameter_optimization.py)
 
 ## Quick Links
 
-*   Phase-5 migration FAQ (quickstart): [Phase-5 Migration FAQ](start/quickstart.md#phase-5-migration-faq)
-*   Full compatibility notes (API reference): [Compatibility & Migration Notes](reference/api.md#compatibility--migration-notes)
+*   Phase-5 migration FAQ (quickstart): [Phase-5 Migration FAQ](start/quickstart.md)
+*   Full compatibility notes (API reference): [Compatibility & Migration Notes](reference/api.md)
 *   Multi-strategy migration checklist (advanced): [Multi-Strategy Migration Guide](advanced/multi_strategy_migration.md)
-*   Dynamic strategy loading guide (advanced): [Runtime Config Guide](advanced/runtime_config.md#9-dynamic-strategy-loading-strategy_source--strategy_loader)
-*   Dynamic strategy loading example (examples): [44_strategy_source_loader_demo.py](../../examples/44_strategy_source_loader_demo.py)
-*   Dynamic strategy loading textbook chapter (examples/textbook): [ch15_strategy_loader.py](../../examples/textbook/ch15_strategy_loader.py)
+*   Dynamic strategy loading guide (advanced): [Runtime Config Guide](advanced/runtime_config.md)
+*   Dynamic strategy loading example (examples): [44_strategy_source_loader_demo.py](https://github.com/akfamily/akquant/blob/main/examples/44_strategy_source_loader_demo.py)
+*   Dynamic strategy loading textbook chapter (examples/textbook): [ch15_strategy_loader.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_strategy_loader.py)
 *   Warm-start state persistence and resume: [Warm Start Guide](advanced/warm_start.md)
 
 ## Strategy Playbook Entry
 
 *   Cross-section strategy checklist: [Cross-Section Strategy Playbook Checklist](guide/cross_section_checklist.md)
+*   Capability roadmap: [Capability Boost Plan](advanced/capability_boost_plan.md)

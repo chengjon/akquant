@@ -46,5 +46,5 @@
 
 相关实践可参考：
 
-*   [策略指南：横截面推荐范式](strategy.md#34-横截面策略推荐范式-cross-section-pattern)
-*   [策略指南：横截面方案 B](strategy.md#35-横截面方案-b收齐同-timestamp-后执行)
+*   [策略指南：横截面推荐范式](strategy.md)
+*   [策略指南：横截面方案 B](strategy.md)

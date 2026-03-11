@@ -29,10 +29,10 @@
 
 ### 第二部分：回测引擎架构 (The Engine)
 
-*   **[第 4 章：事件驱动回测原理](04_backtest_engine.md)**
+*   **[第 4 章：事件驱动回测原理 (Event-Driven Architecture)](04_backtest_engine.md)**
     *   向量化 vs 事件驱动 ([examples/textbook/ch04_comparison.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch04_comparison.py))
     *   核心组件解析：Engine, Strategy, DataFeed
-*   **[第 5 章：构建第一个策略](05_strategy.md)**
+*   **[第 5 章：策略开发实战 (Strategy Implementation)](05_strategy.md)**
     *   策略生命周期与下单接口
     *   历史数据获取与防未来函数
     *   案例：双均线策略实现 ([examples/textbook/ch05_strategy.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch05_strategy.py))
@@ -74,14 +74,35 @@
 *   **[第 14 章：高性能因子挖掘与表达式引擎](14_factor.md)**
     *   因子表达式的原理与优势
     *   Polars 高性能计算架构
-    *   案例：Alpha101 因子实战 ([examples/19_factor_expression.py](https://github.com/akfamily/akquant/blob/main/examples/19_factor_expression.py))
+    *   案例：Alpha101 因子实战 ([examples/textbook/ch14_factor.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch14_factor.py))
 
 ### 第五部分：从回测到实盘 (Live Trading)
 
 *   **[第 15 章：实盘交易系统与运维](15_live_trading.md)**
     *   实盘与回测的差异处理
-    *   CTP 接口配置与实盘部署 ([examples/textbook/ch14_live.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch14_live.py))
+    *   主示例：实盘启动与网关接入 ([examples/textbook/ch15_live_trading.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_live_trading.py))
+    *   进阶示例：动态策略加载与运行时注入 ([examples/textbook/ch15_strategy_loader.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_strategy_loader.py))
     *   风控与熔断机制
+
+## 章节示例映射（主示例 / 进阶示例 / 对应指南）
+
+| 章节 | 主示例 | 进阶示例 | 对应指南 |
+| :--- | :--- | :--- | :--- |
+| 第 1 章 | [ch01_quickstart.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch01_quickstart.py) | [01_quickstart.py](https://github.com/akfamily/akquant/blob/main/examples/01_quickstart.py) | [快速开始](../start/quickstart.md) |
+| 第 2 章 | [ch02_programming.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch02_programming.py) | [17_readme_demo.py](https://github.com/akfamily/akquant/blob/main/examples/17_readme_demo.py) | [Python 基础](../guide/python_basics.md) |
+| 第 3 章 | [ch03_data.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch03_data.py) | [37_feed_replay_alignment_demo.py](https://github.com/akfamily/akquant/blob/main/examples/37_feed_replay_alignment_demo.py) | [数据指南](../guide/data.md) |
+| 第 4 章 | [ch04_comparison.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch04_comparison.py) | [25_streaming_backtest_demo.py](https://github.com/akfamily/akquant/blob/main/examples/25_streaming_backtest_demo.py) | [可观测性指南](../advanced/stream_observability.md) |
+| 第 5 章 | [ch05_strategy.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch05_strategy.py) | [23_functional_callbacks_demo.py](https://github.com/akfamily/akquant/blob/main/examples/23_functional_callbacks_demo.py) | [策略指南](../guide/strategy.md) |
+| 第 6 章 | [ch06_stock_a.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch06_stock_a.py) | [20_risk_management_demo.py](https://github.com/akfamily/akquant/blob/main/examples/20_risk_management_demo.py) | [量化基础](../guide/quant_basics.md) |
+| 第 7 章 | [ch07_futures.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch07_futures.py) | [04_mixed_assets.py](https://github.com/akfamily/akquant/blob/main/examples/04_mixed_assets.py) | [策略指南](../guide/strategy.md) |
+| 第 8 章 | [ch08_options.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch08_options.py) | [07_option_test.py](https://github.com/akfamily/akquant/blob/main/examples/07_option_test.py) | [量化基础](../guide/quant_basics.md) |
+| 第 9 章 | [ch09_funds.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch09_funds.py) | [ch09_portfolio.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch09_portfolio.py) | [策略指南](../guide/strategy.md) |
+| 第 10 章 | [ch10_analysis.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch10_analysis.py) | [33_report_and_analysis_outputs.py](https://github.com/akfamily/akquant/blob/main/examples/33_report_and_analysis_outputs.py) | [分析指南](../guide/analysis.md) |
+| 第 11 章 | [ch11_optimization.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch11_optimization.py) | [02_parameter_optimization.py](https://github.com/akfamily/akquant/blob/main/examples/02_parameter_optimization.py) | [优化指南](../guide/optimization.md) |
+| 第 12 章 | [ch12_ml.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch12_ml.py) | [10_ml_walk_forward.py](https://github.com/akfamily/akquant/blob/main/examples/10_ml_walk_forward.py) | [机器学习指南](../advanced/ml.md) |
+| 第 13 章 | [ch13_visualization.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch13_visualization.py) | [11_plot_visualization.py](https://github.com/akfamily/akquant/blob/main/examples/11_plot_visualization.py) | [可视化指南](../guide/visualization.md) |
+| 第 14 章 | [ch14_factor.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch14_factor.py) | [16_adj_returns_signal.py](https://github.com/akfamily/akquant/blob/main/examples/16_adj_returns_signal.py) | [因子指南](../guide/factor.md) |
+| 第 15 章 | [ch15_live_trading.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_live_trading.py) | [ch15_strategy_loader.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_strategy_loader.py) | [实盘函数式指南](../advanced/live_functional_quickstart.md) |
 
 ---
 

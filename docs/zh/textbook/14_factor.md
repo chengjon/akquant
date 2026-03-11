@@ -1,5 +1,23 @@
 # 第 14 章：高性能因子挖掘与表达式引擎
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch14_factor.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch14_factor.py)
+- 进阶示例：[examples/16_adj_returns_signal.py](https://github.com/akfamily/akquant/blob/main/examples/16_adj_returns_signal.py)
+- 对应指南：[因子指南](../guide/factor.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch14_factor.py
+```
+
+验收要点：
+
+1. 脚本可完成至少一个表达式因子的计算与输出。
+2. 能对同一数据集运行多个因子并比较结果差异。
+3. 拆分复杂表达式后，结果可逐步复现并便于排障。
+
 ## 1. 本章你会得到什么
 
 这一章聚焦一件事：让你能稳定写出**可解释、可调试、可批量运行**的因子表达式。
@@ -231,7 +249,19 @@ engine.run("Rank(Ts_Mean(Close, 5))")
 - 调试优先拆步。
 - 优化优先减少不必要的跨分区嵌套。
 
-## 9. 课后练习
+## 本章小结
+
+1. 因子表达式引擎把研究重点从代码细节转向因子语义本身。
+2. TS、CS、EL 的分区语义是保证结果正确性的核心前提。
+3. 可解释、可拆步、可批量是高效因子研究的三项基本能力。
+
+## 常见错误与排查
+
+1. 表达式报错：优先核对字段名、窗口长度与函数入参类型。
+2. 结果异常噪声：检查停牌缺失、时区和交易日对齐是否正确。
+3. 运行性能退化：拆分深层嵌套并减少不必要中间物化。
+
+## 课后练习
 
 1. 计算并比较三个因子：`Ts_Mean(Close, 5)`、`Ts_Std(Close, 20)`、`Rank(Volume)`。
 2. 复现动量反转：`Rank(Ts_Mean(Close, 5)) - Rank(Ts_Mean(Close, 20))`，观察不同窗口参数下的分布变化。

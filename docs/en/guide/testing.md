@@ -102,6 +102,19 @@ pytest -q tests/test_engine.py
 
 # Golden suite (includes stream/non-stream consistency checks)
 pytest -q tests/golden/test_golden.py
+
+# Docs link compliance check
+python scripts/check_docs_links.py
+
+# Docs API example compliance check
+python scripts/check_docs_api_examples.py
+
+# Check changed docs only (optional)
+python scripts/check_docs_links.py --changed-only --from-rev origin/main --to-rev HEAD
+python scripts/check_docs_api_examples.py --changed-only --from-rev origin/main --to-rev HEAD
+
+# Docs strict build
+mkdocs build --strict
 ```
 
 ---

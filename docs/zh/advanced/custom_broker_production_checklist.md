@@ -68,5 +68,5 @@
 ## 10. 关联文档
 
 - [自定义 Broker 注册](./custom_broker_registry.md)
-- [API 参考：gateway 注册接口](../reference/api.md#akquantgateway-自定义-broker-注册)
-- [示例：35_custom_broker_registry_demo.py](file:///c:/Users/albert/Documents/trae_projects/akquant/examples/35_custom_broker_registry_demo.py)
+- [API 参考：gateway 注册接口](../reference/api.md)
+- [示例：35_custom_broker_registry_demo.py](https://github.com/akfamily/akquant/blob/main/examples/35_custom_broker_registry_demo.py)

@@ -46,7 +46,7 @@ print("Starting backtest...")
 result = run_backtest(
     data=df,  # Input data
     strategy=MyStrategy,  # Input strategy
-    cash=100000.0,  # Initial cash
+    initial_cash=100000.0,  # Initial cash
     symbol="sh600000"  # Trading symbol
 )
 

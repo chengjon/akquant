@@ -1,5 +1,23 @@
 # 第 1 章：量化投资概述与环境搭建
 
+## 本章实践入口
+
+- 主示例：[examples/textbook/ch01_quickstart.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch01_quickstart.py)
+- 进阶示例：[examples/01_quickstart.py](https://github.com/akfamily/akquant/blob/main/examples/01_quickstart.py)
+- 对应指南：[快速开始](../start/quickstart.md)
+
+## 快速运行与验收
+
+```bash
+python examples/textbook/ch01_quickstart.py
+```
+
+验收要点：
+
+1. 脚本可在本地直接运行完成，无异常退出。
+2. 终端输出包含回测结果统计字段（如 `total_return_pct`、`max_drawdown_pct`）。
+3. 能基于输出解释“收益”和“回撤”两个核心指标。
+
 ## 1.1 量化投资的定义与特征
 
 **量化投资 (Quantitative Investment)** 是指借助现代统计学和数学方法，利用计算机技术从海量历史数据中寻找能够带来超额收益的多种“大概率”策略，并纪律严明地按照这些策略进行投资决策的过程。
@@ -55,7 +73,7 @@ $$ E(R_p) = R_f + \beta_p (E(R_m) - R_f) + \alpha_p $$
 
 **量化投资的前提是市场并非“强式有效”**。我们通过挖掘市场微观结构中的**非理性行为**或**信息不对称**，寻找定价偏差（Mispricing）并从中获利。
 
-## 1.3 行为金融学 (Behavioral Finance)
+## 1.2 行为金融学 (Behavioral Finance)
 
 传统金融学假设投资者是理性的 (Rational)，但现实中，人是情感驱动的。行为金融学揭示了导致市场无效的心理学根源。
 
@@ -71,11 +89,11 @@ $$ E(R_p) = R_f + \beta_p (E(R_m) - R_f) + \alpha_p $$
     *   投资者倾向于模仿他人的行为，通过随大流来获得安全感。
     *   **现象**：导致资产价格泡沫的形成和破裂。
 
-## 1.4 市场微观结构基础 (Market Microstructure)
+## 1.3 市场微观结构基础 (Market Microstructure)
 
 宏观分析关注 GDP 和利率，微观结构关注**价格是如何形成的**。
 
-### 1.4.1 限价订单簿 (Limit Order Book, LOB)
+### 1.3.1 限价订单簿 (Limit Order Book, LOB)
 
 在指令驱动市场（如 A 股），所有未成交的限价单按照价格优先、时间优先的原则排列，形成 LOB。
 
@@ -83,15 +101,15 @@ $$ E(R_p) = R_f + \beta_p (E(R_m) - R_f) + \alpha_p $$
 *   **卖一 (Ask 1)**：当前最低的卖出价。
 *   **买卖价差 (Bid-Ask Spread)**：$Ask 1 - Bid 1$。衡量流动性的核心指标。价差越小，流动性越好，交易成本越低。
 
-### 1.4.2 市场深度 (Market Depth)
+### 1.3.2 市场深度 (Market Depth)
 
 指在特定价格水平上可交易的数量。深度越好，大单交易对价格的冲击 (Market Impact) 越小。
 
-### 1.4.3 价格发现 (Price Discovery)
+### 1.3.3 价格发现 (Price Discovery)
 
 价格不是连续的曲线，而是通过买卖力量的博弈（吃单）瞬间跳变的。量化高频策略正是通过分析 LOB 的微观失衡（如大单压顶、撤单率）来预测短时间内的价格方向。
 
-## 1.5 量化与主观的融合 (Quantamental)
+## 1.4 量化与主观的融合 (Quantamental)
 
 **Quantamental = Quant + Fundamental**。
 
@@ -103,11 +121,11 @@ $$ E(R_p) = R_f + \beta_p (E(R_m) - R_f) + \alpha_p $$
 1.  **量化赋能主观**：用量化模型筛选出初选池，再由研究员深入调研。
 2.  **主观赋能量化**：将研究员的逻辑（如供应链关系、行业景气度）转化为量化因子，增强模型的可解释性和适应性。
 
-## 1.6 开发环境搭建
+## 1.5 开发环境搭建
 
 为了进行量化研究，我们需要搭建一套高效的开发环境。本教材推荐使用 **Python + Rust** 的混合架构。
 
-### 1.6.1 Python 环境 (Miniconda)
+### 1.5.1 Python 环境 (Miniconda)
 
 Python 是量化领域最主流的语言，拥有丰富的生态库（Pandas, NumPy, Scikit-learn）。我们推荐使用 [Miniconda](https://docs.conda.io/en/latest/miniconda.html) 来管理 Python 环境。
 
@@ -127,7 +145,7 @@ conda create -n ak_env python=3.14
 conda activate ak_env
 ```
 
-### 1.6.2 安装 AKQuant
+### 1.5.2 安装 AKQuant
 
 `akquant` 是一个基于 Rust 核心的高性能事件驱动量化回测框架。它结合了 Rust 的极致速度与 Python 的生态易用性，专为追求高性能回测与实盘一体化的量化开发者设计。
 
@@ -136,7 +154,7 @@ conda activate ak_env
 1.  **Rust 驱动的高性能**：底层撮合引擎、订单管理系统 (OMS) 和风控模块 (RMS) 均由 Rust 编写，彻底告别 Python 的 GIL 锁限制，回测速度比纯 Python 框架快 10-100 倍。
 2.  **事件驱动架构 (Event-Driven)**：不同于简单的向量化回测，`akquant` 采用严格的时间序列事件驱动模型，能够精确模拟限价单 (Limit Order)、止损单 (Stop Order) 以及复杂的成交撮合逻辑，杜绝“未来函数”。
 3.  **全资产覆盖**：原生支持 **股票 (Stock)**、**期货 (Futures)**、**期权 (Options)** 及 **基金 (Fund)** 等多种金融资产，并针对 A 股的 T+1 制度和涨跌停机制做了深度适配。
-4.  **回测实盘一体化**：坚持 "Code Once, Run Anywhere" 理念。同一套策略代码，既可以在历史数据上回测，也可以直接切换到 CTP/XTP 等实盘接口进行交易。
+4.  **回测实盘一体化**：坚持 "Code Once, Run Anywhere" 理念。同一套策略代码，既可以在历史数据上回测，也可以直接切换到 CTP / MiniQMT / PTrade 等实盘接口进行交易。
 
 在激活的 conda 环境中，运行以下命令安装（建议使用清华源加速）：
 
@@ -149,7 +167,7 @@ pip install akquant akshare pandas matplotlib -i https://pypi.tuna.tsinghua.edu.
 *   `pandas`: **Python 数据分析标准库**。在量化中，它几乎无处不在：我们用 `DataFrame` 存储历史行情，用 `Series` 计算技术指标，用 `Timestamp` 处理时间序列。掌握 Pandas 是成为量化开发者的第一道门槛。
 *   `matplotlib`: **基础绘图库**。量化不仅是数字的游戏，更是图形的艺术。我们使用 Matplotlib 绘制资金曲线、K 线图和技术指标，直观地评估策略表现。此外，`akquant` 内置的绘图功能也是基于它构建的。
 
-### 1.6.3 IDE 选择 (Trae / VS Code / PyCharm)
+### 1.5.3 IDE 选择 (Trae / VS Code / PyCharm)
 
 #### 1. Trae (AI Native IDE) - 强烈推荐
 
@@ -173,7 +191,7 @@ JetBrains 出品的专业 Python IDE。
 *   **优点**：代码分析能力最强，重构功能极其强大，调试体验好。
 *   **版本选择**：初学者可以使用免费的 **Community 版**；**Professional 版** 额外支持 Jupyter Notebook、科学绘图和远程开发功能，适合进阶用户。
 
-## 1.7 第一个量化策略 (Hello World)
+## 1.6 第一个量化策略 (Hello World)
 
 让我们通过一个简单的例子来体验 `akquant` 的工作流程。我们将编写一个简单的策略：**买入并持有**。
 
@@ -262,4 +280,20 @@ calmar_ratio                            -0.270206
 
 ---
 
-**恭喜！** 你已经完成了量化投资的第一步。在下一章中，我们将深入探讨数据的获取与处理，这是量化大厦的基石。
+## 本章小结
+
+1. 量化投资的核心是“数据、策略、交易、风控”四段闭环。
+2. `akquant` 通过 Python + Rust 混合架构兼顾研发效率与执行性能。
+3. 首个回测示例的重点不在收益高低，而在建立可复现的研究流程。
+
+## 课后练习
+
+1. 将初始资金从 `100000` 改为 `500000`，比较回测指标变化。
+2. 更换一只股票重复运行，记录累计收益和最大回撤差异。
+3. 用一句话解释“夏普比率”和“最大回撤”各自解决什么问题。
+
+## 常见错误与排查
+
+1. 数据拉取失败：先检查网络和数据源可用性，再重试脚本。
+2. 依赖缺失报错：按安装文档补齐环境后重新运行。
+3. 指标解读混淆：优先关注 `total_return_pct` 与 `max_drawdown_pct` 两项基线指标。

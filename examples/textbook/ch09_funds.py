@@ -1,5 +1,5 @@
 """
-第 8 章：基金与可转债策略 (Funds & Convertible Bonds).
+第 9 章：基金与可转债策略 (Funds & Convertible Bonds).
 
 本示例展示了 **ETF 网格交易 (Grid Trading)** 策略。
 ETF (Exchange Traded Fund) 是场内交易基金，交易规则与股票类似，但免收印花税，
@@ -98,7 +98,7 @@ class ETFGridStrategy(Strategy):
 if __name__ == "__main__":
     df = generate_etf_data()
 
-    print("开始运行第 8 章 ETF 网格策略示例...")
+    print("开始运行第 9 章 ETF 网格策略示例...")
 
     # 基金回测配置：免印花税
     result = aq.run_backtest(

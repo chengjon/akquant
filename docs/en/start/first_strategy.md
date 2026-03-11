@@ -129,8 +129,8 @@ if __name__ == "__main__":
         data=df,
         strategy=DualMAStrategy, # Pass our strategy class
         strategy_params={"fast_window": 10, "slow_window": 30}, # Adjust parameters
-        cash=100_000.0,    # Initial capital 100k
-        commission=0.0003  # Commission 0.03%
+        initial_cash=100_000.0,    # Initial capital 100k
+        commission_rate=0.0003  # Commission 0.03%
     )
 
     # 3. Print Results
@@ -193,8 +193,8 @@ results_df = run_optimization(
     strategy=DualMAStrategy,
     param_grid=param_grid,
     data=df,
-    cash=100_000.0,
-    commission=0.0003,
+    initial_cash=100_000.0,
+    commission_rate=0.0003,
     sort_by="total_return", # Sort by return
     ascending=False
 )
