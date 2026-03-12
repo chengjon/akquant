@@ -7,8 +7,8 @@ use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use std::sync::Arc;
 
@@ -27,24 +27,24 @@ pub struct Portfolio {
     pub available_positions: Arc<HashMap<String, Decimal>>,
 }
 
-    #[test]
-    fn test_portfolio_calculate_margin() {
-        use crate::model::Instrument;
-        use crate::model::instrument::{InstrumentEnum, FuturesInstrument, OptionInstrument};
-        use crate::model::types::{AssetType, OptionType};
-        use std::str::FromStr;
-        use std::sync::Arc;
+#[test]
+fn test_portfolio_calculate_margin() {
+    use crate::model::Instrument;
+    use crate::model::instrument::{FuturesInstrument, InstrumentEnum, OptionInstrument};
+    use crate::model::types::{AssetType, OptionType};
+    use std::str::FromStr;
+    use std::sync::Arc;
 
-        let mut positions = HashMap::new();
-        positions.insert("FUT".to_string(), Decimal::from(10)); // 10 contracts
-        positions.insert("OPT_LONG".to_string(), Decimal::from(5)); // 5 Long Option
-        positions.insert("OPT_SHORT".to_string(), Decimal::from(-2)); // 2 Short Option
+    let mut positions = HashMap::new();
+    positions.insert("FUT".to_string(), Decimal::from(10)); // 10 contracts
+    positions.insert("OPT_LONG".to_string(), Decimal::from(5)); // 5 Long Option
+    positions.insert("OPT_SHORT".to_string(), Decimal::from(-2)); // 2 Short Option
 
-        let portfolio = Portfolio {
-            cash: Decimal::from(100000),
-            positions: Arc::new(positions),
-            available_positions: Arc::new(HashMap::new()),
-        };
+    let portfolio = Portfolio {
+        cash: Decimal::from(100000),
+        positions: Arc::new(positions),
+        available_positions: Arc::new(HashMap::new()),
+    };
 
     let mut prices = HashMap::new();
     prices.insert("FUT".to_string(), Decimal::from(3000));
@@ -191,9 +191,7 @@ impl Portfolio {
 
     pub fn adjust_position(&mut self, symbol: &str, quantity: Decimal) {
         let positions = Arc::make_mut(&mut self.positions);
-        let entry = positions
-            .entry(symbol.to_string())
-            .or_insert(Decimal::ZERO);
+        let entry = positions.entry(symbol.to_string()).or_insert(Decimal::ZERO);
         *entry += quantity;
     }
 
@@ -205,14 +203,15 @@ impl Portfolio {
         let mut equity = self.cash;
         for (symbol, quantity) in self.positions.iter() {
             if !quantity.is_zero()
-                && let Some(price) = prices.get(symbol) {
-                    let multiplier = if let Some(instr) = instruments.get(symbol) {
-                        instr.multiplier()
-                    } else {
-                        Decimal::ONE
-                    };
-                    equity += quantity * price * multiplier;
-                }
+                && let Some(price) = prices.get(symbol)
+            {
+                let multiplier = if let Some(instr) = instruments.get(symbol) {
+                    instr.multiplier()
+                } else {
+                    Decimal::ONE
+                };
+                equity += quantity * price * multiplier;
+            }
         }
         equity
     }
@@ -234,32 +233,31 @@ impl Portfolio {
 
         for (symbol, quantity) in self.positions.iter() {
             if !quantity.is_zero()
-                && let Some(price) = prices.get(symbol) {
-                    if let Some(instr) = instruments.get(symbol) {
-                        let margin = match instr.asset_type {
-                            AssetType::Option => {
-                                // Get underlying price for option margin calculation
-                                let underlying_price = if let Some(us) = instr.underlying_symbol() {
-                                    prices.get(us.as_str()).cloned()
-                                } else {
-                                    None
-                                };
-                                option_calc.calculate_margin(*quantity, *price, instr, underlying_price)
-                            }
-                            AssetType::Futures => {
-                                futures_calc.calculate_margin(*quantity, *price, instr, None)
-                            }
-                            _ => {
-                                linear_calc.calculate_margin(*quantity, *price, instr, None)
-                            }
-                        };
-                        used_margin += margin;
-                    } else {
-                        // If no instrument info, assume 100% margin (Spot like)
-                        let position_value = (quantity * price).abs();
-                        used_margin += position_value;
-                    }
+                && let Some(price) = prices.get(symbol)
+            {
+                if let Some(instr) = instruments.get(symbol) {
+                    let margin = match instr.asset_type {
+                        AssetType::Option => {
+                            // Get underlying price for option margin calculation
+                            let underlying_price = if let Some(us) = instr.underlying_symbol() {
+                                prices.get(us.as_str()).cloned()
+                            } else {
+                                None
+                            };
+                            option_calc.calculate_margin(*quantity, *price, instr, underlying_price)
+                        }
+                        AssetType::Futures => {
+                            futures_calc.calculate_margin(*quantity, *price, instr, None)
+                        }
+                        _ => linear_calc.calculate_margin(*quantity, *price, instr, None),
+                    };
+                    used_margin += margin;
+                } else {
+                    // If no instrument info, assume 100% margin (Spot like)
+                    let position_value = (quantity * price).abs();
+                    used_margin += position_value;
                 }
+            }
         }
         used_margin
     }
@@ -339,10 +337,10 @@ mod tests {
 
     #[test]
     fn test_portfolio_calculate_equity() {
-        use std::sync::Arc;
         use crate::model::Instrument;
         use crate::model::instrument::{InstrumentEnum, StockInstrument};
         use crate::model::types::AssetType;
+        use std::sync::Arc;
 
         let mut positions = HashMap::new();
         positions.insert("AAPL".to_string(), Decimal::from(100));
@@ -374,10 +372,10 @@ mod tests {
 
     #[test]
     fn test_portfolio_calculate_equity_with_multiplier() {
-        use std::sync::Arc;
         use crate::model::Instrument;
-        use crate::model::instrument::{InstrumentEnum, FuturesInstrument};
+        use crate::model::instrument::{FuturesInstrument, InstrumentEnum};
         use crate::model::types::AssetType;
+        use std::sync::Arc;
 
         let mut positions = HashMap::new();
         positions.insert("FUT".to_string(), Decimal::from(10)); // 10 contracts

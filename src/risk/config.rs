@@ -1,8 +1,8 @@
 use crate::model::market_data::extract_decimal;
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::*;
 
 #[gen_stub_pyclass]
 #[pyclass(from_py_object)]

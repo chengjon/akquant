@@ -10,6 +10,22 @@
 - `akquant.talib` 已支持 `backend` 参数：`auto/python/rust`。
 - 批次 A/B/C 已全部完成 Rust 下沉并通过回归测试。
 - Top20 指标已全部实现双后端（Python/Rust）兼容。
+- Top20 之外已新增批次 D 首批 5 项：`WMA/ADXR/CMO/TRANGE/BOP`。
+- Top20 之外已新增批次 E 首批 5 项：`PPO/APO/ULTOSC/PLUS_DI/MINUS_DI`。
+- Top20 之外已新增批次 F 首批 5 项：`DX/AD/ADOSC/AROON/AROONOSC`。
+- Top20 之外已新增批次 G 首批 5 项：`TRIMA/STDDEV/VAR/LINEARREG/LINEARREG_SLOPE`。
+- Top20 之外已新增批次 H 首批 5 项：`LINEARREG_INTERCEPT/LINEARREG_ANGLE/TSF/CORREL/BETA`。
+- Top20 之外已新增批次 I 首批 5 项：`LINEARREG_R2/T3/MEDPRICE/TYPPRICE/WCLPRICE`。
+- Top20 之外已新增批次 J 首批 5 项：`AVGPRICE/MIDPOINT/MIDPRICE/HT_TRENDLINE/MAMA`。
+- Top20 之外已新增批次 K 首批 5 项：`MAX/MIN/MAXINDEX/MININDEX/MINMAX`。
+- Top20 之外已新增批次 L 首批 5 项：`SUM/AVGDEV/RANGE/STDDEV扩展/VAR扩展`。
+- Top20 之外已新增批次 M 首批 5 项：`MINMAXINDEX/ROCP/ROCR/ROCR100/COVAR`。
+- Top20 之外已新增批次 N 首批 5 项：`LN/LOG10/SQRT/CEIL/FLOOR`。
+- Top20 之外已新增批次 O 首批 5 项：`SIN/COS/TAN/ASIN/ACOS`。
+- Top20 之外已新增批次 P 首批 5 项：`ATAN/SINH/COSH/TANH/EXP`。
+- Top20 之外已新增批次 Q 首批 5 项：`ABS/SIGN/ADD/SUB/MULT`。
+- Top20 之外已新增批次 R 首批 5 项：`DIV/MAX2/MIN2/CLIP/ROUND`。
+- Top20 之外已新增批次 S 首批 5 项：`POW/MOD/CLAMP01/SQ/CUBE`。
 - 兼容层的单输出与多输出结构均已稳定（如 `MACD/BBANDS/STOCH`）。
 
 ### 已支持指标矩阵
@@ -71,6 +87,182 @@
 - 批次 A：`ADX/CCI/STOCH/WILLR/ROC`（已完成）
 - 批次 B：`MFI/OBV/TRIX/MOM/DEMA`（已完成）
 - 批次 C：`TEMA/KAMA/NATR/SAR` + 参数兼容收敛（已完成）
+- 批次 D：`WMA/ADXR/CMO/TRANGE/BOP`（已完成）
+- 批次 E：`PPO/APO/ULTOSC/PLUS_DI/MINUS_DI`（已完成）
+- 批次 F：`DX/AD/ADOSC/AROON/AROONOSC`（已完成）
+- 批次 G：`TRIMA/STDDEV/VAR/LINEARREG/LINEARREG_SLOPE`（已完成）
+- 批次 H：`LINEARREG_INTERCEPT/LINEARREG_ANGLE/TSF/CORREL/BETA`（已完成）
+- 批次 I：`LINEARREG_R2/T3/MEDPRICE/TYPPRICE/WCLPRICE`（已完成）
+- 批次 J：`AVGPRICE/MIDPOINT/MIDPRICE/HT_TRENDLINE/MAMA`（已完成）
+- 批次 K：`MAX/MIN/MAXINDEX/MININDEX/MINMAX`（已完成）
+- 批次 L：`SUM/AVGDEV/RANGE/STDDEV扩展/VAR扩展`（已完成）
+- 批次 M：`MINMAXINDEX/ROCP/ROCR/ROCR100/COVAR`（已完成）
+- 批次 N：`LN/LOG10/SQRT/CEIL/FLOOR`（已完成）
+- 批次 O：`SIN/COS/TAN/ASIN/ACOS`（已完成）
+- 批次 P：`ATAN/SINH/COSH/TANH/EXP`（已完成）
+- 批次 Q：`ABS/SIGN/ADD/SUB/MULT`（已完成）
+- 批次 R：`DIV/MAX2/MIN2/CLIP/ROUND`（已完成）
+- 批次 S：`POW/MOD/CLAMP01/SQ/CUBE`（已完成）
+
+## Top20 外扩展矩阵（批次 D）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| WMA | ✅ | ✅ | 单序列 |
+| ADXR | ✅ | ✅ | 单序列 |
+| CMO | ✅ | ✅ | 单序列 |
+| TRANGE | ✅ | ✅ | 单序列 |
+| BOP | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 E）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| PPO | ✅ | ✅ | 单序列 |
+| APO | ✅ | ✅ | 单序列 |
+| ULTOSC | ✅ | ✅ | 单序列 |
+| PLUS_DI | ✅ | ✅ | 单序列 |
+| MINUS_DI | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 F）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| DX | ✅ | ✅ | 单序列 |
+| AD | ✅ | ✅ | 单序列 |
+| ADOSC | ✅ | ✅ | 单序列 |
+| AROON | ✅ | ✅ | 双序列 `(aroondown, aroonup)` |
+| AROONOSC | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 G）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| TRIMA | ✅ | ✅ | 单序列 |
+| STDDEV | ✅ | ✅ | 单序列 |
+| VAR | ✅ | ✅ | 单序列 |
+| LINEARREG | ✅ | ✅ | 单序列 |
+| LINEARREG_SLOPE | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 H）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| LINEARREG_INTERCEPT | ✅ | ✅ | 单序列 |
+| LINEARREG_ANGLE | ✅ | ✅ | 单序列 |
+| TSF | ✅ | ✅ | 单序列 |
+| CORREL | ✅ | ✅ | 单序列 |
+| BETA | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 I）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| LINEARREG_R2 | ✅ | ✅ | 单序列 |
+| T3 | ✅ | ✅ | 单序列 |
+| MEDPRICE | ✅ | ✅ | 单序列 |
+| TYPPRICE | ✅ | ✅ | 单序列 |
+| WCLPRICE | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 J）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| AVGPRICE | ✅ | ✅ | 单序列 |
+| MIDPOINT | ✅ | ✅ | 单序列 |
+| MIDPRICE | ✅ | ✅ | 单序列 |
+| HT_TRENDLINE | ✅ | ✅ | 单序列 |
+| MAMA | ✅ | ✅ | 双序列 `(mama, fama)` |
+
+## Top20 外扩展矩阵（批次 K）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| MAX | ✅ | ✅ | 单序列 |
+| MIN | ✅ | ✅ | 单序列 |
+| MAXINDEX | ✅ | ✅ | 单序列 |
+| MININDEX | ✅ | ✅ | 单序列 |
+| MINMAX | ✅ | ✅ | 双序列 `(min, max)` |
+
+## Top20 外扩展矩阵（批次 L）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| SUM | ✅ | ✅ | 单序列 |
+| AVGDEV | ✅ | ✅ | 单序列 |
+| RANGE | ✅ | ✅ | 单序列 |
+| STDDEV（参数扩展） | ✅ | ✅ | 单序列 |
+| VAR（参数扩展） | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 M）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| MINMAXINDEX | ✅ | ✅ | 双序列 `(minindex, maxindex)` |
+| ROCP | ✅ | ✅ | 单序列 |
+| ROCR | ✅ | ✅ | 单序列 |
+| ROCR100 | ✅ | ✅ | 单序列 |
+| COVAR | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 N）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| LN | ✅ | ✅ | 单序列 |
+| LOG10 | ✅ | ✅ | 单序列 |
+| SQRT | ✅ | ✅ | 单序列 |
+| CEIL | ✅ | ✅ | 单序列 |
+| FLOOR | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 O）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| SIN | ✅ | ✅ | 单序列 |
+| COS | ✅ | ✅ | 单序列 |
+| TAN | ✅ | ✅ | 单序列 |
+| ASIN | ✅ | ✅ | 单序列 |
+| ACOS | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 P）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| ATAN | ✅ | ✅ | 单序列 |
+| SINH | ✅ | ✅ | 单序列 |
+| COSH | ✅ | ✅ | 单序列 |
+| TANH | ✅ | ✅ | 单序列 |
+| EXP | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 Q）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| ABS | ✅ | ✅ | 单序列 |
+| SIGN | ✅ | ✅ | 单序列 |
+| ADD | ✅ | ✅ | 单序列 |
+| SUB | ✅ | ✅ | 单序列 |
+| MULT | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 R）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| DIV | ✅ | ✅ | 单序列 |
+| MAX2 | ✅ | ✅ | 单序列 |
+| MIN2 | ✅ | ✅ | 单序列 |
+| CLIP | ✅ | ✅ | 单序列 |
+| ROUND | ✅ | ✅ | 单序列 |
+
+## Top20 外扩展矩阵（批次 S）
+
+| 指标 | Python backend | Rust backend | 输出形态 |
+| :--- | :--- | :--- | :--- |
+| POW | ✅ | ✅ | 单序列 |
+| MOD | ✅ | ✅ | 单序列 |
+| CLAMP01 | ✅ | ✅ | 单序列 |
+| SQ | ✅ | ✅ | 单序列 |
+| CUBE | ✅ | ✅ | 单序列 |
 
 ## 兼容层策略
 

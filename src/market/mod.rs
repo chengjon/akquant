@@ -17,8 +17,8 @@ mod tests {
     use super::*;
     use crate::model::{AssetType, Instrument, OrderSide, TradingSession};
     use chrono::NaiveTime;
-    use rust_decimal::prelude::*;
     use rust_decimal::Decimal;
+    use rust_decimal::prelude::*;
 
     #[test]
     fn test_china_market_session() {

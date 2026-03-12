@@ -1,8 +1,8 @@
 use crate::event::Event;
 use crate::execution::matcher::{ExecutionMatcher, MatchContext};
 use crate::model::{Order, Trade};
-use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
+use pyo3::prelude::*;
 
 /// Python 自定义撮合器包装器
 ///
@@ -20,11 +20,7 @@ impl PyExecutionMatcher {
 }
 
 impl ExecutionMatcher for PyExecutionMatcher {
-    fn match_order(
-        &self,
-        order: &mut Order,
-        ctx: &MatchContext,
-    ) -> Option<Event> {
+    fn match_order(&self, order: &mut Order, ctx: &MatchContext) -> Option<Event> {
         let event = ctx.event;
         let instrument = ctx.instrument;
         let bar_index = ctx.bar_index;

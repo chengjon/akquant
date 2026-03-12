@@ -37,7 +37,7 @@ pub fn update_available_position(
     quantity: Decimal,
     side: OrderSide,
 ) {
-     match side {
+    match side {
         OrderSide::Buy => {
             available_positions
                 .entry(symbol.to_string())
@@ -63,7 +63,7 @@ mod tests {
     use crate::model::{AssetType, Instrument};
 
     fn create_future_instrument(symbol: &str) -> Instrument {
-        use crate::model::instrument::{InstrumentEnum, FuturesInstrument};
+        use crate::model::instrument::{FuturesInstrument, InstrumentEnum};
         Instrument {
             asset_type: AssetType::Futures,
             inner: InstrumentEnum::Futures(FuturesInstrument {
@@ -84,7 +84,13 @@ mod tests {
         let mut available = HashMap::new();
 
         // Buy 1. T+0 means available increases immediately.
-        update_available_position(&config, &mut available, instr.symbol(), Decimal::from(1), OrderSide::Buy);
+        update_available_position(
+            &config,
+            &mut available,
+            instr.symbol(),
+            Decimal::from(1),
+            OrderSide::Buy,
+        );
         assert_eq!(*available.get("IF2206").unwrap(), Decimal::from(1));
     }
 }

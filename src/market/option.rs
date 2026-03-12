@@ -35,7 +35,7 @@ pub fn update_available_position(
     quantity: Decimal,
     side: OrderSide,
 ) {
-     match side {
+    match side {
         OrderSide::Buy => {
             available_positions
                 .entry(symbol.to_string())

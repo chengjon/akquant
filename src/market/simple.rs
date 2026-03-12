@@ -73,7 +73,9 @@ impl MarketModel for SimpleMarket {
         let symbol = instrument.symbol();
         match side {
             OrderSide::Buy => {
-                available_positions.entry(symbol.to_string()).or_insert(Decimal::ZERO);
+                available_positions
+                    .entry(symbol.to_string())
+                    .or_insert(Decimal::ZERO);
                 if let Some(pos) = available_positions.get_mut(symbol) {
                     *pos += quantity;
                 }
@@ -91,5 +93,6 @@ impl MarketModel for SimpleMarket {
         _positions: &HashMap<String, Decimal>,
         _available_positions: &mut HashMap<String, Decimal>,
         _instruments: &HashMap<String, Instrument>,
-    ) {}
+    ) {
+    }
 }

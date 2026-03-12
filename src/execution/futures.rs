@@ -6,11 +6,7 @@ use crate::model::Order;
 pub struct FuturesMatcher;
 
 impl ExecutionMatcher for FuturesMatcher {
-    fn match_order(
-        &self,
-        order: &mut Order,
-        ctx: &MatchContext,
-    ) -> Option<Event> {
+    fn match_order(&self, order: &mut Order, ctx: &MatchContext) -> Option<Event> {
         // Futures specific logic
         // Futures typically allow fractional lot sizes or just 1 contract.
         // We usually don't enforce "Round Lot" for futures in the same way as Stocks (Buy Only 100).
@@ -22,8 +18,7 @@ impl ExecutionMatcher for FuturesMatcher {
         // So for futures, we might want custom check or just rely on CommonMatcher's Buy check if lot_size=1.
 
         CommonMatcher::match_order(
-            order,
-            ctx,
+            order, ctx,
             false, // Don't enforce "Buy Only Lot Size" rule specific to A-shares. Futures can buy/sell any integer lot.
         )
     }

@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
+use serde::{Deserialize, Serialize};
 
 #[gen_stub_pyclass]
 #[pyclass(from_py_object)]
@@ -172,33 +172,128 @@ impl PerformanceMetrics {
 
     pub fn __getitem__(&self, py: Python, key: &str) -> PyResult<Py<PyAny>> {
         let v = match key {
-            "total_return" => self.total_return.into_pyobject(py).unwrap().into_any().unbind(),
-            "annualized_return" => self.annualized_return.into_pyobject(py).unwrap().into_any().unbind(),
-            "max_drawdown" => self.max_drawdown.into_pyobject(py).unwrap().into_any().unbind(),
-            "max_drawdown_value" => self.max_drawdown_value.into_pyobject(py).unwrap().into_any().unbind(),
-            "max_drawdown_pct" => self.max_drawdown_pct.into_pyobject(py).unwrap().into_any().unbind(),
-            "sharpe_ratio" => self.sharpe_ratio.into_pyobject(py).unwrap().into_any().unbind(),
-            "sortino_ratio" => self.sortino_ratio.into_pyobject(py).unwrap().into_any().unbind(),
-            "calmar_ratio" => self.calmar_ratio.into_pyobject(py).unwrap().into_any().unbind(),
-            "volatility" => self.volatility.into_pyobject(py).unwrap().into_any().unbind(),
-            "ulcer_index" => self.ulcer_index.into_pyobject(py).unwrap().into_any().unbind(),
+            "total_return" => self
+                .total_return
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "annualized_return" => self
+                .annualized_return
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "max_drawdown" => self
+                .max_drawdown
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "max_drawdown_value" => self
+                .max_drawdown_value
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "max_drawdown_pct" => self
+                .max_drawdown_pct
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "sharpe_ratio" => self
+                .sharpe_ratio
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "sortino_ratio" => self
+                .sortino_ratio
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "calmar_ratio" => self
+                .calmar_ratio
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "volatility" => self
+                .volatility
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "ulcer_index" => self
+                .ulcer_index
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
             "upi" => self.upi.into_pyobject(py).unwrap().into_any().unbind(),
-            "equity_r2" => self.equity_r2.into_pyobject(py).unwrap().into_any().unbind(),
-            "std_error" => self.std_error.into_pyobject(py).unwrap().into_any().unbind(),
+            "equity_r2" => self
+                .equity_r2
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "std_error" => self
+                .std_error
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
             "win_rate" => self.win_rate.into_pyobject(py).unwrap().into_any().unbind(),
-            "initial_market_value" => self.initial_market_value.into_pyobject(py).unwrap().into_any().unbind(),
-            "end_market_value" => self.end_market_value.into_pyobject(py).unwrap().into_any().unbind(),
-            "total_return_pct" => self.total_return_pct.into_pyobject(py).unwrap().into_any().unbind(),
-            "start_time" => self.start_time.into_pyobject(py).unwrap().into_any().unbind(),
+            "initial_market_value" => self
+                .initial_market_value
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "end_market_value" => self
+                .end_market_value
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "total_return_pct" => self
+                .total_return_pct
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "start_time" => self
+                .start_time
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
             "end_time" => self.end_time.into_pyobject(py).unwrap().into_any().unbind(),
             "duration" => self.duration.into_pyobject(py).unwrap().into_any().unbind(),
-            "total_bars" => self.total_bars.into_pyobject(py).unwrap().into_any().unbind(),
-            "exposure_time_pct" => self.exposure_time_pct.into_pyobject(py).unwrap().into_any().unbind(),
+            "total_bars" => self
+                .total_bars
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            "exposure_time_pct" => self
+                .exposure_time_pct
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
             "var_95" => self.var_95.into_pyobject(py).unwrap().into_any().unbind(),
             "var_99" => self.var_99.into_pyobject(py).unwrap().into_any().unbind(),
             "cvar_95" => self.cvar_95.into_pyobject(py).unwrap().into_any().unbind(),
             "cvar_99" => self.cvar_99.into_pyobject(py).unwrap().into_any().unbind(),
-            _ => return Err(pyo3::exceptions::PyKeyError::new_err(format!("Key '{}' not found", key))),
+            _ => {
+                return Err(pyo3::exceptions::PyKeyError::new_err(format!(
+                    "Key '{}' not found",
+                    key
+                )));
+            }
         };
         Ok(v)
     }

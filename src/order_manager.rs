@@ -139,7 +139,11 @@ impl OrderManager {
             // 4. Update Order Commission
             // Note: filled_quantity and average_filled_price are updated via ExecutionReport
             // in on_execution_report, so we don't need to accumulate them here to avoid double counting.
-            if let Some(order) = self.active_orders.iter_mut().find(|o| o.id == trade.order_id) {
+            if let Some(order) = self
+                .active_orders
+                .iter_mut()
+                .find(|o| o.id == trade.order_id)
+            {
                 order.commission += trade.commission;
 
                 // Check if fully filled
@@ -173,12 +177,8 @@ impl OrderManager {
             // Calculate Portfolio Value for % metrics
             let portfolio_value = portfolio.calculate_equity(last_prices, instruments);
 
-            self.trade_tracker.process_trade(
-                &trade,
-                order_tag,
-                symbol_history,
-                portfolio_value,
-            );
+            self.trade_tracker
+                .process_trade(&trade, order_tag, symbol_history, portfolio_value);
 
             // 6. Record Trade
             self.trades.push(trade.clone());

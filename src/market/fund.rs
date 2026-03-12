@@ -62,9 +62,10 @@ pub fn update_available_position(
                 .or_insert(Decimal::ZERO);
 
             if !config.t_plus_one
-                 && let Some(pos) = available_positions.get_mut(symbol) {
-                    *pos += quantity;
-                }
+                && let Some(pos) = available_positions.get_mut(symbol)
+            {
+                *pos += quantity;
+            }
         }
         OrderSide::Sell => {
             if let Some(pos) = available_positions.get_mut(symbol) {

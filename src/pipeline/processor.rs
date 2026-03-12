@@ -12,5 +12,10 @@ pub enum ProcessorResult {
 }
 
 pub trait Processor {
-    fn process(&mut self, engine: &mut Engine, py: Python<'_>, strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult>;
+    fn process(
+        &mut self,
+        engine: &mut Engine,
+        py: Python<'_>,
+        strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<ProcessorResult>;
 }

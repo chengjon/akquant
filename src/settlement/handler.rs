@@ -64,11 +64,11 @@ pub trait SettlementHandler: Send + Sync {
             .get(&task.symbol)
             .is_some_and(rust_decimal::Decimal::is_zero);
         if is_zero {
-             let positions = Arc::make_mut(&mut portfolio.positions);
-             positions.remove(&task.symbol);
+            let positions = Arc::make_mut(&mut portfolio.positions);
+            positions.remove(&task.symbol);
 
-             let avail_pos = Arc::make_mut(&mut portfolio.available_positions);
-             avail_pos.remove(&task.symbol);
+            let avail_pos = Arc::make_mut(&mut portfolio.available_positions);
+            avail_pos.remove(&task.symbol);
         }
     }
 }

@@ -72,10 +72,7 @@ impl StatisticsManager {
                 continue;
             }
 
-            let price = last_prices
-                .get(symbol)
-                .copied()
-                .unwrap_or(Decimal::ZERO);
+            let price = last_prices.get(symbol).copied().unwrap_or(Decimal::ZERO);
             let instr = instruments.get(symbol);
             let multiplier = instr.map_or(Decimal::ONE, Instrument::multiplier);
             let margin_ratio = instr.map_or(Decimal::ZERO, Instrument::margin_ratio);
@@ -129,7 +126,9 @@ impl StatisticsManager {
         now_ns: Option<i64>,
     ) -> BacktestResult {
         // Calculate final PnL
-        let trade_pnl = order_manager.trade_tracker.calculate_pnl(Some(last_prices.clone()));
+        let trade_pnl = order_manager
+            .trade_tracker
+            .calculate_pnl(Some(last_prices.clone()));
 
         // Prepare data for result creation
         let mut equity_curve = self.equity_curve.clone();

@@ -6,16 +6,10 @@ use crate::model::Order;
 pub struct StockMatcher;
 
 impl ExecutionMatcher for StockMatcher {
-    fn match_order(
-        &self,
-        order: &mut Order,
-        ctx: &MatchContext,
-    ) -> Option<Event> {
+    fn match_order(&self, order: &mut Order, ctx: &MatchContext) -> Option<Event> {
         // Stock: Check Lot Size for Buy orders (e.g. A-Share 100 shares)
         CommonMatcher::match_order(
-            order,
-            ctx,
-            true, // check_lot_size = true for Stock
+            order, ctx, true, // check_lot_size = true for Stock
         )
     }
 }
@@ -23,11 +17,19 @@ impl ExecutionMatcher for StockMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{InstrumentEnum, OrderSide, OrderType, OrderStatus, TimeInForce, StockInstrument, Instrument, ExecutionMode};
+    use crate::model::{
+        ExecutionMode, Instrument, InstrumentEnum, OrderSide, OrderStatus, OrderType,
+        StockInstrument, TimeInForce,
+    };
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
-    fn create_order(side: OrderSide, type_: OrderType, price: Option<Decimal>, stop: Option<Decimal>) -> Order {
+    fn create_order(
+        side: OrderSide,
+        type_: OrderType,
+        price: Option<Decimal>,
+        stop: Option<Decimal>,
+    ) -> Order {
         Order {
             id: "1".to_string(),
             symbol: "AAPL".to_string(),
@@ -100,10 +102,7 @@ mod tests {
             volume_limit_pct: Decimal::ZERO,
             bar_index: 0,
         };
-        let res = matcher.match_order(
-            &mut order,
-            &ctx,
-        );
+        let res = matcher.match_order(&mut order, &ctx);
 
         assert!(res.is_some());
         if let Some(Event::ExecutionReport(o, Some(t))) = res {
@@ -141,10 +140,7 @@ mod tests {
             volume_limit_pct: Decimal::ZERO,
             bar_index: 0,
         };
-        let res = matcher.match_order(
-            &mut order,
-            &ctx,
-        );
+        let res = matcher.match_order(&mut order, &ctx);
 
         assert!(res.is_none());
     }
@@ -212,7 +208,12 @@ mod tests {
     #[test]
     fn test_buy_stop_trail_limit_updates_and_triggers_on_tick() {
         let matcher = StockMatcher;
-        let mut order = create_order(OrderSide::Buy, OrderType::StopTrailLimit, Some(dec!(101)), None);
+        let mut order = create_order(
+            OrderSide::Buy,
+            OrderType::StopTrailLimit,
+            Some(dec!(101)),
+            None,
+        );
         order.trail_offset = Some(dec!(2));
         let instr = create_instrument();
 

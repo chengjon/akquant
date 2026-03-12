@@ -23,9 +23,7 @@ impl SettlementHandler for OptionSettlementHandler {
 
         // Convert NaiveDate to YYYYMMDD u32 for comparison
         let (_, year_ce) = date.year_ce();
-        let current_date_int = year_ce * 10000
-            + date.month() * 100
-            + date.day();
+        let current_date_int = year_ce * 10000 + date.month() * 100 + date.day();
 
         for (symbol, qty) in portfolio.positions.iter() {
             if qty.is_zero() {
@@ -34,46 +32,50 @@ impl SettlementHandler for OptionSettlementHandler {
 
             if let Some(instr) = instruments.get(symbol)
                 && instr.asset_type == AssetType::Option
-                    && let Some(expiry_date_int) = instr.expiry_date()
-                        && current_date_int >= expiry_date_int {
-                            // Expired
-                            // Calculate Payoff
-                            let strike = instr.strike_price().unwrap_or(Decimal::ZERO);
-                            let underlying_price = if let Some(us) = instr.underlying_symbol() {
-                                last_prices.get(us.as_str()).copied().unwrap_or(Decimal::ZERO)
-                            } else {
-                                Decimal::ZERO
-                            };
+                && let Some(expiry_date_int) = instr.expiry_date()
+                && current_date_int >= expiry_date_int
+            {
+                // Expired
+                // Calculate Payoff
+                let strike = instr.strike_price().unwrap_or(Decimal::ZERO);
+                let underlying_price = if let Some(us) = instr.underlying_symbol() {
+                    last_prices
+                        .get(us.as_str())
+                        .copied()
+                        .unwrap_or(Decimal::ZERO)
+                } else {
+                    Decimal::ZERO
+                };
 
-                            let mut payoff_per_unit = Decimal::ZERO;
-                            if underlying_price > Decimal::ZERO {
-                                match instr.option_type() {
-                                    Some(OptionType::Call) => {
-                                        if underlying_price > strike {
-                                            payoff_per_unit = underlying_price - strike;
-                                        }
-                                    }
-                                    Some(OptionType::Put) => {
-                                        if strike > underlying_price {
-                                            payoff_per_unit = strike - underlying_price;
-                                        }
-                                    }
-                                    None => {}
-                                }
+                let mut payoff_per_unit = Decimal::ZERO;
+                if underlying_price > Decimal::ZERO {
+                    match instr.option_type() {
+                        Some(OptionType::Call) => {
+                            if underlying_price > strike {
+                                payoff_per_unit = underlying_price - strike;
                             }
-
-                            // Total Cash Flow
-                            // Long (Qty > 0): Receives Payoff * Multiplier * Qty
-                            // Short (Qty < 0): Pays Payoff * Multiplier * Abs(Qty) -> Qty * Payoff * Multiplier
-                            let cash_flow = *qty * payoff_per_unit * instr.multiplier();
-
-                            tasks.push(SettlementTask {
-                                symbol: symbol.clone(),
-                                quantity: *qty, // Full position quantity to close
-                                cash_flow,
-                                description: format!("Option Expiry for {symbol}"),
-                            });
                         }
+                        Some(OptionType::Put) => {
+                            if strike > underlying_price {
+                                payoff_per_unit = strike - underlying_price;
+                            }
+                        }
+                        None => {}
+                    }
+                }
+
+                // Total Cash Flow
+                // Long (Qty > 0): Receives Payoff * Multiplier * Qty
+                // Short (Qty < 0): Pays Payoff * Multiplier * Abs(Qty) -> Qty * Payoff * Multiplier
+                let cash_flow = *qty * payoff_per_unit * instr.multiplier();
+
+                tasks.push(SettlementTask {
+                    symbol: symbol.clone(),
+                    quantity: *qty, // Full position quantity to close
+                    cash_flow,
+                    description: format!("Option Expiry for {symbol}"),
+                });
+            }
         }
 
         tasks
@@ -89,7 +91,12 @@ mod tests {
     use rust_decimal_macros::dec;
     use std::sync::Arc;
 
-    fn create_test_option(symbol: &str, expiry_date: u32, option_type: OptionType, strike: Decimal) -> Instrument {
+    fn create_test_option(
+        symbol: &str,
+        expiry_date: u32,
+        option_type: OptionType,
+        strike: Decimal,
+    ) -> Instrument {
         Instrument {
             asset_type: AssetType::Option,
             inner: InstrumentEnum::Option(OptionInstrument {
@@ -128,12 +135,7 @@ mod tests {
         let mut last_prices = HashMap::new();
         last_prices.insert("UNDERLYING".to_string(), dec!(110)); // Underlying > Strike (ITM)
 
-        let tasks = handler.check_settlement(
-            expiry_date,
-            &portfolio,
-            &instruments,
-            &last_prices,
-        );
+        let tasks = handler.check_settlement(expiry_date, &portfolio, &instruments, &last_prices);
 
         assert_eq!(tasks.len(), 1);
         let task = &tasks[0];
@@ -168,12 +170,7 @@ mod tests {
         let mut last_prices = HashMap::new();
         last_prices.insert("UNDERLYING".to_string(), dec!(110)); // Underlying > Strike (OTM for Put)
 
-        let tasks = handler.check_settlement(
-            expiry_date,
-            &portfolio,
-            &instruments,
-            &last_prices,
-        );
+        let tasks = handler.check_settlement(expiry_date, &portfolio, &instruments, &last_prices);
 
         // Should not generate tasks if OTM?
         // Wait, check_settlement checks if expiry_date >= current_date.

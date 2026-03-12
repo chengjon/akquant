@@ -1,10 +1,10 @@
 use super::types::{ClosedTrade, TradePnL};
-use crate::model::{OrderSide, Trade};
 use crate::history::SymbolHistory;
+use crate::model::{OrderSide, Trade};
 use rust_decimal::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradeEntry {
@@ -201,8 +201,12 @@ impl TradeTracker {
                                     let h = hist.highs[i];
                                     let l = hist.lows[i];
 
-                                    if h > max_high { max_high = h; }
-                                    if l < min_low { min_low = l; }
+                                    if h > max_high {
+                                        max_high = h;
+                                    }
+                                    if l < min_low {
+                                        min_low = l;
+                                    }
 
                                     // Short Drawdown Logic:
                                     // Drawdown is from the lowest price seen so far (valley).
@@ -228,10 +232,14 @@ impl TradeTracker {
                                 min_low = entry_px_f64.min(p);
 
                                 // Check DD with exit price
-                                if p < valley_low { valley_low = p; }
+                                if p < valley_low {
+                                    valley_low = p;
+                                }
                                 if valley_low > 0.0 {
                                     let dd = (p - valley_low) / valley_low;
-                                    if dd > current_max_dd { current_max_dd = dd; }
+                                    if dd > current_max_dd {
+                                        current_max_dd = dd;
+                                    }
                                 }
                             } else {
                                 // Also consider exit price
@@ -239,10 +247,14 @@ impl TradeTracker {
                                 max_high = max_high.max(p);
                                 min_low = min_low.min(p);
 
-                                if p < valley_low { valley_low = p; }
+                                if p < valley_low {
+                                    valley_low = p;
+                                }
                                 if valley_low > 0.0 {
                                     let dd = (p - valley_low) / valley_low;
-                                    if dd > current_max_dd { current_max_dd = dd; }
+                                    if dd > current_max_dd {
+                                        current_max_dd = dd;
+                                    }
                                 }
                             }
 
@@ -268,7 +280,8 @@ impl TradeTracker {
                             return_pct: to_f64(ret_pct) * 100.0,
                             commission: to_f64(total_trade_comm),
                             duration_bars: bars.to_usize().unwrap_or(0),
-                            duration: ((timestamp as i128) - (match_entry.timestamp as i128)) as u64,
+                            duration: ((timestamp as i128) - (match_entry.timestamp as i128))
+                                as u64,
                             mae,
                             mfe,
                             entry_tag: match_entry.tag.clone(),
@@ -406,8 +419,12 @@ impl TradeTracker {
                                     let h = hist.highs[i];
                                     let l = hist.lows[i];
 
-                                    if h > max_high { max_high = h; }
-                                    if l < min_low { min_low = l; }
+                                    if h > max_high {
+                                        max_high = h;
+                                    }
+                                    if l < min_low {
+                                        min_low = l;
+                                    }
 
                                     // Long Drawdown Logic:
                                     // Drawdown is from the highest price seen so far (peak).
@@ -432,10 +449,14 @@ impl TradeTracker {
                                 min_low = entry_px_f64.min(p);
 
                                 // Check DD with exit price
-                                if p > peak_high { peak_high = p; }
+                                if p > peak_high {
+                                    peak_high = p;
+                                }
                                 if peak_high > 0.0 {
                                     let dd = (peak_high - p) / peak_high;
-                                    if dd > current_max_dd { current_max_dd = dd; }
+                                    if dd > current_max_dd {
+                                        current_max_dd = dd;
+                                    }
                                 }
                             } else {
                                 let p = to_f64(price);
@@ -443,10 +464,14 @@ impl TradeTracker {
                                 min_low = min_low.min(p);
 
                                 // Check DD with exit price
-                                if p > peak_high { peak_high = p; }
+                                if p > peak_high {
+                                    peak_high = p;
+                                }
                                 if peak_high > 0.0 {
                                     let dd = (peak_high - p) / peak_high;
-                                    if dd > current_max_dd { current_max_dd = dd; }
+                                    if dd > current_max_dd {
+                                        current_max_dd = dd;
+                                    }
                                 }
                             }
 
@@ -472,7 +497,8 @@ impl TradeTracker {
                             return_pct: to_f64(ret_pct) * 100.0,
                             commission: to_f64(total_trade_comm),
                             duration_bars: bars.to_usize().unwrap_or(0),
-                            duration: ((timestamp as i128) - (match_entry.timestamp as i128)) as u64,
+                            duration: ((timestamp as i128) - (match_entry.timestamp as i128))
+                                as u64,
                             mae,
                             mfe,
                             entry_tag: match_entry.tag.clone(),
@@ -704,12 +730,15 @@ impl TradeTracker {
         // SQN
         let sqn = if total_closed_trades > 0 {
             let avg_pnl_val = to_f64(sum_pnl) / total_closed_trades as f64;
-            let variance = self.closed_trades_stats.iter()
+            let variance = self
+                .closed_trades_stats
+                .iter()
                 .map(|(pnl, _, _, _)| {
                     let diff = to_f64(*pnl) - avg_pnl_val;
                     diff * diff
                 })
-                .sum::<f64>() / total_closed_trades as f64;
+                .sum::<f64>()
+                / total_closed_trades as f64;
             let std_dev = variance.sqrt();
             if std_dev != 0.0 {
                 (avg_pnl_val / std_dev) * (total_closed_trades as f64).sqrt()
@@ -724,11 +753,7 @@ impl TradeTracker {
         let kelly_criterion = if win_rate > 0.0 && avg_loss.abs() > 0.0 {
             let w = win_rate / 100.0;
             let r = avg_profit / avg_loss.abs();
-            if r > 0.0 {
-                 w - (1.0 - w) / r
-            } else {
-                0.0
-            }
+            if r > 0.0 { w - (1.0 - w) / r } else { 0.0 }
         } else {
             0.0
         };

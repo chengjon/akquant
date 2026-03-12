@@ -1,7 +1,6 @@
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use crate::event::Event;
-
 
 /// 事件管理器
 /// 负责事件队列的分发和处理
@@ -13,10 +12,7 @@ pub struct EventManager {
 impl EventManager {
     pub fn new() -> Self {
         let (tx, rx) = unbounded();
-        EventManager {
-            tx,
-            rx: Some(rx),
-        }
+        EventManager { tx, rx: Some(rx) }
     }
 
     /// 发送事件
@@ -32,7 +28,7 @@ impl EventManager {
     /// 尝试接收事件 (非阻塞)
     pub fn try_recv(&self) -> Option<Event> {
         if let Some(rx) = &self.rx {
-             rx.try_recv().ok()
+            rx.try_recv().ok()
         } else {
             None
         }

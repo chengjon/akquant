@@ -96,6 +96,103 @@ class ATR:
         """
         ...
 
+class AVGPRICE:
+    r"""平均价格指标 (AVGPRICE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "AVGPRICE": ...
+    def update(
+        self, open: float, high: float, low: float, close: float
+    ) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param open: 开盘价
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 AVGPRICE 值
+        """
+        ...
+
+class TRANGE:
+    r"""真实波幅 (TRANGE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "TRANGE": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 TRANGE 值
+        """
+        ...
+
+class MEDPRICE:
+    r"""中位价指标 (MEDPRICE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "MEDPRICE": ...
+    def update(self, high: float, low: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :return: 当前 MEDPRICE 值
+        """
+        ...
+
+class TYPPRICE:
+    r"""典型价格指标 (TYPPRICE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "TYPPRICE": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 TYPPRICE 值
+        """
+        ...
+
+class WCLPRICE:
+    r"""加权收盘价指标 (WCLPRICE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "WCLPRICE": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 WCLPRICE 值
+        """
+        ...
+
+class MIDPRICE:
+    r"""中点价格指标 (MIDPRICE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MIDPRICE": ...
+    def update(self, high: float, low: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :return: 当前 MIDPRICE 值
+        """
+        ...
+
 class BacktestResult:
     r"""
     回测结果.
@@ -683,6 +780,34 @@ class MACD:
         """
         ...
 
+class APO:
+    r"""绝对价格震荡指标 (APO)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, fast_period: int, slow_period: int) -> "APO": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 APO 值
+        """
+        ...
+
+class PPO:
+    r"""百分比价格震荡指标 (PPO)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, fast_period: int, slow_period: int) -> "PPO": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 PPO 值
+        """
+        ...
+
 class Order:
     r"""
     订单.
@@ -886,6 +1011,48 @@ class ROC:
         """
         ...
 
+class ROCP:
+    r"""变化率百分比指标 (ROCP)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "ROCP": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ROCP 值
+        """
+        ...
+
+class ROCR:
+    r"""变化率比值指标 (ROCR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "ROCR": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ROCR 值
+        """
+        ...
+
+class ROCR100:
+    r"""变化率比值指标 (ROCR100)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "ROCR100": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ROCR100 值
+        """
+        ...
+
 class MOM:
     r"""动量指标 (MOM)."""
 
@@ -897,6 +1064,20 @@ class MOM:
 
         :param value: 新数据点
         :return: 当前 MOM 值
+        """
+        ...
+
+class CMO:
+    r"""钱德动量摆动指标 (CMO)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "CMO": ...
+    def update(self, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param close: 收盘价
+        :return: 当前 CMO 值
         """
         ...
 
@@ -912,6 +1093,63 @@ class OBV:
         :param close: 收盘价
         :param volume: 成交量
         :return: 当前 OBV 值
+        """
+        ...
+
+class AD:
+    r"""蔡金累积/派发线 (AD)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "AD": ...
+    def update(
+        self, high: float, low: float, close: float, volume: float
+    ) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :param volume: 成交量
+        :return: 当前 AD 值
+        """
+        ...
+
+class ADOSC:
+    r"""蔡金累积/派发振荡器 (ADOSC)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, fast_period: int, slow_period: int) -> "ADOSC": ...
+    def update(
+        self, high: float, low: float, close: float, volume: float
+    ) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :param volume: 成交量
+        :return: 当前 ADOSC 值
+        """
+        ...
+
+class BOP:
+    r"""均势指标 (BOP)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "BOP": ...
+    def update(
+        self, open: float, high: float, low: float, close: float
+    ) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param open: 开盘价
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 BOP 值
         """
         ...
 
@@ -1006,6 +1244,34 @@ class NATR:
         """
         ...
 
+class STDDEV:
+    r"""标准差指标 (STDDEV)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int, nbdev: float) -> "STDDEV": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 STDDEV 值
+        """
+        ...
+
+class VAR:
+    r"""方差指标 (VAR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int, nbdev: float) -> "VAR": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 VAR 值
+        """
+        ...
+
 class SAR:
     r"""抛物线转向指标 (SAR)."""
 
@@ -1050,6 +1316,259 @@ class ADX:
         :param low: 最低价
         :param close: 收盘价
         :return: 当前 ADX 值
+        """
+        ...
+
+class DX:
+    r"""动向指数 (DX)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "DX": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 DX 值
+        """
+        ...
+
+class ADXR:
+    r"""平均趋向指标评分 (ADXR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "ADXR": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 ADXR 值
+        """
+        ...
+
+class PLUS_DI:
+    r"""正向动向指标 (+DI)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "PLUS_DI": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 +DI 值
+        """
+        ...
+
+class MINUS_DI:
+    r"""负向动向指标 (-DI)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MINUS_DI": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 -DI 值
+        """
+        ...
+
+class ULTOSC:
+    r"""终极振荡器 (ULTOSC)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period1: int, period2: int, period3: int) -> "ULTOSC": ...
+    def update(self, high: float, low: float, close: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :param close: 收盘价
+        :return: 当前 ULTOSC 值
+        """
+        ...
+
+class AROON:
+    r"""阿隆指标 (AROON)."""
+
+    value: typing.Optional[tuple[float, float]]
+    def __new__(cls, period: int) -> "AROON": ...
+    def update(self, high: float, low: float) -> typing.Optional[tuple[float, float]]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :return: (AroonDown, AroonUp)
+        """
+        ...
+
+class AROONOSC:
+    r"""阿隆振荡器 (AROONOSC)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "AROONOSC": ...
+    def update(self, high: float, low: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param high: 最高价
+        :param low: 最低价
+        :return: 当前 AROONOSC 值
+        """
+        ...
+
+class LINEARREG:
+    r"""线性回归端点值 (LINEARREG)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "LINEARREG": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 LINEARREG 值
+        """
+        ...
+
+class LINEARREG_SLOPE:
+    r"""线性回归斜率 (LINEARREG_SLOPE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "LINEARREG_SLOPE": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 LINEARREG_SLOPE 值
+        """
+        ...
+
+class LINEARREG_R2:
+    r"""线性回归决定系数 (LINEARREG_R2)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "LINEARREG_R2": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 LINEARREG_R2 值
+        """
+        ...
+
+class HT_TRENDLINE:
+    r"""希尔伯特趋势线 (HT_TRENDLINE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "HT_TRENDLINE": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 HT_TRENDLINE 值
+        """
+        ...
+
+class LINEARREG_INTERCEPT:
+    r"""线性回归截距 (LINEARREG_INTERCEPT)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "LINEARREG_INTERCEPT": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 LINEARREG_INTERCEPT 值
+        """
+        ...
+
+class LINEARREG_ANGLE:
+    r"""线性回归角度 (LINEARREG_ANGLE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "LINEARREG_ANGLE": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 LINEARREG_ANGLE 值
+        """
+        ...
+
+class TSF:
+    r"""时间序列预测 (TSF)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "TSF": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 TSF 值
+        """
+        ...
+
+class CORREL:
+    r"""相关系数指标 (CORREL)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "CORREL": ...
+    def update(self, x: float, y: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param x: 第一个序列值
+        :param y: 第二个序列值
+        :return: 当前 CORREL 值
+        """
+        ...
+
+class BETA:
+    r"""贝塔系数指标 (BETA)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "BETA": ...
+    def update(self, x: float, y: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param x: 第一个序列值
+        :param y: 第二个序列值
+        :return: 当前 BETA 值
+        """
+        ...
+
+class COVAR:
+    r"""协方差指标 (COVAR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "COVAR": ...
+    def update(self, x: float, y: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param x: 第一个序列值
+        :param y: 第二个序列值
+        :return: 当前 COVAR 值
         """
         ...
 
@@ -1108,6 +1627,634 @@ class SMA:
 
         :param value: 新数据点
         :return: 当前 SMA 值 (如果数据不足则返回 None)
+        """
+        ...
+
+class WMA:
+    r"""加权移动平均线 (WMA)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "WMA": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 WMA 值
+        """
+        ...
+
+class TRIMA:
+    r"""三角移动平均线 (TRIMA)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "TRIMA": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 TRIMA 值
+        """
+        ...
+
+class MIDPOINT:
+    r"""中点指标 (MIDPOINT)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MIDPOINT": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 MIDPOINT 值
+        """
+        ...
+
+class MAX:
+    r"""滚动最大值指标 (MAX)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MAX": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 MAX 值
+        """
+        ...
+
+class MIN:
+    r"""滚动最小值指标 (MIN)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MIN": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 MIN 值
+        """
+        ...
+
+class MAXINDEX:
+    r"""滚动最大值索引指标 (MAXINDEX)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MAXINDEX": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 MAXINDEX 值
+        """
+        ...
+
+class MININDEX:
+    r"""滚动最小值索引指标 (MININDEX)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "MININDEX": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 MININDEX 值
+        """
+        ...
+
+class MINMAXINDEX:
+    r"""滚动最值索引双输出指标 (MINMAXINDEX)."""
+
+    value: typing.Optional[tuple[float, float]]
+    def __new__(cls, period: int) -> "MINMAXINDEX": ...
+    def update(self, value: float) -> typing.Optional[tuple[float, float]]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 (MININDEX, MAXINDEX)
+        """
+        ...
+
+class MINMAX:
+    r"""滚动最值双输出指标 (MINMAX)."""
+
+    value: typing.Optional[tuple[float, float]]
+    def __new__(cls, period: int) -> "MINMAX": ...
+    def update(self, value: float) -> typing.Optional[tuple[float, float]]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 (MIN, MAX)
+        """
+        ...
+
+class SUM:
+    r"""滚动求和指标 (SUM)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "SUM": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 SUM 值
+        """
+        ...
+
+class AVGDEV:
+    r"""平均绝对偏差指标 (AVGDEV)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "AVGDEV": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 AVGDEV 值
+        """
+        ...
+
+class RANGE:
+    r"""滚动高低差指标 (RANGE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int) -> "RANGE": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 RANGE 值
+        """
+        ...
+
+class LN:
+    r"""自然对数变换指标 (LN)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "LN": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 LN 值
+        """
+        ...
+
+class LOG10:
+    r"""常用对数变换指标 (LOG10)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "LOG10": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 LOG10 值
+        """
+        ...
+
+class SQRT:
+    r"""平方根变换指标 (SQRT)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "SQRT": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 SQRT 值
+        """
+        ...
+
+class CEIL:
+    r"""向上取整变换指标 (CEIL)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "CEIL": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 CEIL 值
+        """
+        ...
+
+class FLOOR:
+    r"""向下取整变换指标 (FLOOR)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "FLOOR": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 FLOOR 值
+        """
+        ...
+
+class SIN:
+    r"""正弦变换指标 (SIN)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "SIN": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 SIN 值
+        """
+        ...
+
+class COS:
+    r"""余弦变换指标 (COS)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "COS": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 COS 值
+        """
+        ...
+
+class TAN:
+    r"""正切变换指标 (TAN)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "TAN": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 TAN 值
+        """
+        ...
+
+class ASIN:
+    r"""反正弦变换指标 (ASIN)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "ASIN": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ASIN 值
+        """
+        ...
+
+class ACOS:
+    r"""反余弦变换指标 (ACOS)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "ACOS": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ACOS 值
+        """
+        ...
+
+class ATAN:
+    r"""反正切变换指标 (ATAN)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "ATAN": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ATAN 值
+        """
+        ...
+
+class SINH:
+    r"""双曲正弦变换指标 (SINH)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "SINH": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 SINH 值
+        """
+        ...
+
+class COSH:
+    r"""双曲余弦变换指标 (COSH)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "COSH": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 COSH 值
+        """
+        ...
+
+class TANH:
+    r"""双曲正切变换指标 (TANH)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "TANH": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 TANH 值
+        """
+        ...
+
+class EXP:
+    r"""指数变换指标 (EXP)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "EXP": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 EXP 值
+        """
+        ...
+
+class ABS:
+    r"""绝对值变换指标 (ABS)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "ABS": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 ABS 值
+        """
+        ...
+
+class SIGN:
+    r"""符号变换指标 (SIGN)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "SIGN": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 SIGN 值
+        """
+        ...
+
+class ADD:
+    r"""逐元素加法指标 (ADD)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "ADD": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 ADD 值
+        """
+        ...
+
+class SUB:
+    r"""逐元素减法指标 (SUB)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "SUB": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 SUB 值
+        """
+        ...
+
+class MULT:
+    r"""逐元素乘法指标 (MULT)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "MULT": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 MULT 值
+        """
+        ...
+
+class DIV:
+    r"""逐元素除法指标 (DIV)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "DIV": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 DIV 值
+        """
+        ...
+
+class MAX2:
+    r"""逐元素最大值指标 (MAX2)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "MAX2": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 MAX2 值
+        """
+        ...
+
+class MIN2:
+    r"""逐元素最小值指标 (MIN2)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "MIN2": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 MIN2 值
+        """
+        ...
+
+class CLIP:
+    r"""逐元素截断指标 (CLIP)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "CLIP": ...
+    def update(
+        self, value: float, min_value: float, max_value: float
+    ) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 输入值
+        :param min_value: 下界
+        :param max_value: 上界
+        :return: 当前 CLIP 值
+        """
+        ...
+
+class ROUND:
+    r"""逐元素四舍五入指标 (ROUND)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "ROUND": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 输入值
+        :return: 当前 ROUND 值
+        """
+        ...
+
+class POW:
+    r"""逐元素幂运算指标 (POW)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "POW": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 POW 值
+        """
+        ...
+
+class MOD:
+    r"""逐元素取模指标 (MOD)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "MOD": ...
+    def update(self, left: float, right: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param left: 第一个序列值
+        :param right: 第二个序列值
+        :return: 当前 MOD 值
+        """
+        ...
+
+class CLAMP01:
+    r"""固定区间截断指标 (CLAMP01)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "CLAMP01": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 输入值
+        :return: 当前 CLAMP01 值
+        """
+        ...
+
+class SQ:
+    r"""逐元素平方指标 (SQ)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "SQ": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 输入值
+        :return: 当前 SQ 值
+        """
+        ...
+
+class CUBE:
+    r"""逐元素立方指标 (CUBE)."""
+
+    value: typing.Optional[float]
+    def __new__(cls) -> "CUBE": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 输入值
+        :return: 当前 CUBE 值
+        """
+        ...
+
+class T3:
+    r"""三重指数平滑指标 (T3)."""
+
+    value: typing.Optional[float]
+    def __new__(cls, period: int, vfactor: float) -> "T3": ...
+    def update(self, value: float) -> typing.Optional[float]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 T3 值
+        """
+        ...
+
+class MAMA:
+    r"""自适应均线指标 (MAMA)."""
+
+    value: typing.Optional[tuple[float, float]]
+    def __new__(cls, fast_limit: float, slow_limit: float) -> "MAMA": ...
+    def update(self, value: float) -> typing.Optional[tuple[float, float]]:
+        r"""
+        更新指标值.
+
+        :param value: 新数据点
+        :return: 当前 (MAMA, FAMA)
         """
         ...
 

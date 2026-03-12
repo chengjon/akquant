@@ -3,11 +3,11 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
 use std::collections::HashMap;
 
-use crate::model::{Instrument, TradingSession};
 use crate::market::{
-    stock, futures, fund, option,
-    ChinaMarketConfig, MarketConfig, MarketModel, SessionRange, SimpleMarketConfig,
+    ChinaMarketConfig, MarketConfig, MarketModel, SessionRange, SimpleMarketConfig, fund, futures,
+    option, stock,
 };
+use crate::model::{Instrument, TradingSession};
 
 /// 市场管理器
 /// 负责管理市场配置、市场模型以及相关的费率和交易时段设置
@@ -65,8 +65,12 @@ impl MarketManager {
     /// :param enabled: 是否启用 T+1
     pub fn set_t_plus_one(&mut self, enabled: bool) {
         if let MarketConfig::China(ref mut c) = self.config {
-            c.stock.get_or_insert_with(stock::StockConfig::default).t_plus_one = enabled;
-            c.fund.get_or_insert_with(fund::FundConfig::default).t_plus_one = enabled;
+            c.stock
+                .get_or_insert_with(stock::StockConfig::default)
+                .t_plus_one = enabled;
+            c.fund
+                .get_or_insert_with(fund::FundConfig::default)
+                .t_plus_one = enabled;
             self.model = self.config.create_model();
         }
     }
@@ -100,13 +104,10 @@ impl MarketManager {
         match &mut self.config {
             MarketConfig::China(c) => {
                 let stock = c.stock.get_or_insert_with(stock::StockConfig::default);
-                stock.commission_rate =
-                    Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
+                stock.commission_rate = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
                 stock.stamp_tax = Decimal::from_f64(stamp_tax).unwrap_or(Decimal::ZERO);
-                stock.transfer_fee =
-                    Decimal::from_f64(transfer_fee).unwrap_or(Decimal::ZERO);
-                stock.min_commission =
-                    Decimal::from_f64(min_commission).unwrap_or(Decimal::ZERO);
+                stock.transfer_fee = Decimal::from_f64(transfer_fee).unwrap_or(Decimal::ZERO);
+                stock.min_commission = Decimal::from_f64(min_commission).unwrap_or(Decimal::ZERO);
             }
             MarketConfig::Simple(c) => {
                 c.commission_rate = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
@@ -123,9 +124,10 @@ impl MarketManager {
     /// :param commission_rate: 佣金率 (如 0.0001)
     pub fn set_future_fee_rules(&mut self, commission_rate: f64) {
         if let MarketConfig::China(ref mut c) = self.config {
-            let futures = c.futures.get_or_insert_with(futures::FuturesConfig::default);
-            futures.commission_rate =
-                Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
+            let futures = c
+                .futures
+                .get_or_insert_with(futures::FuturesConfig::default);
+            futures.commission_rate = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
             self.model = self.config.create_model();
         }
     }
@@ -135,15 +137,17 @@ impl MarketManager {
     /// :param commission_rate: 佣金率
     /// :param transfer_fee: 过户费率
     /// :param min_commission: 最低佣金
-    pub fn set_fund_fee_rules(&mut self, commission_rate: f64, transfer_fee: f64, min_commission: f64) {
+    pub fn set_fund_fee_rules(
+        &mut self,
+        commission_rate: f64,
+        transfer_fee: f64,
+        min_commission: f64,
+    ) {
         if let MarketConfig::China(ref mut c) = self.config {
             let fund = c.fund.get_or_insert_with(fund::FundConfig::default);
-            fund.commission_rate =
-                Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
-            fund.transfer_fee =
-                Decimal::from_f64(transfer_fee).unwrap_or(Decimal::ZERO);
-            fund.min_commission =
-                Decimal::from_f64(min_commission).unwrap_or(Decimal::ZERO);
+            fund.commission_rate = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
+            fund.transfer_fee = Decimal::from_f64(transfer_fee).unwrap_or(Decimal::ZERO);
+            fund.min_commission = Decimal::from_f64(min_commission).unwrap_or(Decimal::ZERO);
             self.model = self.config.create_model();
         }
     }
@@ -163,10 +167,7 @@ impl MarketManager {
     /// 设置市场交易时段
     ///
     /// :param sessions: 交易时段列表，每个元素为 (开始时间, 结束时间, 时段类型)
-    pub fn set_market_sessions(
-        &mut self,
-        sessions: Vec<(NaiveTime, NaiveTime, TradingSession)>,
-    ) {
+    pub fn set_market_sessions(&mut self, sessions: Vec<(NaiveTime, NaiveTime, TradingSession)>) {
         let mut ranges = Vec::with_capacity(sessions.len());
         for (start, end, session) in sessions {
             ranges.push(SessionRange {
@@ -193,7 +194,8 @@ impl MarketManager {
         available_positions: &mut HashMap<String, Decimal>,
         instruments: &HashMap<String, Instrument>,
     ) {
-        self.model.on_day_close(positions, available_positions, instruments);
+        self.model
+            .on_day_close(positions, available_positions, instruments);
     }
 }
 

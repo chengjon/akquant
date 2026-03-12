@@ -1,8 +1,8 @@
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use chrono::NaiveDate;
 
 use crate::data::DataFeed;
 use crate::order_manager::OrderManager;

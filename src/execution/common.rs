@@ -1,8 +1,6 @@
 use crate::event::Event;
 use crate::execution::matcher::MatchContext;
-use crate::model::{
-    ExecutionMode, Order, OrderSide, OrderStatus, OrderType, TimeInForce, Trade,
-};
+use crate::model::{ExecutionMode, Order, OrderSide, OrderStatus, OrderType, TimeInForce, Trade};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -83,21 +81,23 @@ impl CommonMatcher {
 
         // 0. 检查最小交易单位 (Lot Size)
         // 仅针对买入订单，且必须存在标的定义
-        if check_lot_size && order.side == OrderSide::Buy
-            && order.quantity % instrument.lot_size() != Decimal::ZERO {
-                order.status = OrderStatus::Rejected;
-                order.reject_reason = format!(
-                    "Quantity {} is not a multiple of lot size {}",
-                    order.quantity,
-                    instrument.lot_size()
-                );
-                match event {
-                    Event::Bar(b) => order.updated_at = b.timestamp,
-                    Event::Tick(t) => order.updated_at = t.timestamp,
-                    _ => {}
-                }
-                return Some(Event::ExecutionReport(order.clone(), None));
+        if check_lot_size
+            && order.side == OrderSide::Buy
+            && order.quantity % instrument.lot_size() != Decimal::ZERO
+        {
+            order.status = OrderStatus::Rejected;
+            order.reject_reason = format!(
+                "Quantity {} is not a multiple of lot size {}",
+                order.quantity,
+                instrument.lot_size()
+            );
+            match event {
+                Event::Bar(b) => order.updated_at = b.timestamp,
+                Event::Tick(t) => order.updated_at = t.timestamp,
+                _ => {}
             }
+            return Some(Event::ExecutionReport(order.clone(), None));
+        }
 
         match event {
             Event::Bar(bar) => {
@@ -105,7 +105,10 @@ impl CommonMatcher {
                     return None;
                 }
 
-                if matches!(order.order_type, OrderType::StopTrail | OrderType::StopTrailLimit) {
+                if matches!(
+                    order.order_type,
+                    OrderType::StopTrail | OrderType::StopTrailLimit
+                ) {
                     Self::update_trailing_trigger_with_bar(order, bar.high, bar.low);
                 }
 
@@ -212,35 +215,34 @@ impl CommonMatcher {
                                 }
 
                                 // 3.3 Apply Stop-Limit Constraints (In-Bar Trigger)
-                                if is_triggered_now
-                                    && let Some(tp) = trigger_price_val {
-                                        let is_gap = match order.side {
-                                            OrderSide::Buy => bar.open >= tp,
-                                            OrderSide::Sell => bar.open <= tp,
-                                        };
+                                if is_triggered_now && let Some(tp) = trigger_price_val {
+                                    let is_gap = match order.side {
+                                        OrderSide::Buy => bar.open >= tp,
+                                        OrderSide::Sell => bar.open <= tp,
+                                    };
 
-                                        if !is_gap {
-                                            // Triggered In-Bar.
-                                            match order.side {
-                                                OrderSide::Buy => {
-                                                    if final_fill_price < tp {
-                                                        final_fill_price = tp;
-                                                    }
-                                                    if final_fill_price > limit_price {
-                                                        return None;
-                                                    }
+                                    if !is_gap {
+                                        // Triggered In-Bar.
+                                        match order.side {
+                                            OrderSide::Buy => {
+                                                if final_fill_price < tp {
+                                                    final_fill_price = tp;
                                                 }
-                                                OrderSide::Sell => {
-                                                    if final_fill_price > tp {
-                                                        final_fill_price = tp;
-                                                    }
-                                                    if final_fill_price < limit_price {
-                                                        return None;
-                                                    }
+                                                if final_fill_price > limit_price {
+                                                    return None;
+                                                }
+                                            }
+                                            OrderSide::Sell => {
+                                                if final_fill_price > tp {
+                                                    final_fill_price = tp;
+                                                }
+                                                if final_fill_price < limit_price {
+                                                    return None;
                                                 }
                                             }
                                         }
                                     }
+                                }
                                 execute_price = Some(final_fill_price);
                             }
                         }
@@ -277,7 +279,8 @@ impl CommonMatcher {
                         let current_filled = order.filled_quantity;
                         let prev_filled = current_filled - trade_qty;
                         let prev_avg = order.average_filled_price.unwrap_or(Decimal::ZERO);
-                        let new_avg = (prev_avg * prev_filled + final_price * trade_qty) / current_filled;
+                        let new_avg =
+                            (prev_avg * prev_filled + final_price * trade_qty) / current_filled;
                         order.average_filled_price = Some(new_avg);
 
                         let trade = Trade {
@@ -294,7 +297,9 @@ impl CommonMatcher {
                         };
                         return Some(Event::ExecutionReport(order.clone(), Some(trade)));
                     }
-                } else if order.time_in_force == TimeInForce::IOC || order.time_in_force == TimeInForce::FOK {
+                } else if order.time_in_force == TimeInForce::IOC
+                    || order.time_in_force == TimeInForce::FOK
+                {
                     // Cancel IOC/FOK if not filled
                     order.status = OrderStatus::Cancelled;
                     order.updated_at = bar.timestamp;
@@ -302,11 +307,14 @@ impl CommonMatcher {
                 }
             }
             Event::Tick(tick) => {
-                 if order.symbol != tick.symbol {
+                if order.symbol != tick.symbol {
                     return None;
                 }
 
-                if matches!(order.order_type, OrderType::StopTrail | OrderType::StopTrailLimit) {
+                if matches!(
+                    order.order_type,
+                    OrderType::StopTrail | OrderType::StopTrailLimit
+                ) {
                     Self::update_trailing_trigger_with_tick(order, tick.price);
                 }
 
@@ -319,39 +327,47 @@ impl CommonMatcher {
                     if !triggered {
                         return None;
                     }
-                     order.trigger_price = None;
+                    order.trigger_price = None;
                     Self::promote_triggered_order_type(order);
                 }
 
                 // 2. Execute
-                 let mut execute_price = None;
-                 match order.order_type {
-                     OrderType::Market => execute_price = Some(tick.price),
-                     OrderType::Limit => {
-                         if let Some(limit) = order.price {
-                             match order.side {
-                                 OrderSide::Buy => if tick.price <= limit { execute_price = Some(limit) },
-                                 OrderSide::Sell => if tick.price >= limit { execute_price = Some(limit) },
-                             }
-                             if execute_price.is_some() {
-                                 execute_price = Some(tick.price);
-                             }
-                         }
-                     }
-                     _ => {}
-                 }
+                let mut execute_price = None;
+                match order.order_type {
+                    OrderType::Market => execute_price = Some(tick.price),
+                    OrderType::Limit => {
+                        if let Some(limit) = order.price {
+                            match order.side {
+                                OrderSide::Buy => {
+                                    if tick.price <= limit {
+                                        execute_price = Some(limit)
+                                    }
+                                }
+                                OrderSide::Sell => {
+                                    if tick.price >= limit {
+                                        execute_price = Some(limit)
+                                    }
+                                }
+                            }
+                            if execute_price.is_some() {
+                                execute_price = Some(tick.price);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
 
-                 if let Some(price) = execute_price {
-                      let final_price = slippage.calculate_price(price, order.quantity, order.side);
+                if let Some(price) = execute_price {
+                    let final_price = slippage.calculate_price(price, order.quantity, order.side);
 
-                      let trade_qty = order.quantity - order.filled_quantity;
+                    let trade_qty = order.quantity - order.filled_quantity;
 
-                      if trade_qty > Decimal::ZERO {
+                    if trade_qty > Decimal::ZERO {
                         order.status = OrderStatus::Filled;
                         order.updated_at = tick.timestamp;
                         order.filled_quantity += trade_qty;
                         order.average_filled_price = Some(final_price);
-                         let trade = Trade {
+                        let trade = Trade {
                             id: Uuid::new_v4().to_string(),
                             order_id: order.id.clone(),
                             symbol: order.symbol.clone(),
@@ -364,8 +380,8 @@ impl CommonMatcher {
                             owner_strategy_id: order.owner_strategy_id.clone(),
                         };
                         return Some(Event::ExecutionReport(order.clone(), Some(trade)));
-                      }
-                 }
+                    }
+                }
             }
             _ => {}
         }

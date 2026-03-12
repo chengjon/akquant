@@ -1,11 +1,11 @@
 use super::result::BacktestResult;
-use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyAny};
-use pyo3::exceptions::PyValueError;
-use pyo3_stub_gen::derive::*;
-use polars::prelude::*;
-use rust_decimal::prelude::*;
 use chrono::{TimeZone, Utc};
+use polars::prelude::*;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::{PyAny, PyBytes};
+use pyo3_stub_gen::derive::*;
+use rust_decimal::prelude::*;
 
 #[gen_stub_pymethods]
 #[pymethods]
@@ -17,34 +17,125 @@ impl BacktestResult {
         }
 
         let trades = &self.trades;
-        let s_symbol = Series::new("symbol".into(), trades.iter().map(|t| t.symbol.clone()).collect::<Vec<_>>());
-        let s_entry_time = Series::new("entry_time".into(), trades.iter().map(|t| t.entry_time).collect::<Vec<_>>());
-        let s_exit_time = Series::new("exit_time".into(), trades.iter().map(|t| t.exit_time).collect::<Vec<_>>());
-        let s_entry_price = Series::new("entry_price".into(), trades.iter().map(|t| t.entry_price).collect::<Vec<_>>());
-        let s_exit_price = Series::new("exit_price".into(), trades.iter().map(|t| t.exit_price).collect::<Vec<_>>());
-        let s_quantity = Series::new("quantity".into(), trades.iter().map(|t| t.quantity).collect::<Vec<_>>());
-        let s_side = Series::new("side".into(), trades.iter().map(|t| t.side.clone()).collect::<Vec<_>>());
-        let s_pnl = Series::new("pnl".into(), trades.iter().map(|t| t.pnl).collect::<Vec<_>>());
-        let s_net_pnl = Series::new("net_pnl".into(), trades.iter().map(|t| t.net_pnl).collect::<Vec<_>>());
-        let s_return_pct = Series::new("return_pct".into(), trades.iter().map(|t| t.return_pct).collect::<Vec<_>>());
-        let s_commission = Series::new("commission".into(), trades.iter().map(|t| t.commission).collect::<Vec<_>>());
-        let s_duration_bars = Series::new("duration_bars".into(), trades.iter().map(|t| t.duration_bars as u64).collect::<Vec<_>>());
-        let s_duration = Series::new("duration".into(), trades.iter().map(|t| t.duration).collect::<Vec<_>>());
-        let s_mae = Series::new("mae".into(), trades.iter().map(|t| t.mae).collect::<Vec<_>>());
-        let s_mfe = Series::new("mfe".into(), trades.iter().map(|t| t.mfe).collect::<Vec<_>>());
-        let s_entry_tag = Series::new("entry_tag".into(), trades.iter().map(|t| t.entry_tag.clone()).collect::<Vec<_>>());
-        let s_exit_tag = Series::new("exit_tag".into(), trades.iter().map(|t| t.exit_tag.clone()).collect::<Vec<_>>());
-        let s_entry_portfolio_value = Series::new("entry_portfolio_value".into(), trades.iter().map(|t| t.entry_portfolio_value).collect::<Vec<_>>());
-        let s_max_drawdown_pct = Series::new("max_drawdown_pct".into(), trades.iter().map(|t| t.max_drawdown_pct).collect::<Vec<_>>());
+        let s_symbol = Series::new(
+            "symbol".into(),
+            trades.iter().map(|t| t.symbol.clone()).collect::<Vec<_>>(),
+        );
+        let s_entry_time = Series::new(
+            "entry_time".into(),
+            trades.iter().map(|t| t.entry_time).collect::<Vec<_>>(),
+        );
+        let s_exit_time = Series::new(
+            "exit_time".into(),
+            trades.iter().map(|t| t.exit_time).collect::<Vec<_>>(),
+        );
+        let s_entry_price = Series::new(
+            "entry_price".into(),
+            trades.iter().map(|t| t.entry_price).collect::<Vec<_>>(),
+        );
+        let s_exit_price = Series::new(
+            "exit_price".into(),
+            trades.iter().map(|t| t.exit_price).collect::<Vec<_>>(),
+        );
+        let s_quantity = Series::new(
+            "quantity".into(),
+            trades.iter().map(|t| t.quantity).collect::<Vec<_>>(),
+        );
+        let s_side = Series::new(
+            "side".into(),
+            trades.iter().map(|t| t.side.clone()).collect::<Vec<_>>(),
+        );
+        let s_pnl = Series::new(
+            "pnl".into(),
+            trades.iter().map(|t| t.pnl).collect::<Vec<_>>(),
+        );
+        let s_net_pnl = Series::new(
+            "net_pnl".into(),
+            trades.iter().map(|t| t.net_pnl).collect::<Vec<_>>(),
+        );
+        let s_return_pct = Series::new(
+            "return_pct".into(),
+            trades.iter().map(|t| t.return_pct).collect::<Vec<_>>(),
+        );
+        let s_commission = Series::new(
+            "commission".into(),
+            trades.iter().map(|t| t.commission).collect::<Vec<_>>(),
+        );
+        let s_duration_bars = Series::new(
+            "duration_bars".into(),
+            trades
+                .iter()
+                .map(|t| t.duration_bars as u64)
+                .collect::<Vec<_>>(),
+        );
+        let s_duration = Series::new(
+            "duration".into(),
+            trades.iter().map(|t| t.duration).collect::<Vec<_>>(),
+        );
+        let s_mae = Series::new(
+            "mae".into(),
+            trades.iter().map(|t| t.mae).collect::<Vec<_>>(),
+        );
+        let s_mfe = Series::new(
+            "mfe".into(),
+            trades.iter().map(|t| t.mfe).collect::<Vec<_>>(),
+        );
+        let s_entry_tag = Series::new(
+            "entry_tag".into(),
+            trades
+                .iter()
+                .map(|t| t.entry_tag.clone())
+                .collect::<Vec<_>>(),
+        );
+        let s_exit_tag = Series::new(
+            "exit_tag".into(),
+            trades
+                .iter()
+                .map(|t| t.exit_tag.clone())
+                .collect::<Vec<_>>(),
+        );
+        let s_entry_portfolio_value = Series::new(
+            "entry_portfolio_value".into(),
+            trades
+                .iter()
+                .map(|t| t.entry_portfolio_value)
+                .collect::<Vec<_>>(),
+        );
+        let s_max_drawdown_pct = Series::new(
+            "max_drawdown_pct".into(),
+            trades
+                .iter()
+                .map(|t| t.max_drawdown_pct)
+                .collect::<Vec<_>>(),
+        );
 
         let mut df = DataFrame::new(vec![
-            s_symbol.into(), s_entry_time.into(), s_exit_time.into(), s_entry_price.into(), s_exit_price.into(), s_quantity.into(), s_side.into(),
-            s_pnl.into(), s_net_pnl.into(), s_return_pct.into(), s_commission.into(), s_duration_bars.into(), s_duration.into(),
-            s_mae.into(), s_mfe.into(), s_entry_tag.into(), s_exit_tag.into(), s_entry_portfolio_value.into(), s_max_drawdown_pct.into()
-        ]).map_err(|e| PyValueError::new_err(e.to_string()))?;
+            s_symbol.into(),
+            s_entry_time.into(),
+            s_exit_time.into(),
+            s_entry_price.into(),
+            s_exit_price.into(),
+            s_quantity.into(),
+            s_side.into(),
+            s_pnl.into(),
+            s_net_pnl.into(),
+            s_return_pct.into(),
+            s_commission.into(),
+            s_duration_bars.into(),
+            s_duration.into(),
+            s_mae.into(),
+            s_mfe.into(),
+            s_entry_tag.into(),
+            s_exit_tag.into(),
+            s_entry_portfolio_value.into(),
+            s_max_drawdown_pct.into(),
+        ])
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         let mut buf = Vec::new();
-        IpcWriter::new(&mut buf).finish(&mut df).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        IpcWriter::new(&mut buf)
+            .finish(&mut df)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         Ok(PyBytes::new(py, &buf).into())
     }
@@ -78,7 +169,7 @@ impl BacktestResult {
         }
 
         if symbols.is_empty() {
-             return Ok(PyBytes::new(py, &[]).into());
+            return Ok(PyBytes::new(py, &[]).into());
         }
 
         let s_symbol = Series::new("symbol".into(), symbols);
@@ -93,11 +184,23 @@ impl BacktestResult {
         let s_entry_price = Series::new("entry_price".into(), entry_prices);
 
         let mut df = DataFrame::new(vec![
-            s_symbol.into(), s_date.into(), s_long.into(), s_short.into(), s_close.into(), s_equity.into(), s_mv.into(), s_margin.into(), s_upnl.into(), s_entry_price.into()
-        ]).map_err(|e| PyValueError::new_err(e.to_string()))?;
+            s_symbol.into(),
+            s_date.into(),
+            s_long.into(),
+            s_short.into(),
+            s_close.into(),
+            s_equity.into(),
+            s_mv.into(),
+            s_margin.into(),
+            s_upnl.into(),
+            s_entry_price.into(),
+        ])
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         let mut buf = Vec::new();
-        IpcWriter::new(&mut buf).finish(&mut df).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        IpcWriter::new(&mut buf)
+            .finish(&mut df)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         Ok(PyBytes::new(py, &buf).into())
     }

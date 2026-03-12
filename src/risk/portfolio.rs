@@ -17,11 +17,7 @@ impl RiskRule for MaxPositionPercentRule {
         "MaxPositionPercentRule"
     }
 
-    fn check(
-        &self,
-        order: &Order,
-        ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         let equity = ctx
             .portfolio
             .calculate_equity(ctx.current_prices, ctx.instruments);
@@ -46,7 +42,9 @@ impl RiskRule for MaxPositionPercentRule {
         let price = if let Some(p) = order.price {
             p
         } else {
-            *ctx.current_prices.get(&order.symbol).unwrap_or(&Decimal::ZERO)
+            *ctx.current_prices
+                .get(&order.symbol)
+                .unwrap_or(&Decimal::ZERO)
         };
 
         if price.is_zero() {
@@ -82,13 +80,20 @@ impl RiskRule for MaxPositionPercentRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::instrument::{StockInstrument, InstrumentEnum};
-    use crate::model::{AssetType, Instrument, Order, OrderSide, OrderStatus, OrderType, TimeInForce};
+    use crate::model::instrument::{InstrumentEnum, StockInstrument};
+    use crate::model::{
+        AssetType, Instrument, Order, OrderSide, OrderStatus, OrderType, TimeInForce,
+    };
     use crate::portfolio::Portfolio;
     use rust_decimal::prelude::*;
     use std::sync::Arc;
 
-    fn create_test_order(symbol: &str, side: OrderSide, quantity: Decimal, price: Decimal) -> Order {
+    fn create_test_order(
+        symbol: &str,
+        side: OrderSide,
+        quantity: Decimal,
+        price: Decimal,
+    ) -> Order {
         Order {
             id: "test".to_string(),
             symbol: symbol.to_string(),
@@ -161,17 +166,29 @@ mod tests {
 
         let config = crate::risk::RiskConfig::new();
 
-        let rule = MaxPositionPercentRule { max_pct: Decimal::from_str("0.15").unwrap() }; // 15%
+        let rule = MaxPositionPercentRule {
+            max_pct: Decimal::from_str("0.15").unwrap(),
+        }; // 15%
 
         // 1. Buy 200 AAPL (20,000 value). Total AAPL = 30,000. Equity = 100,000. Ratio = 30%. Fail.
-        let order = create_test_order("AAPL", OrderSide::Buy, Decimal::from(200), Decimal::from(100));
+        let order = create_test_order(
+            "AAPL",
+            OrderSide::Buy,
+            Decimal::from(200),
+            Decimal::from(100),
+        );
         let ctx = create_context(&portfolio, &instr, &instruments, &[], &prices, &config);
 
         let res = rule.check(&order, &ctx);
         assert!(res.is_err());
 
         // 2. Buy 20 AAPL (2,000 value). Total AAPL = 12,000. Ratio = 12%. Pass.
-        let order2 = create_test_order("AAPL", OrderSide::Buy, Decimal::from(20), Decimal::from(100));
+        let order2 = create_test_order(
+            "AAPL",
+            OrderSide::Buy,
+            Decimal::from(20),
+            Decimal::from(100),
+        );
         let res2 = rule.check(&order2, &ctx);
         assert!(res2.is_ok());
     }
@@ -188,11 +205,7 @@ impl RiskRule for MaxLeverageRule {
         "MaxLeverageRule"
     }
 
-    fn check(
-        &self,
-        order: &Order,
-        ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         let equity = ctx
             .portfolio
             .calculate_equity(ctx.current_prices, ctx.instruments);
@@ -211,7 +224,9 @@ impl RiskRule for MaxLeverageRule {
                 continue;
             }
 
-            if !quantity.is_zero() && let Some(price) = ctx.current_prices.get(symbol) {
+            if !quantity.is_zero()
+                && let Some(price) = ctx.current_prices.get(symbol)
+            {
                 let mult = if let Some(inst) = ctx.instruments.get(symbol) {
                     inst.multiplier()
                 } else {
@@ -237,7 +252,9 @@ impl RiskRule for MaxLeverageRule {
         let price = if let Some(p) = order.price {
             p
         } else {
-            *ctx.current_prices.get(&order.symbol).unwrap_or(&Decimal::ZERO)
+            *ctx.current_prices
+                .get(&order.symbol)
+                .unwrap_or(&Decimal::ZERO)
         };
         let multiplier = ctx.instrument.multiplier();
 
@@ -249,25 +266,25 @@ impl RiskRule for MaxLeverageRule {
         // User requirement implies "Total Leverage Circuit Breaker", so we should be strict.
         // Let's iterate active orders.
         for o in ctx.active_orders {
-             if o.symbol == order.symbol {
-                 // Skip orders for the same symbol as we are calculating the "resulting" position
-                 // Actually, this is complex. If I have a buy order pending, and I place another buy order.
-                 // The "new_qty" above only accounts for *filled* position + *current* order.
-                 // It does NOT account for *other pending orders*.
-                 // To be safe, we should add exposure from other pending orders.
-                 continue;
-             }
+            if o.symbol == order.symbol {
+                // Skip orders for the same symbol as we are calculating the "resulting" position
+                // Actually, this is complex. If I have a buy order pending, and I place another buy order.
+                // The "new_qty" above only accounts for *filled* position + *current* order.
+                // It does NOT account for *other pending orders*.
+                // To be safe, we should add exposure from other pending orders.
+                continue;
+            }
 
-             // For other symbols, add their potential exposure
-             if let Some(p) = ctx.current_prices.get(&o.symbol) {
-                 let mult = if let Some(inst) = ctx.instruments.get(&o.symbol) {
-                     inst.multiplier()
-                 } else {
-                     Decimal::ONE
-                 };
-                 // Conservatively add full value of pending order
-                 total_exposure += (o.quantity * p * mult).abs();
-             }
+            // For other symbols, add their potential exposure
+            if let Some(p) = ctx.current_prices.get(&o.symbol) {
+                let mult = if let Some(inst) = ctx.instruments.get(&o.symbol) {
+                    inst.multiplier()
+                } else {
+                    Decimal::ONE
+                };
+                // Conservatively add full value of pending order
+                total_exposure += (o.quantity * p * mult).abs();
+            }
         }
 
         let leverage = total_exposure / equity;
@@ -299,11 +316,7 @@ impl RiskRule for SectorConcentrationRule {
         "SectorConcentrationRule"
     }
 
-    fn check(
-        &self,
-        order: &Order,
-        ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         let equity = ctx
             .portfolio
             .calculate_equity(ctx.current_prices, ctx.instruments);
@@ -323,21 +336,21 @@ impl RiskRule for SectorConcentrationRule {
 
         // 1. Existing positions in the same sector
         for (symbol, quantity) in ctx.portfolio.positions.iter() {
-             if symbol == &order.symbol {
-                 continue; // Handle with new qty
-             }
+            if symbol == &order.symbol {
+                continue; // Handle with new qty
+            }
 
-             if let Some(s) = self.sector_map.get(symbol)
-                 && s == target_sector
-                 && let Some(price) = ctx.current_prices.get(symbol)
-             {
+            if let Some(s) = self.sector_map.get(symbol)
+                && s == target_sector
+                && let Some(price) = ctx.current_prices.get(symbol)
+            {
                 let mult = if let Some(inst) = ctx.instruments.get(symbol) {
                     inst.multiplier()
                 } else {
                     Decimal::ONE
                 };
                 sector_exposure += (quantity * price * mult).abs();
-             }
+            }
         }
 
         // 2. New position for the traded symbol
@@ -356,7 +369,9 @@ impl RiskRule for SectorConcentrationRule {
         let price = if let Some(p) = order.price {
             p
         } else {
-            *ctx.current_prices.get(&order.symbol).unwrap_or(&Decimal::ZERO)
+            *ctx.current_prices
+                .get(&order.symbol)
+                .unwrap_or(&Decimal::ZERO)
         };
         let multiplier = ctx.instrument.multiplier();
 
@@ -365,7 +380,7 @@ impl RiskRule for SectorConcentrationRule {
         let concentration = sector_exposure / equity;
 
         if concentration > self.max_pct {
-             return Err(AkQuantError::OrderError(format!(
+            return Err(AkQuantError::OrderError(format!(
                 "Risk: Sector '{}' concentration {:.2}% exceeds limit {:.2}%",
                 target_sector,
                 concentration * Decimal::from(100),
@@ -401,11 +416,7 @@ impl RiskRule for MaxDrawdownRule {
         "MaxDrawdownRule"
     }
 
-    fn check(
-        &self,
-        _order: &Order,
-        ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, _order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         let equity = ctx
             .portfolio
             .calculate_equity(ctx.current_prices, ctx.instruments);
@@ -465,11 +476,7 @@ impl RiskRule for MaxDailyLossRule {
         "MaxDailyLossRule"
     }
 
-    fn check(
-        &self,
-        _order: &Order,
-        ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, _order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         let equity = ctx
             .portfolio
             .calculate_equity(ctx.current_prices, ctx.instruments);
@@ -529,11 +536,7 @@ impl RiskRule for StopLossRule {
         "StopLossRule"
     }
 
-    fn check(
-        &self,
-        _order: &Order,
-        ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, _order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         let equity = ctx
             .portfolio
             .calculate_equity(ctx.current_prices, ctx.instruments);

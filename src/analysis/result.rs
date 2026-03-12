@@ -2,9 +2,9 @@ use super::types::*;
 use crate::model::{Order, Trade};
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
-use serde::{Deserialize, Serialize};
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub struct CalculatorInput {
@@ -54,11 +54,13 @@ pub struct BacktestResult {
 impl BacktestResult {
     pub fn calculate(input: CalculatorInput) -> Self {
         // Convert equity_curve to f64 for storage/python
-        let equity_curve: Vec<(i64, f64)> = input.equity_curve_decimal
+        let equity_curve: Vec<(i64, f64)> = input
+            .equity_curve_decimal
             .iter()
             .map(|(t, d)| (*t, d.to_f64().unwrap_or_default()))
             .collect();
-        let cash_curve: Vec<(i64, f64)> = input.cash_curve_decimal
+        let cash_curve: Vec<(i64, f64)> = input
+            .cash_curve_decimal
             .iter()
             .map(|(t, d)| (*t, d.to_f64().unwrap_or_default()))
             .collect();
@@ -294,13 +296,15 @@ impl BacktestResult {
         let total_bars = equity_curve.len();
 
         // 10. Exposure Time %
-        let exposure_count = input.snapshots.iter().filter(|(_, positions)| {
-             positions.iter().any(|p| p.quantity != 0.0)
-        }).count();
+        let exposure_count = input
+            .snapshots
+            .iter()
+            .filter(|(_, positions)| positions.iter().any(|p| p.quantity != 0.0))
+            .count();
         let exposure_time_pct = if !input.snapshots.is_empty() {
-             (exposure_count as f64 / input.snapshots.len() as f64) * 100.0
+            (exposure_count as f64 / input.snapshots.len() as f64) * 100.0
         } else {
-             0.0
+            0.0
         };
 
         // 11. VaR and CVaR
@@ -308,16 +312,16 @@ impl BacktestResult {
         sorted_returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let calculate_risk_metrics = |alpha: f64, sorted_rets: &Vec<f64>| -> (f64, f64) {
-             if sorted_rets.is_empty() {
-                 return (0.0, 0.0);
-             }
-             let idx = ((sorted_rets.len() as f64) * alpha).floor() as usize;
-             let idx = idx.min(sorted_rets.len() - 1);
-             let var = sorted_rets[idx];
+            if sorted_rets.is_empty() {
+                return (0.0, 0.0);
+            }
+            let idx = ((sorted_rets.len() as f64) * alpha).floor() as usize;
+            let idx = idx.min(sorted_rets.len() - 1);
+            let var = sorted_rets[idx];
 
-             let cvar_sum: f64 = sorted_rets[0..=idx].iter().sum();
-             let cvar = cvar_sum / (idx + 1) as f64;
-             (var, cvar)
+            let cvar_sum: f64 = sorted_rets[0..=idx].iter().sum();
+            let cvar = cvar_sum / (idx + 1) as f64;
+            (var, cvar)
         };
 
         let (var_95, cvar_95) = calculate_risk_metrics(0.05, &sorted_returns);

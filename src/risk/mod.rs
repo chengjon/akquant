@@ -19,8 +19,8 @@ mod tests {
         TimeInForce, TradingSession,
     };
     use crate::portfolio::Portfolio;
-    use rust_decimal::prelude::*;
     use rust_decimal::Decimal;
+    use rust_decimal::prelude::*;
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -68,10 +68,7 @@ mod tests {
             }),
             _ => panic!("Unsupported asset type for test"),
         };
-        Instrument {
-            asset_type,
-            inner,
-        }
+        Instrument { asset_type, inner }
     }
 
     #[test]
@@ -140,9 +137,8 @@ mod tests {
             create_test_instrument("AAPL", AssetType::Stock),
         );
         let order = create_test_order("AAPL", Decimal::from(10), Some(Decimal::from(100)));
-        let market_model = crate::market::SimpleMarket::from_config(
-            crate::market::SimpleMarketConfig::default(),
-        );
+        let market_model =
+            crate::market::SimpleMarket::from_config(crate::market::SimpleMarketConfig::default());
 
         let mut prices_high = HashMap::new();
         prices_high.insert("AAPL".to_string(), Decimal::from(100));
@@ -172,7 +168,10 @@ mod tests {
             session: TradingSession::Continuous,
             active_orders: &[],
         };
-        let err = manager.check_internal(&order, &ctx_low).unwrap_err().to_string();
+        let err = manager
+            .check_internal(&order, &ctx_low)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("Max drawdown"));
     }
 
@@ -196,9 +195,8 @@ mod tests {
             create_test_instrument("AAPL", AssetType::Stock),
         );
         let order = create_test_order("AAPL", Decimal::from(10), Some(Decimal::from(100)));
-        let market_model = crate::market::SimpleMarket::from_config(
-            crate::market::SimpleMarketConfig::default(),
-        );
+        let market_model =
+            crate::market::SimpleMarket::from_config(crate::market::SimpleMarketConfig::default());
 
         let day1_open = 1_700_000_000_000_000_000;
         let mut prices_day1_start = HashMap::new();
@@ -271,9 +269,8 @@ mod tests {
             create_test_instrument("AAPL", AssetType::Stock),
         );
         let order = create_test_order("AAPL", Decimal::from(10), Some(Decimal::from(100)));
-        let market_model = crate::market::SimpleMarket::from_config(
-            crate::market::SimpleMarketConfig::default(),
-        );
+        let market_model =
+            crate::market::SimpleMarket::from_config(crate::market::SimpleMarketConfig::default());
 
         let mut prices_start = HashMap::new();
         prices_start.insert("AAPL".to_string(), Decimal::from(100));
@@ -303,7 +300,10 @@ mod tests {
             session: TradingSession::Continuous,
             active_orders: &[],
         };
-        let err = manager.check_internal(&order, &ctx_drop).unwrap_err().to_string();
+        let err = manager
+            .check_internal(&order, &ctx_drop)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("stop-loss threshold"));
     }
 }

@@ -17,8 +17,7 @@ use crate::history::HistoryBuffer;
 use crate::market::corporate_action::CorporateActionManager;
 use crate::market::manager::MarketManager;
 use crate::model::{
-    Bar, ExecutionMode, Instrument, Order, Trade, TradingSession,
-    corporate_action::CorporateAction,
+    Bar, ExecutionMode, Instrument, Order, Trade, TradingSession, corporate_action::CorporateAction,
 };
 use crate::portfolio::Portfolio;
 use crate::risk::{RiskConfig, RiskManager};
@@ -159,8 +158,7 @@ impl Engine {
             .first()
             .map(|slot| slot.strategy_id.clone());
         self.strategy_contexts = (0..self.strategy_slots.len()).map(|_| None).collect();
-        self.strategy_slot_strategies =
-            (0..self.strategy_slots.len()).map(|_| None).collect();
+        self.strategy_slot_strategies = (0..self.strategy_slots.len()).map(|_| None).collect();
         Ok(())
     }
 
@@ -223,10 +221,7 @@ impl Engine {
         Ok(())
     }
 
-    fn set_strategy_max_order_size_limits(
-        &mut self,
-        limits: HashMap<String, f64>,
-    ) -> PyResult<()> {
+    fn set_strategy_max_order_size_limits(&mut self, limits: HashMap<String, f64>) -> PyResult<()> {
         let mut normalized = HashMap::new();
         for (strategy_id, value) in limits {
             let trimmed = strategy_id.trim();
@@ -279,10 +274,7 @@ impl Engine {
         Ok(())
     }
 
-    fn set_strategy_max_daily_loss_limits(
-        &mut self,
-        limits: HashMap<String, f64>,
-    ) -> PyResult<()> {
+    fn set_strategy_max_daily_loss_limits(&mut self, limits: HashMap<String, f64>) -> PyResult<()> {
         let mut normalized = HashMap::new();
         for (strategy_id, value) in limits {
             let trimmed = strategy_id.trim();
@@ -307,10 +299,7 @@ impl Engine {
         Ok(())
     }
 
-    fn set_strategy_max_drawdown_limits(
-        &mut self,
-        limits: HashMap<String, f64>,
-    ) -> PyResult<()> {
+    fn set_strategy_max_drawdown_limits(&mut self, limits: HashMap<String, f64>) -> PyResult<()> {
         let mut normalized = HashMap::new();
         for (strategy_id, value) in limits {
             let trimmed = strategy_id.trim();
@@ -353,10 +342,7 @@ impl Engine {
         Ok(())
     }
 
-    fn set_strategy_risk_cooldown_bars(
-        &mut self,
-        bars: HashMap<String, usize>,
-    ) -> PyResult<()> {
+    fn set_strategy_risk_cooldown_bars(&mut self, bars: HashMap<String, usize>) -> PyResult<()> {
         let mut normalized = HashMap::new();
         for (strategy_id, cooldown_bars) in bars {
             let trimmed = strategy_id.trim();
@@ -369,10 +355,7 @@ impl Engine {
         Ok(())
     }
 
-    fn set_strategy_priorities(
-        &mut self,
-        priorities: HashMap<String, i32>,
-    ) -> PyResult<()> {
+    fn set_strategy_priorities(&mut self, priorities: HashMap<String, i32>) -> PyResult<()> {
         let mut normalized = HashMap::new();
         for (strategy_id, priority) in priorities {
             let trimmed = strategy_id.trim();
@@ -385,10 +368,7 @@ impl Engine {
         Ok(())
     }
 
-    fn set_strategy_risk_budget_limits(
-        &mut self,
-        limits: HashMap<String, f64>,
-    ) -> PyResult<()> {
+    fn set_strategy_risk_budget_limits(&mut self, limits: HashMap<String, f64>) -> PyResult<()> {
         let mut normalized = HashMap::new();
         for (strategy_id, value) in limits {
             let trimmed = strategy_id.trim();
@@ -413,10 +393,7 @@ impl Engine {
         Ok(())
     }
 
-    fn set_portfolio_risk_budget_limit(
-        &mut self,
-        limit: Option<f64>,
-    ) -> PyResult<()> {
+    fn set_portfolio_risk_budget_limit(&mut self, limit: Option<f64>) -> PyResult<()> {
         if let Some(value) = limit {
             if !value.is_finite() || value < 0.0 {
                 return Err(PyValueError::new_err(format!(
@@ -553,48 +530,33 @@ impl Engine {
                 risk_budget_mode: self.risk_budget_mode.clone(),
                 risk_budget_reset_daily: self.risk_budget_reset_daily,
                 risk_budget_usage_day: self.risk_budget_usage_day,
-                strategy_max_order_value_limits: self
-                    .strategy_max_order_value_limits
-                    .clone(),
-                strategy_max_order_size_limits: self
-                    .strategy_max_order_size_limits
-                    .clone(),
-                strategy_max_position_size_limits: self
-                    .strategy_max_position_size_limits
-                    .clone(),
-                strategy_max_daily_loss_limits: self
-                    .strategy_max_daily_loss_limits
-                    .clone(),
-                strategy_max_drawdown_limits: self
-                    .strategy_max_drawdown_limits
-                    .clone(),
+                strategy_max_order_value_limits: self.strategy_max_order_value_limits.clone(),
+                strategy_max_order_size_limits: self.strategy_max_order_size_limits.clone(),
+                strategy_max_position_size_limits: self.strategy_max_position_size_limits.clone(),
+                strategy_max_daily_loss_limits: self.strategy_max_daily_loss_limits.clone(),
+                strategy_max_drawdown_limits: self.strategy_max_drawdown_limits.clone(),
                 strategy_risk_cooldown_bars: self.strategy_risk_cooldown_bars.clone(),
-                strategy_risk_cooldown_until_bar: self
-                    .strategy_risk_cooldown_until_bar
-                    .clone(),
-                strategy_reduce_only_after_risk: self
-                    .strategy_reduce_only_after_risk
-                    .clone(),
+                strategy_risk_cooldown_until_bar: self.strategy_risk_cooldown_until_bar.clone(),
+                strategy_reduce_only_after_risk: self.strategy_reduce_only_after_risk.clone(),
                 strategy_positions: self.strategy_positions.clone(),
                 strategy_cashflows: self.strategy_cashflows.clone(),
                 strategy_daily_loss_day: self.strategy_daily_loss_day.clone(),
-                strategy_daily_loss_baseline_pnl: self
-                    .strategy_daily_loss_baseline_pnl
-                    .clone(),
+                strategy_daily_loss_baseline_pnl: self.strategy_daily_loss_baseline_pnl.clone(),
                 strategy_last_pnl: self.strategy_last_pnl.clone(),
                 strategy_peak_pnl: self.strategy_peak_pnl.clone(),
                 strategy_reduce_only_active: self.strategy_reduce_only_active.clone(),
             },
         };
-        let bytes = rmp_serde::to_vec(&snapshot).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let bytes =
+            rmp_serde::to_vec(&snapshot).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyBytes::new(py, &bytes))
     }
 
     /// 从二进制数据加载状态
     fn load_state_bytes(&mut self, data: &Bound<'_, PyBytes>) -> PyResult<()> {
         let bytes = data.as_bytes();
-        let snapshot: crate::engine::state::EngineSnapshot = rmp_serde::from_slice(bytes)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let snapshot: crate::engine::state::EngineSnapshot =
+            rmp_serde::from_slice(bytes).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         self.state.portfolio = snapshot.portfolio;
         self.state.order_manager = snapshot.order_manager;
@@ -608,45 +570,30 @@ impl Engine {
             .collect();
         self.active_strategy_slot = snapshot.strategy_risk_state.active_strategy_slot;
         self.strategy_priorities = snapshot.strategy_risk_state.strategy_priorities;
-        self.strategy_risk_budget_limits = snapshot
-            .strategy_risk_state
-            .strategy_risk_budget_limits;
-        self.portfolio_risk_budget_limit = snapshot
-            .strategy_risk_state
-            .portfolio_risk_budget_limit;
-        self.strategy_risk_budget_used = snapshot
-            .strategy_risk_state
-            .strategy_risk_budget_used;
-        self.portfolio_risk_budget_used = snapshot
-            .strategy_risk_state
-            .portfolio_risk_budget_used;
+        self.strategy_risk_budget_limits = snapshot.strategy_risk_state.strategy_risk_budget_limits;
+        self.portfolio_risk_budget_limit = snapshot.strategy_risk_state.portfolio_risk_budget_limit;
+        self.strategy_risk_budget_used = snapshot.strategy_risk_state.strategy_risk_budget_used;
+        self.portfolio_risk_budget_used = snapshot.strategy_risk_state.portfolio_risk_budget_used;
         self.risk_budget_mode = snapshot.strategy_risk_state.risk_budget_mode;
         self.risk_budget_reset_daily = snapshot.strategy_risk_state.risk_budget_reset_daily;
         self.risk_budget_usage_day = snapshot.strategy_risk_state.risk_budget_usage_day;
-        self.strategy_max_order_value_limits = snapshot
-            .strategy_risk_state
-            .strategy_max_order_value_limits;
-        self.strategy_max_order_size_limits = snapshot
-            .strategy_risk_state
-            .strategy_max_order_size_limits;
+        self.strategy_max_order_value_limits =
+            snapshot.strategy_risk_state.strategy_max_order_value_limits;
+        self.strategy_max_order_size_limits =
+            snapshot.strategy_risk_state.strategy_max_order_size_limits;
         self.strategy_max_position_size_limits = snapshot
             .strategy_risk_state
             .strategy_max_position_size_limits;
-        self.strategy_max_daily_loss_limits = snapshot
-            .strategy_risk_state
-            .strategy_max_daily_loss_limits;
-        self.strategy_max_drawdown_limits = snapshot
-            .strategy_risk_state
-            .strategy_max_drawdown_limits;
-        self.strategy_risk_cooldown_bars = snapshot
-            .strategy_risk_state
-            .strategy_risk_cooldown_bars;
+        self.strategy_max_daily_loss_limits =
+            snapshot.strategy_risk_state.strategy_max_daily_loss_limits;
+        self.strategy_max_drawdown_limits =
+            snapshot.strategy_risk_state.strategy_max_drawdown_limits;
+        self.strategy_risk_cooldown_bars = snapshot.strategy_risk_state.strategy_risk_cooldown_bars;
         self.strategy_risk_cooldown_until_bar = snapshot
             .strategy_risk_state
             .strategy_risk_cooldown_until_bar;
-        self.strategy_reduce_only_after_risk = snapshot
-            .strategy_risk_state
-            .strategy_reduce_only_after_risk;
+        self.strategy_reduce_only_after_risk =
+            snapshot.strategy_risk_state.strategy_reduce_only_after_risk;
         self.strategy_positions = snapshot.strategy_risk_state.strategy_positions;
         self.strategy_cashflows = snapshot.strategy_risk_state.strategy_cashflows;
         self.strategy_daily_loss_day = snapshot.strategy_risk_state.strategy_daily_loss_day;
@@ -655,9 +602,7 @@ impl Engine {
             .strategy_daily_loss_baseline_pnl;
         self.strategy_last_pnl = snapshot.strategy_risk_state.strategy_last_pnl;
         self.strategy_peak_pnl = snapshot.strategy_risk_state.strategy_peak_pnl;
-        self.strategy_reduce_only_active = snapshot
-            .strategy_risk_state
-            .strategy_reduce_only_active;
+        self.strategy_reduce_only_active = snapshot.strategy_risk_state.strategy_reduce_only_active;
         self.ensure_strategy_slot_exists();
 
         Ok(())
@@ -699,7 +644,8 @@ impl Engine {
     fn register_custom_matcher(&mut self, asset_type: crate::model::AssetType, matcher: Py<PyAny>) {
         use crate::execution::PyExecutionMatcher;
         let py_matcher = Box::new(PyExecutionMatcher::new(matcher));
-        self.execution_model.register_matcher(asset_type, py_matcher);
+        self.execution_model
+            .register_matcher(asset_type, py_matcher);
     }
 
     /// 设置撮合模式
@@ -790,14 +736,16 @@ impl Engine {
     /// :param transfer_fee: 过户费率
     /// :param min_commission: 最低佣金
     fn set_fund_fee_rules(&mut self, commission_rate: f64, transfer_fee: f64, min_commission: f64) {
-        self.market_manager.set_fund_fee_rules(commission_rate, transfer_fee, min_commission);
+        self.market_manager
+            .set_fund_fee_rules(commission_rate, transfer_fee, min_commission);
     }
 
     /// 设置期权费率规则
     ///
     /// :param commission_per_contract: 每张合约佣金 (如 5.0)
     fn set_option_fee_rules(&mut self, commission_per_contract: f64) {
-        self.market_manager.set_option_fee_rules(commission_per_contract);
+        self.market_manager
+            .set_option_fee_rules(commission_per_contract);
     }
 
     /// 设置加密货币费率规则 (按金额比例)
@@ -809,14 +757,16 @@ impl Engine {
         // Let's assume simple percentage fee for now.
         // Actually, we should probably add specific methods in MarketManager.
         // For now, let's map it to stock rules but with zero tax/transfer fee.
-        self.market_manager.set_stock_fee_rules(commission_rate, 0.0, 0.0, 0.0);
+        self.market_manager
+            .set_stock_fee_rules(commission_rate, 0.0, 0.0, 0.0);
     }
 
     /// 设置外汇费率规则 (按金额比例)
     ///
     /// :param commission_rate: 佣金率 (如 0.00005)
     fn set_forex_fee_rules(&mut self, commission_rate: f64) {
-        self.market_manager.set_stock_fee_rules(commission_rate, 0.0, 0.0, 0.0);
+        self.market_manager
+            .set_stock_fee_rules(commission_rate, 0.0, 0.0, 0.0);
     }
 
     /// 设置滑点模型
@@ -932,9 +882,10 @@ impl Engine {
         // Configure history buffer if strategy has _history_depth set
         if let Ok(depth_attr) = strategy.getattr("_history_depth")
             && let Ok(depth) = depth_attr.extract::<usize>()
-                && depth > 0 {
-                    self.set_history_depth(depth);
-                }
+            && depth > 0
+        {
+            self.set_history_depth(depth);
+        }
 
         if strategy.hasattr("_on_start_internal")? {
             strategy.call_method0("_on_start_internal")?;
@@ -999,15 +950,16 @@ impl Engine {
 
         // Record final snapshot if we have data
         if self.current_date.is_some()
-            && let Some(timestamp) = self.clock.timestamp() {
-                self.statistics_manager.record_snapshot(
-                    timestamp,
-                    &self.state.portfolio,
-                    &self.instruments,
-                    &self.last_prices,
-                    &self.state.order_manager.trade_tracker,
-                );
-            }
+            && let Some(timestamp) = self.clock.timestamp()
+        {
+            self.statistics_manager.record_snapshot(
+                timestamp,
+                &self.state.portfolio,
+                &self.instruments,
+                &self.last_prices,
+                &self.state.order_manager.trade_tracker,
+            );
+        }
 
         if let Some(pb) = &self.progress_bar {
             pb.finish_with_message("Backtest completed");

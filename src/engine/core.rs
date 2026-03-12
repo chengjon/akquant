@@ -19,14 +19,12 @@ use crate::execution::ExecutionClient;
 use crate::history::HistoryBuffer;
 use crate::market::corporate_action::CorporateActionManager;
 use crate::market::manager::MarketManager;
-use crate::model::{
-    ExecutionMode, Instrument, Order, OrderSide, Timer, Trade,
-};
+use crate::model::{ExecutionMode, Instrument, Order, OrderSide, Timer, Trade};
+use crate::pipeline::PipelineRunner;
 use crate::pipeline::stages::{
     ChannelProcessor, CleanupProcessor, DataProcessor, ExecutionPhase, ExecutionProcessor,
     StatisticsProcessor, StrategyProcessor,
 };
-use crate::pipeline::PipelineRunner;
 use crate::risk::RiskManager;
 use crate::settlement::SettlementManager;
 use crate::statistics::StatisticsManager;
@@ -128,9 +126,7 @@ pub(crate) struct PendingStreamEvent {
 
 // Internal implementation of Engine (not exposed to Python)
 impl Engine {
-    pub(crate) fn normalized_order_strategy_id(
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn normalized_order_strategy_id(order: &Order) -> Option<String> {
         order
             .owner_strategy_id
             .as_ref()
@@ -153,18 +149,15 @@ impl Engine {
     }
 
     pub(crate) fn strategy_priority_for_order(&self, order: &Order) -> i32 {
-        let strategy_id = Self::normalized_order_strategy_id(order)
-            .unwrap_or_else(|| "_default".to_string());
+        let strategy_id =
+            Self::normalized_order_strategy_id(order).unwrap_or_else(|| "_default".to_string());
         self.strategy_priorities
             .get(&strategy_id)
             .copied()
             .unwrap_or(0)
     }
 
-    pub(crate) fn order_estimated_notional(
-        &self,
-        order: &Order,
-    ) -> Option<Decimal> {
+    pub(crate) fn order_estimated_notional(&self, order: &Order) -> Option<Decimal> {
         let price = if let Some(p) = order.price {
             Some(p)
         } else {
@@ -181,8 +174,8 @@ impl Engine {
         if !self.risk_budget_reset_daily {
             return;
         }
-        let current_day = Self::local_datetime_from_ns(current_time, self.timezone_offset)
-            .date_naive();
+        let current_day =
+            Self::local_datetime_from_ns(current_time, self.timezone_offset).date_naive();
         if self.risk_budget_usage_day == Some(current_day) {
             return;
         }
@@ -195,12 +188,12 @@ impl Engine {
         self.risk_budget_mode == "trade_notional"
     }
 
-    pub(crate) fn check_strategy_risk_budget_limit(
-        &self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_strategy_risk_budget_limit(&self, order: &Order) -> Option<String> {
         let strategy_id = Self::normalized_order_strategy_id(order)?;
-        let budget = self.strategy_risk_budget_limits.get(&strategy_id).copied()?;
+        let budget = self
+            .strategy_risk_budget_limits
+            .get(&strategy_id)
+            .copied()?;
         let used = self
             .strategy_risk_budget_used
             .get(&strategy_id)
@@ -216,10 +209,7 @@ impl Engine {
         None
     }
 
-    pub(crate) fn check_portfolio_risk_budget_limit(
-        &self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_portfolio_risk_budget_limit(&self, order: &Order) -> Option<String> {
         let budget = self.portfolio_risk_budget_limit?;
         let projected = self.portfolio_risk_budget_used + self.order_estimated_notional(order)?;
         if projected > budget {
@@ -231,30 +221,25 @@ impl Engine {
         None
     }
 
-    pub(crate) fn apply_risk_budget_usage(
-        &mut self,
-        order: &Order,
-    ) {
+    pub(crate) fn apply_risk_budget_usage(&mut self, order: &Order) {
         let Some(notional) = self.order_estimated_notional(order) else {
             return;
         };
         if let Some(strategy_id) = Self::normalized_order_strategy_id(order)
-            && self.strategy_risk_budget_limits.contains_key(&strategy_id) {
-                let entry = self
-                    .strategy_risk_budget_used
-                    .entry(strategy_id)
-                    .or_insert(Decimal::ZERO);
-                *entry += notional;
-            }
+            && self.strategy_risk_budget_limits.contains_key(&strategy_id)
+        {
+            let entry = self
+                .strategy_risk_budget_used
+                .entry(strategy_id)
+                .or_insert(Decimal::ZERO);
+            *entry += notional;
+        }
         if self.portfolio_risk_budget_limit.is_some() {
             self.portfolio_risk_budget_used += notional;
         }
     }
 
-    pub(crate) fn apply_risk_budget_usage_from_trade(
-        &mut self,
-        trade: &Trade,
-    ) {
+    pub(crate) fn apply_risk_budget_usage_from_trade(&mut self, trade: &Trade) {
         let notional = self.trade_notional(trade);
         if let Some(strategy_id) = trade
             .owner_strategy_id
@@ -262,22 +247,20 @@ impl Engine {
             .map(|value| value.trim())
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
-            && self.strategy_risk_budget_limits.contains_key(&strategy_id) {
-                let entry = self
-                    .strategy_risk_budget_used
-                    .entry(strategy_id)
-                    .or_insert(Decimal::ZERO);
-                *entry += notional;
-            }
+            && self.strategy_risk_budget_limits.contains_key(&strategy_id)
+        {
+            let entry = self
+                .strategy_risk_budget_used
+                .entry(strategy_id)
+                .or_insert(Decimal::ZERO);
+            *entry += notional;
+        }
         if self.portfolio_risk_budget_limit.is_some() {
             self.portfolio_risk_budget_used += notional;
         }
     }
 
-    pub(crate) fn check_strategy_order_value_limit(
-        &self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_strategy_order_value_limit(&self, order: &Order) -> Option<String> {
         let strategy_id = Self::normalized_order_strategy_id(order)?;
         let max_value = self.strategy_max_order_value_limits.get(&strategy_id)?;
         let price = if let Some(p) = order.price {
@@ -295,10 +278,7 @@ impl Engine {
         None
     }
 
-    pub(crate) fn check_strategy_order_size_limit(
-        &self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_strategy_order_size_limit(&self, order: &Order) -> Option<String> {
         let strategy_id = Self::normalized_order_strategy_id(order)?;
         let max_size = self.strategy_max_order_size_limits.get(&strategy_id)?;
         if order.quantity > *max_size {
@@ -310,10 +290,7 @@ impl Engine {
         None
     }
 
-    pub(crate) fn check_strategy_position_size_limit(
-        &self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_strategy_position_size_limit(&self, order: &Order) -> Option<String> {
         let strategy_id = Self::normalized_order_strategy_id(order)?;
         let max_size = self.strategy_max_position_size_limits.get(&strategy_id)?;
         let strategy_positions = self.strategy_positions.get(&strategy_id);
@@ -379,7 +356,11 @@ impl Engine {
                 positions
                     .iter()
                     .map(|(symbol, qty)| {
-                        let price = self.last_prices.get(symbol).copied().unwrap_or(Decimal::ZERO);
+                        let price = self
+                            .last_prices
+                            .get(symbol)
+                            .copied()
+                            .unwrap_or(Decimal::ZERO);
                         *qty * price
                     })
                     .sum::<Decimal>()
@@ -398,8 +379,8 @@ impl Engine {
             .strategy_max_daily_loss_limits
             .get(&strategy_id)
             .copied()?;
-        let current_day = Self::local_datetime_from_ns(current_time, self.timezone_offset)
-            .date_naive();
+        let current_day =
+            Self::local_datetime_from_ns(current_time, self.timezone_offset).date_naive();
         let current_pnl = self.current_strategy_pnl(&strategy_id);
         let needs_reset = self
             .strategy_daily_loss_day
@@ -437,10 +418,7 @@ impl Engine {
         None
     }
 
-    pub(crate) fn check_strategy_drawdown_limit(
-        &mut self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_strategy_drawdown_limit(&mut self, order: &Order) -> Option<String> {
         let strategy_id = Self::normalized_order_strategy_id(order)?;
         let max_drawdown = self
             .strategy_max_drawdown_limits
@@ -452,7 +430,11 @@ impl Engine {
             .get(&strategy_id)
             .copied()
             .unwrap_or(current_pnl);
-        let updated_peak = if current_pnl > peak { current_pnl } else { peak };
+        let updated_peak = if current_pnl > peak {
+            current_pnl
+        } else {
+            peak
+        };
         self.strategy_peak_pnl
             .insert(strategy_id.clone(), updated_peak);
         let drawdown = updated_peak - current_pnl;
@@ -465,20 +447,15 @@ impl Engine {
         None
     }
 
-    pub(crate) fn activate_strategy_reduce_only_if_configured(
-        &mut self,
-        order: &Order,
-    ) {
+    pub(crate) fn activate_strategy_reduce_only_if_configured(&mut self, order: &Order) {
         if let Some(strategy_id) = Self::normalized_order_strategy_id(order)
-            && self.strategy_reduce_only_after_risk.contains(&strategy_id) {
-                self.strategy_reduce_only_active.insert(strategy_id);
-            }
+            && self.strategy_reduce_only_after_risk.contains(&strategy_id)
+        {
+            self.strategy_reduce_only_active.insert(strategy_id);
+        }
     }
 
-    pub(crate) fn check_strategy_reduce_only_mode(
-        &self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_strategy_reduce_only_mode(&self, order: &Order) -> Option<String> {
         let strategy_id = Self::normalized_order_strategy_id(order)?;
         if !self.strategy_reduce_only_active.contains(&strategy_id) {
             return None;
@@ -504,19 +481,14 @@ impl Engine {
         None
     }
 
-    pub(crate) fn activate_strategy_risk_cooldown_if_configured(
-        &mut self,
-        order: &Order,
-    ) {
+    pub(crate) fn activate_strategy_risk_cooldown_if_configured(&mut self, order: &Order) {
         let Some(strategy_id) = Self::normalized_order_strategy_id(order) else {
             return;
         };
-        let Some(cooldown_bars) = self
-            .strategy_risk_cooldown_bars
-            .get(&strategy_id)
-            .copied() else {
-                return;
-            };
+        let Some(cooldown_bars) = self.strategy_risk_cooldown_bars.get(&strategy_id).copied()
+        else {
+            return;
+        };
         if cooldown_bars == 0 {
             return;
         }
@@ -525,10 +497,7 @@ impl Engine {
             .insert(strategy_id, until_bar);
     }
 
-    pub(crate) fn check_strategy_risk_cooldown_mode(
-        &mut self,
-        order: &Order,
-    ) -> Option<String> {
+    pub(crate) fn check_strategy_risk_cooldown_mode(&mut self, order: &Order) -> Option<String> {
         let strategy_id = Self::normalized_order_strategy_id(order)?;
         let until_bar = self
             .strategy_risk_cooldown_until_bar
@@ -637,11 +606,7 @@ impl Engine {
         }
     }
 
-    pub(crate) fn start_stream_run(
-        &mut self,
-        py: Python<'_>,
-        total_events: Option<usize>,
-    ) {
+    pub(crate) fn start_stream_run(&mut self, py: Python<'_>, total_events: Option<usize>) {
         if self.stream_callback.is_none() {
             self.stream_run_id = None;
             self.stream_seq = 0;
@@ -722,7 +687,8 @@ impl Engine {
     }
 
     pub(crate) fn flush_stream_events(&mut self, py: Python<'_>) {
-        let (Some(callback_ref), Some(run_id_ref)) = (&self.stream_callback, &self.stream_run_id) else {
+        let (Some(callback_ref), Some(run_id_ref)) = (&self.stream_callback, &self.stream_run_id)
+        else {
             self.stream_buffer.clear();
             return;
         };
@@ -744,7 +710,9 @@ impl Engine {
                     .set_item("event_type", pending.event_type.as_str())
                     .is_err()
                 || event_dict.set_item("symbol", pending.symbol).is_err()
-                || event_dict.set_item("level", pending.level.as_str()).is_err()
+                || event_dict
+                    .set_item("level", pending.level.as_str())
+                    .is_err()
             {
                 continue;
             }
@@ -774,12 +742,7 @@ impl Engine {
         }
     }
 
-    pub(crate) fn finish_stream_run(
-        &mut self,
-        py: Python<'_>,
-        status: &str,
-        reason: Option<&str>,
-    ) {
+    pub(crate) fn finish_stream_run(&mut self, py: Python<'_>, status: &str, reason: Option<&str>) {
         if self.stream_callback.is_none() {
             self.stream_run_id = None;
             self.stream_seq = 0;
@@ -794,10 +757,7 @@ impl Engine {
 
         let mut payload = HashMap::new();
         payload.insert("status", status.to_string());
-        payload.insert(
-            "processed_events",
-            self.bar_count.to_string(),
-        );
+        payload.insert("processed_events", self.bar_count.to_string());
         payload.insert(
             "total_trades",
             self.state.order_manager.trades.len().to_string(),
@@ -815,10 +775,7 @@ impl Engine {
             self.format_stream_dropped_event_counts(),
         );
         payload.insert("stream_mode", self.stream_mode.clone());
-        payload.insert(
-            "sampling_enabled",
-            self.stream_sampling_enabled.to_string(),
-        );
+        payload.insert("sampling_enabled", self.stream_sampling_enabled.to_string());
         payload.insert(
             "backpressure_policy",
             if self.stream_drop_non_critical {
@@ -840,8 +797,7 @@ impl Engine {
     }
 
     pub(crate) fn record_dropped_stream_event(&mut self, event_type: &str) {
-        self.stream_dropped_event_count =
-            self.stream_dropped_event_count.saturating_add(1);
+        self.stream_dropped_event_count = self.stream_dropped_event_count.saturating_add(1);
         let counter = self
             .stream_dropped_event_count_by_type
             .entry(event_type.to_string())
@@ -931,15 +887,12 @@ impl Engine {
         match event {
             Event::Bar(b) => {
                 self.last_prices.insert(b.symbol.clone(), b.close);
-                let py_ctx = self.get_or_create_strategy_context(
-                    slot_index,
-                    active_orders,
-                    step_trades,
-                )?;
+                let py_ctx =
+                    self.get_or_create_strategy_context(slot_index, active_orders, step_trades)?;
 
                 let args = Python::attach(|py| {
-                     let bar = b.clone();
-                     (bar, py_ctx.clone_ref(py))
+                    let bar = b.clone();
+                    (bar, py_ctx.clone_ref(py))
                 });
 
                 strategy.call_method1("_on_bar_event", args)?;
@@ -965,15 +918,12 @@ impl Engine {
             }
             Event::Tick(t) => {
                 self.last_prices.insert(t.symbol.clone(), t.price);
-                let py_ctx = self.get_or_create_strategy_context(
-                    slot_index,
-                    active_orders,
-                    step_trades,
-                )?;
+                let py_ctx =
+                    self.get_or_create_strategy_context(slot_index, active_orders, step_trades)?;
 
                 let args = Python::attach(|py| {
-                     let tick = t.clone();
-                     (tick, py_ctx.clone_ref(py))
+                    let tick = t.clone();
+                    (tick, py_ctx.clone_ref(py))
                 });
 
                 strategy.call_method1("_on_tick_event", args)?;
@@ -997,15 +947,12 @@ impl Engine {
                 Ok((new_orders, new_timers, canceled_ids))
             }
             Event::Timer(timer) => {
-                let py_ctx = self.get_or_create_strategy_context(
-                    slot_index,
-                    active_orders,
-                    step_trades,
-                )?;
+                let py_ctx =
+                    self.get_or_create_strategy_context(slot_index, active_orders, step_trades)?;
 
                 let args = Python::attach(|py| {
-                     let payload = timer.payload.as_str();
-                     (payload, py_ctx.clone_ref(py))
+                    let payload = timer.payload.as_str();
+                    (payload, py_ctx.clone_ref(py))
                 });
 
                 strategy.call_method1("_on_timer_event", args)?;
@@ -1044,7 +991,9 @@ impl Engine {
 
         // 3. Pre-Strategy Execution (Match Pending Orders)
         // For NextOpen/NextAverage: Matches orders generated in previous bar against current bar.
-        pipeline.add_processor(Box::new(ExecutionProcessor::new(ExecutionPhase::PreStrategy)));
+        pipeline.add_processor(Box::new(ExecutionProcessor::new(
+            ExecutionPhase::PreStrategy,
+        )));
 
         // 4. Process Fills from Pre-Execution immediately (Update Portfolio before Strategy)
         pipeline.add_processor(Box::new(ChannelProcessor));
@@ -1057,7 +1006,9 @@ impl Engine {
 
         // 7. Post-Strategy Execution
         // For CurrentClose: Matches orders generated in current bar against current bar.
-        pipeline.add_processor(Box::new(ExecutionProcessor::new(ExecutionPhase::PostStrategy)));
+        pipeline.add_processor(Box::new(ExecutionProcessor::new(
+            ExecutionPhase::PostStrategy,
+        )));
 
         // 8. Process Fills from Post-Execution
         pipeline.add_processor(Box::new(ChannelProcessor));

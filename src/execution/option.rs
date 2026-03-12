@@ -6,18 +6,10 @@ use crate::model::Order;
 pub struct OptionMatcher;
 
 impl ExecutionMatcher for OptionMatcher {
-    fn match_order(
-        &self,
-        order: &mut Order,
-        ctx: &MatchContext,
-    ) -> Option<Event> {
+    fn match_order(&self, order: &mut Order, ctx: &MatchContext) -> Option<Event> {
         // Option specific logic
         // Similar to Futures, options are traded in contracts (lots).
         // Usually 1 contract is the minimum.
-        CommonMatcher::match_order(
-            order,
-            ctx,
-            false,
-        )
+        CommonMatcher::match_order(order, ctx, false)
     }
 }

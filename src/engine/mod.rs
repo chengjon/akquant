@@ -73,8 +73,8 @@ mod tests {
         use crate::engine::state::EngineSnapshot;
         use crate::order_manager::OrderManager;
         use crate::portfolio::Portfolio;
-        use std::sync::Arc;
         use std::collections::HashMap;
+        use std::sync::Arc;
 
         let portfolio = Portfolio {
             cash: Decimal::from(50000),
@@ -84,13 +84,15 @@ mod tests {
 
         // Test Portfolio
         let encoded_p: Vec<u8> = rmp_serde::to_vec(&portfolio).unwrap();
-        let decoded_p: Portfolio = rmp_serde::from_slice(&encoded_p).expect("Portfolio deserialize failed");
+        let decoded_p: Portfolio =
+            rmp_serde::from_slice(&encoded_p).expect("Portfolio deserialize failed");
         assert_eq!(decoded_p.cash, Decimal::from(50000));
 
         let order_manager = OrderManager::new();
         // Test OrderManager
         let encoded_o: Vec<u8> = rmp_serde::to_vec(&order_manager).unwrap();
-        let _decoded_o: OrderManager = rmp_serde::from_slice(&encoded_o).expect("OrderManager deserialize failed");
+        let _decoded_o: OrderManager =
+            rmp_serde::from_slice(&encoded_o).expect("OrderManager deserialize failed");
 
         let snapshot = EngineSnapshot {
             current_time: 123456789,

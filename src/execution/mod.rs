@@ -15,7 +15,7 @@ pub use matcher::ExecutionMatcher;
 pub use python::PyExecutionMatcher;
 pub use realtime::RealtimeExecutionClient;
 pub use simulated::SimulatedExecutionClient;
-pub use slippage::{SlippageModel, FixedSlippage, PercentSlippage, ZeroSlippage};
+pub use slippage::{FixedSlippage, PercentSlippage, SlippageModel, ZeroSlippage};
 
 use crate::context::EngineContext;
 use crate::event::Event;
@@ -39,7 +39,12 @@ pub trait ExecutionClient: Send + Sync {
     fn set_volume_limit(&mut self, _limit: f64) {}
 
     /// 注册自定义撮合器 (仅回测有效)
-    fn register_matcher(&mut self, _asset_type: crate::model::AssetType, _matcher: Box<dyn ExecutionMatcher>) {}
+    fn register_matcher(
+        &mut self,
+        _asset_type: crate::model::AssetType,
+        _matcher: Box<dyn ExecutionMatcher>,
+    ) {
+    }
 
     /// 是否为实盘模式
     #[allow(dead_code)]

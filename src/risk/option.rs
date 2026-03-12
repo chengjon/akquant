@@ -1,7 +1,7 @@
 use crate::error::AkQuantError;
 use crate::model::Order;
 
-use super::rule::{RiskRule, RiskCheckContext};
+use super::rule::{RiskCheckContext, RiskRule};
 
 /// Check option Greek risk (e.g., Delta, Gamma exposure)
 #[derive(Debug, Clone)]
@@ -12,11 +12,7 @@ impl RiskRule for OptionGreekRiskRule {
         "OptionGreekRiskRule"
     }
 
-    fn check(
-        &self,
-        _order: &Order,
-        _ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, _order: &Order, _ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         // Placeholder for Greek risk check logic
         // This would involve calculating Greeks for the portfolio and checking against limits
         Ok(())

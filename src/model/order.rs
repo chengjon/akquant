@@ -201,10 +201,7 @@ impl Order {
     }
 
     #[setter]
-    fn set_trail_reference_price(
-        &mut self,
-        value: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<()> {
+    fn set_trail_reference_price(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         if let Some(v) = value {
             self.trail_reference_price = Some(extract_decimal(v)?);
         } else {
@@ -237,9 +234,9 @@ impl Order {
     #[setter]
     fn set_average_filled_price(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         if let Some(v) = value {
-             self.average_filled_price = Some(extract_decimal(v)?);
+            self.average_filled_price = Some(extract_decimal(v)?);
         } else {
-             self.average_filled_price = None;
+            self.average_filled_price = None;
         }
         Ok(())
     }

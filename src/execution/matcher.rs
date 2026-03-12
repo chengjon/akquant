@@ -15,9 +15,5 @@ pub struct MatchContext<'a> {
 
 /// 撮合器接口
 pub trait ExecutionMatcher: Send + Sync {
-    fn match_order(
-        &self,
-        order: &mut Order,
-        ctx: &MatchContext,
-    ) -> Option<Event>;
+    fn match_order(&self, order: &mut Order, ctx: &MatchContext) -> Option<Event>;
 }

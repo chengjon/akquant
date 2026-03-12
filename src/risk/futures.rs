@@ -1,7 +1,7 @@
 use crate::error::AkQuantError;
 use crate::model::Order;
 
-use super::rule::{RiskRule, RiskCheckContext};
+use super::rule::{RiskCheckContext, RiskRule};
 
 /// Placeholder for specific futures margin rule
 /// Currently generic CashMarginRule covers basic margin checks.
@@ -13,11 +13,7 @@ impl RiskRule for FuturesMarginRule {
         "FuturesMarginRule"
     }
 
-    fn check(
-        &self,
-        _order: &Order,
-        _ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError> {
+    fn check(&self, _order: &Order, _ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         // TODO: Implement advanced futures margin logic (e.g. maintenance margin vs initial margin)
         Ok(())
     }

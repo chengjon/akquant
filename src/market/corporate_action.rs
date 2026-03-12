@@ -23,10 +23,7 @@ impl CorporateActionManager {
     }
 
     pub fn add(&mut self, action: CorporateAction) {
-        self.actions
-            .entry(action.date)
-            .or_default()
-            .push(action);
+        self.actions.entry(action.date).or_default().push(action);
     }
 
     pub fn process_date(
@@ -61,10 +58,11 @@ impl CorporateActionManager {
                         // Dividend: value is cash per share
                         // Cash += Quantity * value
                         if let Some(qty) = portfolio.positions.get(&action.symbol)
-                            && !qty.is_zero() {
-                                let dividend_amount = qty * action.value;
-                                portfolio.cash += dividend_amount;
-                            }
+                            && !qty.is_zero()
+                        {
+                            let dividend_amount = qty * action.value;
+                            portfolio.cash += dividend_amount;
+                        }
                     }
                 }
             }

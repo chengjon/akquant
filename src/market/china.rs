@@ -31,12 +31,36 @@ fn default_sessions() -> Vec<SessionRange> {
     let t_14_57 = NaiveTime::from_hms_opt(14, 57, 0).unwrap();
     let t_15_00 = NaiveTime::from_hms_opt(15, 0, 1).unwrap();
     vec![
-        SessionRange { start: t_9_15, end: t_9_25, session: TradingSession::CallAuction },
-        SessionRange { start: t_9_25, end: t_9_30, session: TradingSession::PreOpen },
-        SessionRange { start: t_9_30, end: t_11_30, session: TradingSession::Continuous },
-        SessionRange { start: t_11_30, end: t_13_00, session: TradingSession::Break },
-        SessionRange { start: t_13_00, end: t_14_57, session: TradingSession::Continuous },
-        SessionRange { start: t_14_57, end: t_15_00, session: TradingSession::CallAuction },
+        SessionRange {
+            start: t_9_15,
+            end: t_9_25,
+            session: TradingSession::CallAuction,
+        },
+        SessionRange {
+            start: t_9_25,
+            end: t_9_30,
+            session: TradingSession::PreOpen,
+        },
+        SessionRange {
+            start: t_9_30,
+            end: t_11_30,
+            session: TradingSession::Continuous,
+        },
+        SessionRange {
+            start: t_11_30,
+            end: t_13_00,
+            session: TradingSession::Break,
+        },
+        SessionRange {
+            start: t_13_00,
+            end: t_14_57,
+            session: TradingSession::Continuous,
+        },
+        SessionRange {
+            start: t_14_57,
+            end: t_15_00,
+            session: TradingSession::CallAuction,
+        },
     ]
 }
 
@@ -65,7 +89,9 @@ impl Default for ChinaMarket {
 impl ChinaMarket {
     #[allow(dead_code)]
     pub fn new() -> Self {
-        Self { config: ChinaMarketConfig::default() }
+        Self {
+            config: ChinaMarketConfig::default(),
+        }
     }
     pub fn from_config(config: ChinaMarketConfig) -> Self {
         Self { config }
@@ -93,7 +119,12 @@ impl MarketModel for ChinaMarket {
             AssetType::Stock => {
                 if let Some(config) = &self.config.stock {
                     stock::calculate_commission(
-                        config, instrument, side, price, quantity, instrument.multiplier(),
+                        config,
+                        instrument,
+                        side,
+                        price,
+                        quantity,
+                        instrument.multiplier(),
                     )
                 } else {
                     panic!("Stock market configuration not found but received stock order");
@@ -102,7 +133,12 @@ impl MarketModel for ChinaMarket {
             AssetType::Futures => {
                 if let Some(config) = &self.config.futures {
                     futures::calculate_commission(
-                        config, instrument, side, price, quantity, instrument.multiplier(),
+                        config,
+                        instrument,
+                        side,
+                        price,
+                        quantity,
+                        instrument.multiplier(),
                     )
                 } else {
                     panic!("Futures market configuration not found but received futures order");
@@ -111,7 +147,12 @@ impl MarketModel for ChinaMarket {
             AssetType::Fund => {
                 if let Some(config) = &self.config.fund {
                     fund::calculate_commission(
-                        config, instrument, side, price, quantity, instrument.multiplier(),
+                        config,
+                        instrument,
+                        side,
+                        price,
+                        quantity,
+                        instrument.multiplier(),
                     )
                 } else {
                     panic!("Fund market configuration not found but received fund order");
@@ -120,7 +161,12 @@ impl MarketModel for ChinaMarket {
             AssetType::Option => {
                 if let Some(config) = &self.config.option {
                     option::calculate_commission(
-                        config, instrument, side, price, quantity, instrument.multiplier(),
+                        config,
+                        instrument,
+                        side,
+                        price,
+                        quantity,
+                        instrument.multiplier(),
                     )
                 } else {
                     panic!("Option market configuration not found but received option order");
@@ -144,7 +190,11 @@ impl MarketModel for ChinaMarket {
             AssetType::Stock => {
                 if let Some(config) = &self.config.stock {
                     stock::update_available_position(
-                        config, available_positions, symbol, quantity, side
+                        config,
+                        available_positions,
+                        symbol,
+                        quantity,
+                        side,
                     );
                 } else {
                     panic!("Stock market configuration not found for position update");
@@ -153,7 +203,11 @@ impl MarketModel for ChinaMarket {
             AssetType::Fund => {
                 if let Some(config) = &self.config.fund {
                     fund::update_available_position(
-                        config, available_positions, symbol, quantity, side
+                        config,
+                        available_positions,
+                        symbol,
+                        quantity,
+                        side,
                     );
                 } else {
                     panic!("Fund market configuration not found for position update");
@@ -162,16 +216,24 @@ impl MarketModel for ChinaMarket {
             AssetType::Futures => {
                 if let Some(config) = &self.config.futures {
                     futures::update_available_position(
-                        config, available_positions, symbol, quantity, side
+                        config,
+                        available_positions,
+                        symbol,
+                        quantity,
+                        side,
                     );
                 } else {
                     panic!("Futures market configuration not found for position update");
                 }
             }
-             AssetType::Option => {
+            AssetType::Option => {
                 if let Some(config) = &self.config.option {
                     option::update_available_position(
-                        config, available_positions, symbol, quantity, side
+                        config,
+                        available_positions,
+                        symbol,
+                        quantity,
+                        side,
                     );
                 } else {
                     panic!("Option market configuration not found for position update");
@@ -199,8 +261,18 @@ impl MarketModel for ChinaMarket {
             // 使用各自配置中的 T+1 设置
             let should_settle = if let Some(instr) = instruments.get(symbol) {
                 match instr.asset_type {
-                    AssetType::Stock => self.config.stock.as_ref().map(|c| c.t_plus_one).unwrap_or(false),
-                    AssetType::Fund => self.config.fund.as_ref().map(|c| c.t_plus_one).unwrap_or(false),
+                    AssetType::Stock => self
+                        .config
+                        .stock
+                        .as_ref()
+                        .map(|c| c.t_plus_one)
+                        .unwrap_or(false),
+                    AssetType::Fund => self
+                        .config
+                        .fund
+                        .as_ref()
+                        .map(|c| c.t_plus_one)
+                        .unwrap_or(false),
                     _ => false,
                 }
             } else {

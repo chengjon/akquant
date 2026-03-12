@@ -59,10 +59,7 @@ pub struct ContextUpdate {
 }
 
 impl StrategyContext {
-    pub fn update_state(
-        &mut self,
-        update: ContextUpdate,
-    ) {
+    pub fn update_state(&mut self, update: ContextUpdate) {
         self.cash = update.cash;
         self.positions = update.positions;
         self.available_positions = update.available_positions;
@@ -80,12 +77,12 @@ impl StrategyContext {
         // HOWEVER, for this "Zero-Copy" optimization step, let's just avoid the clone if the list is empty.
 
         if update.active_orders.is_empty() {
-             self.active_orders.clear();
+            self.active_orders.clear();
         } else {
-             // Still copying for now to maintain API compatibility without breaking changes
-             // Optimization: reuse capacity
-             self.active_orders.clear();
-             self.active_orders.extend_from_slice(&update.active_orders);
+            // Still copying for now to maintain API compatibility without breaking changes
+            // Optimization: reuse capacity
+            self.active_orders.clear();
+            self.active_orders.extend_from_slice(&update.active_orders);
         }
 
         self.recent_trades = update.recent_trades;
@@ -268,7 +265,9 @@ impl StrategyContext {
                     "high" => PyArray1::from_iter(py, history.highs.iter().skip(start).cloned()),
                     "low" => PyArray1::from_iter(py, history.lows.iter().skip(start).cloned()),
                     "close" => PyArray1::from_iter(py, history.closes.iter().skip(start).cloned()),
-                    "volume" => PyArray1::from_iter(py, history.volumes.iter().skip(start).cloned()),
+                    "volume" => {
+                        PyArray1::from_iter(py, history.volumes.iter().skip(start).cloned())
+                    }
                     _ => {
                         if let Some(series) = history.extras.get(&field) {
                             PyArray1::from_iter(py, series.iter().skip(start).cloned())
@@ -392,12 +391,13 @@ impl StrategyContext {
         } else {
             None
         };
-        let resolved_order_type = order_type.unwrap_or(match (price.is_some(), trigger_price.is_some()) {
-            (true, true) => OrderType::StopLimit,
-            (false, true) => OrderType::StopMarket,
-            (true, false) => OrderType::Limit,
-            (false, false) => OrderType::Market,
-        });
+        let resolved_order_type =
+            order_type.unwrap_or(match (price.is_some(), trigger_price.is_some()) {
+                (true, true) => OrderType::StopLimit,
+                (false, true) => OrderType::StopMarket,
+                (true, false) => OrderType::Limit,
+                (false, false) => OrderType::Market,
+            });
 
         let id = Uuid::new_v4().to_string();
         let order = Order {
@@ -476,12 +476,13 @@ impl StrategyContext {
         } else {
             None
         };
-        let resolved_order_type = order_type.unwrap_or(match (price.is_some(), trigger_price.is_some()) {
-            (true, true) => OrderType::StopLimit,
-            (false, true) => OrderType::StopMarket,
-            (true, false) => OrderType::Limit,
-            (false, false) => OrderType::Market,
-        });
+        let resolved_order_type =
+            order_type.unwrap_or(match (price.is_some(), trigger_price.is_some()) {
+                (true, true) => OrderType::StopLimit,
+                (false, true) => OrderType::StopMarket,
+                (true, false) => OrderType::Limit,
+                (false, false) => OrderType::Market,
+            });
 
         let id = Uuid::new_v4().to_string();
         let order = Order {

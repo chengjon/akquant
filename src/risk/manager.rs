@@ -3,8 +3,8 @@ use crate::model::{AssetType, Instrument, Order};
 use crate::portfolio::Portfolio;
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::*;
 use std::collections::HashMap;
 
 use super::common::{
@@ -107,7 +107,11 @@ impl RiskManager {
     }
 
     /// Add sector concentration rule
-    pub fn add_sector_concentration_rule(&mut self, max_pct: f64, sector_map: HashMap<String, String>) {
+    pub fn add_sector_concentration_rule(
+        &mut self,
+        max_pct: f64,
+        sector_map: HashMap<String, String>,
+    ) {
         self.dynamic_rules.push(Box::new(SectorConcentrationRule {
             max_pct: Decimal::from_f64(max_pct).unwrap_or(Decimal::ZERO),
             sector_map,
@@ -189,54 +193,53 @@ impl RiskManager {
             // This logic was moved from OrderManager
             if (err_msg.contains("Insufficient cash") || err_msg.contains("Insufficient margin"))
                 && order.side == crate::model::OrderSide::Buy
-                && let Some(instr) = ctx.instruments.get(&order.symbol) {
-                    // Get price (Limit or Last)
-                    let price = if let Some(p) = order.price {
-                        p
-                    } else {
-                        *ctx.last_prices
-                            .get(&order.symbol)
-                            .unwrap_or(&Decimal::ZERO)
-                    };
+                && let Some(instr) = ctx.instruments.get(&order.symbol)
+            {
+                // Get price (Limit or Last)
+                let price = if let Some(p) = order.price {
+                    p
+                } else {
+                    *ctx.last_prices.get(&order.symbol).unwrap_or(&Decimal::ZERO)
+                };
 
-                    if price > Decimal::ZERO {
-                        let multiplier = instr.multiplier();
-                        let margin_ratio = instr.margin_ratio();
+                if price > Decimal::ZERO {
+                    let multiplier = instr.multiplier();
+                    let margin_ratio = instr.margin_ratio();
 
-                        // Cost per unit = Price * Multiplier * MarginRatio
-                        // For Stock, MarginRatio is usually 1.0 (or 100% cash)
-                        let cost_per_unit = price * multiplier * margin_ratio;
+                    // Cost per unit = Price * Multiplier * MarginRatio
+                    // For Stock, MarginRatio is usually 1.0 (or 100% cash)
+                    let cost_per_unit = price * multiplier * margin_ratio;
 
-                        if cost_per_unit > Decimal::ZERO {
-                            // Calculate max quantity based on available cash/margin
-                            // Note: Portfolio::cash is used here. Ideally should use Free Margin for futures.
-                            // But for simple "Insufficient cash" check, let's use cash.
-                            // If we want to support margin trading correctly here, we should check what check_internal failed on.
+                    if cost_per_unit > Decimal::ZERO {
+                        // Calculate max quantity based on available cash/margin
+                        // Note: Portfolio::cash is used here. Ideally should use Free Margin for futures.
+                        // But for simple "Insufficient cash" check, let's use cash.
+                        // If we want to support margin trading correctly here, we should check what check_internal failed on.
 
-                            // For now, let's use a simplified calculation similar to old OrderManager
-                            let max_qty_raw = ctx.portfolio.cash / cost_per_unit;
+                        // For now, let's use a simplified calculation similar to old OrderManager
+                        let max_qty_raw = ctx.portfolio.cash / cost_per_unit;
 
-                            // Buffer for commission (e.g. 1% buffer -> 0.9999 safety factor from config)
-                            let safety_margin = self.config.safety_margin;
-                            let safety_factor = Decimal::from_f64(1.0 - safety_margin)
-                                .unwrap_or(Decimal::from_f64(0.9999).unwrap());
+                        // Buffer for commission (e.g. 1% buffer -> 0.9999 safety factor from config)
+                        let safety_margin = self.config.safety_margin;
+                        let safety_factor = Decimal::from_f64(1.0 - safety_margin)
+                            .unwrap_or(Decimal::from_f64(0.9999).unwrap());
 
-                            let max_qty_raw = max_qty_raw * safety_factor;
+                        let max_qty_raw = max_qty_raw * safety_factor;
 
-                            let lot_size = instr.lot_size();
-                            let mut new_qty = max_qty_raw.floor();
-                            if lot_size > Decimal::ZERO {
-                                new_qty = new_qty - (new_qty % lot_size);
-                            }
+                        let lot_size = instr.lot_size();
+                        let mut new_qty = max_qty_raw.floor();
+                        if lot_size > Decimal::ZERO {
+                            new_qty = new_qty - (new_qty % lot_size);
+                        }
 
-                            if new_qty > Decimal::ZERO && new_qty < order.quantity {
-                                order.quantity = new_qty;
-                                // Re-check with new quantity
-                                return self.check_internal(order, ctx);
-                            }
+                        if new_qty > Decimal::ZERO && new_qty < order.quantity {
+                            order.quantity = new_qty;
+                            // Re-check with new quantity
+                            return self.check_internal(order, ctx);
                         }
                     }
                 }
+            }
             return Err(err);
         }
         Ok(())

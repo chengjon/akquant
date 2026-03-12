@@ -11,11 +11,7 @@ use std::sync::Arc;
 
 pub struct ChannelProcessor;
 
-fn process_order_request(
-    engine: &mut Engine,
-    py: Python<'_>,
-    mut order: Order,
-) {
+fn process_order_request(engine: &mut Engine, py: Python<'_>, mut order: Order) {
     let current_time = engine.clock.timestamp().unwrap_or(0);
     engine.maybe_reset_risk_budget_usage(current_time);
     let mut strategy_limit_err = engine.check_strategy_risk_cooldown_mode(&order);
@@ -31,10 +27,7 @@ fn process_order_request(
         triggers_risk_fallback = strategy_limit_err.is_some();
     }
     if strategy_limit_err.is_none() {
-        strategy_limit_err = engine.check_strategy_daily_loss_limit(
-            &order,
-            current_time,
-        );
+        strategy_limit_err = engine.check_strategy_daily_loss_limit(&order, current_time);
         triggers_risk_fallback = strategy_limit_err.is_some();
     }
     if strategy_limit_err.is_none() {
@@ -88,7 +81,9 @@ fn process_order_request(
             "warn",
             risk_payload,
         );
-        let _ = engine.event_manager.send(Event::ExecutionReport(order, None));
+        let _ = engine
+            .event_manager
+            .send(Event::ExecutionReport(order, None));
     } else {
         let mut order_payload = HashMap::new();
         order_payload.insert("order_id", order.id.clone());
@@ -113,7 +108,12 @@ fn process_order_request(
 }
 
 impl Processor for ChannelProcessor {
-    fn process(&mut self, engine: &mut Engine, py: Python<'_>, _strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
+    fn process(
+        &mut self,
+        engine: &mut Engine,
+        py: Python<'_>,
+        _strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<ProcessorResult> {
         let mut trades_to_process = Vec::new();
         let mut pending_order_requests = Vec::new();
         loop {
@@ -132,21 +132,13 @@ impl Processor for ChannelProcessor {
                         if let Some(order_snapshot) = updated_order {
                             let mut order_payload = HashMap::new();
                             order_payload.insert("order_id", order_snapshot.id.clone());
-                            order_payload.insert(
-                                "status",
-                                format!("{:?}", order_snapshot.status),
-                            );
-                            order_payload.insert(
-                                "filled_qty",
-                                order_snapshot.filled_quantity.to_string(),
-                            );
+                            order_payload.insert("status", format!("{:?}", order_snapshot.status));
+                            order_payload
+                                .insert("filled_qty", order_snapshot.filled_quantity.to_string());
                             order_payload.insert("symbol", order_snapshot.symbol.clone());
                             order_payload.insert(
                                 "owner_strategy_id",
-                                order_snapshot
-                                    .owner_strategy_id
-                                    .clone()
-                                    .unwrap_or_default(),
+                                order_snapshot.owner_strategy_id.clone().unwrap_or_default(),
                             );
                             engine.emit_stream_event(
                                 py,
@@ -191,10 +183,10 @@ impl Processor for ChannelProcessor {
                     let left_priority = engine.strategy_priority_for_order(left);
                     let right_priority = engine.strategy_priority_for_order(right);
                     right_priority.cmp(&left_priority).then_with(|| {
-                        let left_id = Engine::normalized_order_strategy_id(left)
-                            .unwrap_or_default();
-                        let right_id = Engine::normalized_order_strategy_id(right)
-                            .unwrap_or_default();
+                        let left_id =
+                            Engine::normalized_order_strategy_id(left).unwrap_or_default();
+                        let right_id =
+                            Engine::normalized_order_strategy_id(right).unwrap_or_default();
                         left_id.cmp(&right_id)
                     })
                 });
@@ -251,27 +243,33 @@ impl DataProcessor {
         if let Ok(mut buffer) = engine.history_buffer.write() {
             for symbol in engine.instruments.keys() {
                 if !self.seen_symbols.contains(symbol)
-                    && let Some(&last_price) = engine.last_prices.get(symbol) {
-                        // Create synthetic bar
-                        let bar = Bar {
-                            timestamp: self.last_timestamp,
-                            symbol: symbol.clone(),
-                            open: last_price,
-                            high: last_price,
-                            low: last_price,
-                            close: last_price,
-                            volume: Decimal::ZERO,
-                            extra: HashMap::default(),
-                        };
-                        buffer.update(&bar);
-                    }
+                    && let Some(&last_price) = engine.last_prices.get(symbol)
+                {
+                    // Create synthetic bar
+                    let bar = Bar {
+                        timestamp: self.last_timestamp,
+                        symbol: symbol.clone(),
+                        open: last_price,
+                        high: last_price,
+                        low: last_price,
+                        close: last_price,
+                        volume: Decimal::ZERO,
+                        extra: HashMap::default(),
+                    };
+                    buffer.update(&bar);
+                }
             }
         }
     }
 }
 
 impl Processor for DataProcessor {
-    fn process(&mut self, engine: &mut Engine, py: Python<'_>, _strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
+    fn process(
+        &mut self,
+        engine: &mut Engine,
+        py: Python<'_>,
+        _strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<ProcessorResult> {
         let next_timer_time = engine.timers.peek().map(|t| t.timestamp);
         let action = engine.state.feed.next_action(next_timer_time, py);
 
@@ -283,7 +281,8 @@ impl Processor for DataProcessor {
             }
             FeedAction::Timer(_timestamp) => {
                 if let Some(timer) = engine.timers.pop() {
-                    let local_dt = Engine::local_datetime_from_ns(timer.timestamp, engine.timezone_offset);
+                    let local_dt =
+                        Engine::local_datetime_from_ns(timer.timestamp, engine.timezone_offset);
                     let session = engine.market_manager.get_session_status(local_dt.time());
                     engine.clock.update(timer.timestamp, session);
                     if engine.force_session_continuous {
@@ -302,7 +301,7 @@ impl Processor for DataProcessor {
                 };
 
                 if timestamp <= engine.snapshot_time {
-                     return Ok(ProcessorResult::Loop);
+                    return Ok(ProcessorResult::Loop);
                 }
 
                 if self.last_timestamp != 0 && timestamp > self.last_timestamp {
@@ -422,7 +421,12 @@ impl Processor for DataProcessor {
 pub struct StrategyProcessor;
 
 impl Processor for StrategyProcessor {
-    fn process(&mut self, engine: &mut Engine, py: Python<'_>, strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
+    fn process(
+        &mut self,
+        engine: &mut Engine,
+        py: Python<'_>,
+        strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<ProcessorResult> {
         if let Some(event) = engine.current_event.clone() {
             engine.ensure_strategy_slot_exists();
             engine.ensure_strategy_context_capacity();
@@ -489,16 +493,22 @@ impl ExecutionProcessor {
 }
 
 impl Processor for ExecutionProcessor {
-    fn process(&mut self, engine: &mut Engine, _py: Python<'_>, _strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
+    fn process(
+        &mut self,
+        engine: &mut Engine,
+        _py: Python<'_>,
+        _strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<ProcessorResult> {
         let should_run = match self.phase {
             ExecutionPhase::PreStrategy => matches!(
                 engine.execution_mode,
-                ExecutionMode::NextOpen | ExecutionMode::NextAverage | ExecutionMode::NextHighLowMid
+                ExecutionMode::NextOpen
+                    | ExecutionMode::NextAverage
+                    | ExecutionMode::NextHighLowMid
             ),
-            ExecutionPhase::PostStrategy => matches!(
-                engine.execution_mode,
-                ExecutionMode::CurrentClose
-            ),
+            ExecutionPhase::PostStrategy => {
+                matches!(engine.execution_mode, ExecutionMode::CurrentClose)
+            }
         };
 
         if !should_run {
@@ -536,7 +546,12 @@ impl Processor for ExecutionProcessor {
 pub struct CleanupProcessor;
 
 impl Processor for CleanupProcessor {
-    fn process(&mut self, engine: &mut Engine, _py: Python<'_>, _strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
+    fn process(
+        &mut self,
+        engine: &mut Engine,
+        _py: Python<'_>,
+        _strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<ProcessorResult> {
         engine.state.order_manager.cleanup_finished_orders();
         Ok(ProcessorResult::Next)
     }
@@ -545,17 +560,28 @@ impl Processor for CleanupProcessor {
 pub struct StatisticsProcessor;
 
 impl Processor for StatisticsProcessor {
-    fn process(&mut self, engine: &mut Engine, py: Python<'_>, _strategy: &Bound<'_, PyAny>) -> PyResult<ProcessorResult> {
+    fn process(
+        &mut self,
+        engine: &mut Engine,
+        py: Python<'_>,
+        _strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<ProcessorResult> {
         if let Some(Event::Bar(_) | Event::Tick(_)) = engine.current_event.clone()
-            && let Some(timestamp) = engine.clock.timestamp() {
-                let equity = engine.state.portfolio.calculate_equity(&engine.last_prices, &engine.instruments);
-                engine.statistics_manager.update(timestamp, equity, engine.state.portfolio.cash);
-                let mut payload = HashMap::new();
-                payload.insert("timestamp", timestamp.to_string());
-                payload.insert("equity", equity.to_string());
-                payload.insert("cash", engine.state.portfolio.cash.to_string());
-                engine.emit_stream_event(py, "equity", None, "info", payload);
-            }
+            && let Some(timestamp) = engine.clock.timestamp()
+        {
+            let equity = engine
+                .state
+                .portfolio
+                .calculate_equity(&engine.last_prices, &engine.instruments);
+            engine
+                .statistics_manager
+                .update(timestamp, equity, engine.state.portfolio.cash);
+            let mut payload = HashMap::new();
+            payload.insert("timestamp", timestamp.to_string());
+            payload.insert("equity", equity.to_string());
+            payload.insert("cash", engine.state.portfolio.cash.to_string());
+            engine.emit_stream_event(py, "equity", None, "info", payload);
+        }
         Ok(ProcessorResult::Next)
     }
 }
@@ -564,7 +590,7 @@ impl Processor for StatisticsProcessor {
 mod tests {
     use super::*;
     use crate::engine::Engine;
-    use crate::model::{Instrument, AssetType, InstrumentEnum, StockInstrument, Bar};
+    use crate::model::{AssetType, Bar, Instrument, InstrumentEnum, StockInstrument};
     use rust_decimal_macros::dec;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -585,8 +611,12 @@ mod tests {
         pyo3::Python::initialize();
 
         let mut engine = Engine::new();
-        engine.instruments.insert("A".to_string(), create_instrument("A"));
-        engine.instruments.insert("B".to_string(), create_instrument("B"));
+        engine
+            .instruments
+            .insert("A".to_string(), create_instrument("A"));
+        engine
+            .instruments
+            .insert("B".to_string(), create_instrument("B"));
 
         engine.last_prices.insert("A".to_string(), dec!(100));
         engine.last_prices.insert("B".to_string(), dec!(200));
@@ -655,7 +685,7 @@ mod tests {
             // Step 3: Process T3 A (Fill T2)
             processor.process(&mut engine, py, &strategy).unwrap();
 
-             // Verify T2 Fill
+            // Verify T2 Fill
             {
                 let buffer = engine.history_buffer.read().unwrap();
                 let hist_a = buffer.data.get("A").unwrap();
@@ -675,7 +705,9 @@ mod tests {
 
         let mut engine = Engine::new();
         let symbol = "AAPL".to_string();
-        engine.instruments.insert(symbol.clone(), create_instrument(&symbol));
+        engine
+            .instruments
+            .insert(symbol.clone(), create_instrument(&symbol));
 
         // Initial Position: 100 shares, Cash 0
         {
@@ -712,7 +744,11 @@ mod tests {
         let bar_t1 = Bar {
             timestamp: 1_672_531_200_000_000_000, // 2023-01-01
             symbol: symbol.clone(),
-            open: dec!(100), high: dec!(100), low: dec!(100), close: dec!(100), volume: dec!(100),
+            open: dec!(100),
+            high: dec!(100),
+            low: dec!(100),
+            close: dec!(100),
+            volume: dec!(100),
             extra: HashMap::new(),
         };
         engine.state.feed.add_bar(bar_t1).unwrap();
@@ -721,7 +757,11 @@ mod tests {
         let bar_t2 = Bar {
             timestamp: 1_672_617_600_000_000_000, // 2023-01-02
             symbol: symbol.clone(),
-            open: dec!(50), high: dec!(50), low: dec!(50), close: dec!(50), volume: dec!(100),
+            open: dec!(50),
+            high: dec!(50),
+            low: dec!(50),
+            close: dec!(50),
+            volume: dec!(100),
             extra: HashMap::new(),
         };
         engine.state.feed.add_bar(bar_t2).unwrap();
@@ -730,7 +770,11 @@ mod tests {
         let bar_t3 = Bar {
             timestamp: 1_672_704_000_000_000_000, // 2023-01-03
             symbol: symbol.clone(),
-            open: dec!(50), high: dec!(50), low: dec!(50), close: dec!(50), volume: dec!(100),
+            open: dec!(50),
+            high: dec!(50),
+            low: dec!(50),
+            close: dec!(50),
+            volume: dec!(100),
             extra: HashMap::new(),
         };
         engine.state.feed.add_bar(bar_t3).unwrap();
@@ -743,7 +787,10 @@ mod tests {
             // Process T1
             processor.process(&mut engine, py, &strategy).unwrap();
             // Verify T1 state: 100 shares
-            assert_eq!(engine.state.portfolio.positions.get(&symbol).unwrap(), &dec!(100));
+            assert_eq!(
+                engine.state.portfolio.positions.get(&symbol).unwrap(),
+                &dec!(100)
+            );
 
             // Process T2 (Split happens at day start/end depending on logic, here logic is triggered by date change)
             // Our logic: when processing T2 event, we detect date change T1 -> T2, then trigger end-of-day actions for T2?
@@ -765,7 +812,10 @@ mod tests {
             processor.process(&mut engine, py, &strategy).unwrap();
 
             // Verify T2 Split: 100 shares * 2 = 200 shares
-            assert_eq!(engine.state.portfolio.positions.get(&symbol).unwrap(), &dec!(200));
+            assert_eq!(
+                engine.state.portfolio.positions.get(&symbol).unwrap(),
+                &dec!(200)
+            );
 
             // Process T3 (Dividend)
             processor.process(&mut engine, py, &strategy).unwrap();

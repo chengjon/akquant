@@ -70,9 +70,10 @@ pub fn update_available_position(
 
             // T+1 模式下，买入不立即增加可用持仓
             if !config.t_plus_one
-                 && let Some(pos) = available_positions.get_mut(symbol) {
-                    *pos += quantity;
-                }
+                && let Some(pos) = available_positions.get_mut(symbol)
+            {
+                *pos += quantity;
+            }
         }
         OrderSide::Sell => {
             // 卖出立即扣减可用持仓
@@ -116,7 +117,7 @@ mod tests {
             OrderSide::Buy,
             Decimal::from(10),
             Decimal::from(100),
-            instr.multiplier()
+            instr.multiplier(),
         );
         assert_eq!(comm_buy, Decimal::from_str("5.01").unwrap());
 
@@ -132,7 +133,7 @@ mod tests {
             OrderSide::Sell,
             Decimal::from(10),
             Decimal::from(100),
-            instr.multiplier()
+            instr.multiplier(),
         );
         assert_eq!(comm_sell, Decimal::from_str("5.51").unwrap());
     }
@@ -151,8 +152,6 @@ mod tests {
             Decimal::from(100),
             OrderSide::Buy,
         );
-        assert!(
-            available.get("600000").unwrap_or(&Decimal::ZERO).is_zero()
-        );
+        assert!(available.get("600000").unwrap_or(&Decimal::ZERO).is_zero());
     }
 }

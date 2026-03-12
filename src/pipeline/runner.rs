@@ -33,7 +33,7 @@ impl PipelineRunner {
         'main_loop: loop {
             for processor in &mut self.processors {
                 match processor.process(engine, py, strategy)? {
-                    ProcessorResult::Next => {},
+                    ProcessorResult::Next => {}
                     ProcessorResult::Loop => continue 'main_loop,
                     ProcessorResult::Break => {
                         engine.flush_stream_events(py);
@@ -49,8 +49,13 @@ impl PipelineRunner {
         }
     }
 
-    pub fn run(&mut self, engine: &mut Engine, py: Python<'_>, strategy: &Bound<'_, PyAny>) -> PyResult<()> {
+    pub fn run(
+        &mut self,
+        engine: &mut Engine,
+        py: Python<'_>,
+        strategy: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
         while self.step(engine, py, strategy)? {}
         Ok(())
     }
-    }
+}

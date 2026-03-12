@@ -21,11 +21,7 @@ pub struct RiskCheckContext<'a> {
 /// Trait for risk check rules
 pub trait RiskRule: Send + Sync + Debug {
     /// Check if the order passes the risk rule
-    fn check(
-        &self,
-        order: &Order,
-        ctx: &RiskCheckContext,
-    ) -> Result<(), AkQuantError>;
+    fn check(&self, order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError>;
 
     /// Get the name of the rule
     fn name(&self) -> &'static str;

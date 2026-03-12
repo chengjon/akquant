@@ -230,21 +230,21 @@ impl DataFeed {
     /// 获取下一个动作 (事件或定时器)
     pub fn next_action(&self, next_timer_ts: Option<i64>, py: Python) -> FeedAction {
         if !self.is_live() {
-             let peek_ts = self.peek_timestamp();
+            let peek_ts = self.peek_timestamp();
 
-             // Backtest logic
-             match (peek_ts, next_timer_ts) {
-                 (Some(et), Some(tt)) => {
-                     if tt <= et {
-                         FeedAction::Timer(tt)
-                     } else {
-                         FeedAction::Event(Box::new(self.next().unwrap()))
-                     }
-                 },
-                 (Some(_), None) => FeedAction::Event(Box::new(self.next().unwrap())),
-                 (None, Some(tt)) => FeedAction::Timer(tt),
-                 (None, None) => FeedAction::End,
-             }
+            // Backtest logic
+            match (peek_ts, next_timer_ts) {
+                (Some(et), Some(tt)) => {
+                    if tt <= et {
+                        FeedAction::Timer(tt)
+                    } else {
+                        FeedAction::Event(Box::new(self.next().unwrap()))
+                    }
+                }
+                (Some(_), None) => FeedAction::Event(Box::new(self.next().unwrap())),
+                (None, Some(tt)) => FeedAction::Timer(tt),
+                (None, None) => FeedAction::End,
+            }
         } else {
             // Live logic
             // Calculate timeout
@@ -265,8 +265,8 @@ impl DataFeed {
 
             let next_ts_opt = if timeout > Duration::ZERO {
                 let feed_clone = self.clone();
-            // Release GIL and wait
-            py.detach(move || feed_clone.wait_peek(timeout))
+                // Release GIL and wait
+                py.detach(move || feed_clone.wait_peek(timeout))
             } else {
                 self.peek_timestamp()
             };
@@ -276,28 +276,29 @@ impl DataFeed {
                     // Event available
                     if let Some(tt) = next_timer_ts {
                         if tt <= et {
-                             // Timer is earlier than event (and we are here so timer might be due or close?)
-                             // In Live, check if timer is actually DUE (<= now).
-                             if tt <= now {
-                                 FeedAction::Timer(tt)
-                             } else {
-                                 // Timer not due, but event is here.
-                                 FeedAction::Event(Box::new(self.next().unwrap()))
-                             }
+                            // Timer is earlier than event (and we are here so timer might be due or close?)
+                            // In Live, check if timer is actually DUE (<= now).
+                            if tt <= now {
+                                FeedAction::Timer(tt)
+                            } else {
+                                // Timer not due, but event is here.
+                                FeedAction::Event(Box::new(self.next().unwrap()))
+                            }
                         } else {
-                             // Event is earlier than timer
-                             FeedAction::Event(Box::new(self.next().unwrap()))
+                            // Event is earlier than timer
+                            FeedAction::Event(Box::new(self.next().unwrap()))
                         }
                     } else {
                         FeedAction::Event(Box::new(self.next().unwrap()))
                     }
-                },
+                }
                 None => {
                     // Timeout (No event)
                     if let Some(tt) = next_timer_ts
-                        && tt <= now {
-                            return FeedAction::Timer(tt);
-                        }
+                        && tt <= now
+                    {
+                        return FeedAction::Timer(tt);
+                    }
                     FeedAction::Wait
                 }
             }

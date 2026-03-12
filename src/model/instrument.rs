@@ -55,8 +55,8 @@ pub struct CryptoInstrument {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForexInstrument {
     pub symbol: String,
-    pub lot_size: Decimal, // Standard lot is 100,000 units
-    pub tick_size: Decimal, // Pip size (e.g. 0.0001)
+    pub lot_size: Decimal,   // Standard lot is 100,000 units
+    pub tick_size: Decimal,  // Pip size (e.g. 0.0001)
     pub multiplier: Decimal, // Usually 1.0
 }
 
@@ -118,10 +118,22 @@ impl Instrument {
         underlying_symbol: Option<String>,
         settlement_type: Option<SettlementType>,
     ) -> PyResult<Self> {
-        let multiplier_val = multiplier.map(extract_decimal).transpose()?.unwrap_or(Decimal::ONE);
-        let margin_val = margin_ratio.map(extract_decimal).transpose()?.unwrap_or(Decimal::ONE);
-        let tick_val = tick_size.map(extract_decimal).transpose()?.unwrap_or(Decimal::new(1, 2));
-        let lot_val = lot_size.map(extract_decimal).transpose()?.unwrap_or(Decimal::ONE);
+        let multiplier_val = multiplier
+            .map(extract_decimal)
+            .transpose()?
+            .unwrap_or(Decimal::ONE);
+        let margin_val = margin_ratio
+            .map(extract_decimal)
+            .transpose()?
+            .unwrap_or(Decimal::ONE);
+        let tick_val = tick_size
+            .map(extract_decimal)
+            .transpose()?
+            .unwrap_or(Decimal::new(1, 2));
+        let lot_val = lot_size
+            .map(extract_decimal)
+            .transpose()?
+            .unwrap_or(Decimal::ONE);
 
         let inner = match asset_type {
             AssetType::Stock => InstrumentEnum::Stock(StockInstrument {
@@ -147,7 +159,10 @@ impl Instrument {
                 multiplier: multiplier_val,
                 tick_size: tick_val,
                 option_type: option_type.unwrap_or(OptionType::Call),
-                strike_price: strike_price.map(extract_decimal).transpose()?.unwrap_or(Decimal::ZERO),
+                strike_price: strike_price
+                    .map(extract_decimal)
+                    .transpose()?
+                    .unwrap_or(Decimal::ZERO),
                 expiry_date: expiry_date.unwrap_or(0),
                 underlying_symbol: underlying_symbol.unwrap_or_default(),
                 settlement_type,
@@ -166,10 +181,7 @@ impl Instrument {
             }),
         };
 
-        Ok(Instrument {
-            asset_type,
-            inner,
-        })
+        Ok(Instrument { asset_type, inner })
     }
 
     #[getter]
