@@ -4,8 +4,6 @@
 该模块提供轻量的参数 DSL，底层基于 Pydantic。
 """
 
-from __future__ import annotations
-
 import datetime as dt
 from typing import Any, Mapping, Sequence, cast
 

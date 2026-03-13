@@ -7,8 +7,6 @@ LiveRunner broker 事件审计示例.
 - 输出 owner_strategy_id 便于多 slot 归因
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from akquant import AssetType, Instrument

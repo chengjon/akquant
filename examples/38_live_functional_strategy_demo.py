@@ -8,8 +8,6 @@ LiveRunner 函数式策略入口示例.
 - 默认参数为占位示例，请替换为你自己的网关地址与账户信息。
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from akquant import AssetType, Instrument

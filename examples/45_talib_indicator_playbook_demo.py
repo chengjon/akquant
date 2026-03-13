@@ -1,7 +1,5 @@
 """TA-Lib indicator playbook demo with strategy-level signal combinations."""
 
-from __future__ import annotations
-
 import argparse
 from typing import cast
 

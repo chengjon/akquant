@@ -1,7 +1,5 @@
 """Dynamic strategy loading demo for strategy_source and strategy_loader."""
 
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory

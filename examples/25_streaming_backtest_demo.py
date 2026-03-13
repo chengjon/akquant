@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 """Streaming backtest demo for continue and fail-fast callback modes."""
 
-from __future__ import annotations
-
 import akquant as aq
 import pandas as pd
 from akquant import Bar, Strategy

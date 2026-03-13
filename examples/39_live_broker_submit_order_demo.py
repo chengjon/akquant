@@ -8,8 +8,6 @@ LiveRunner broker_live + 函数式 submit_order 最小闭环示例.
 - 默认地址与账户参数为占位，请替换为实际网关配置。
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from akquant import AssetType, Instrument

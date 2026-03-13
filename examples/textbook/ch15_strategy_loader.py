@@ -5,8 +5,6 @@
 在运行时加载策略实现。
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory

@@ -8,8 +8,6 @@ LiveRunner 多策略 slot 编排示例.
 - 使用 paper 模式进行编排验证。
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from akquant import AssetType, Bar, Instrument, Strategy

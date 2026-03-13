@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from .utils import parse_duration_to_bars

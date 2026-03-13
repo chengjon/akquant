@@ -4,8 +4,6 @@
 用于连接策略参数模型、前端 schema 与回测入口。
 """
 
-from __future__ import annotations
-
 import inspect
 from typing import Any, Mapping, Sequence, cast
 

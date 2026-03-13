@@ -8,8 +8,6 @@
 - 通过策略级风险限制让 alpha 被拒单、beta 正常下单
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from typing import Any, List
 

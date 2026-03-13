@@ -1,7 +1,5 @@
 """Backend selection for TA-Lib compatibility layer."""
 
-from __future__ import annotations
-
 BackendKind = str
 _SUPPORTED_BACKENDS = {"auto", "python", "rust"}
 

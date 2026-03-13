@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 """Function-style tick callback simulation demo."""
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import Any, cast
 

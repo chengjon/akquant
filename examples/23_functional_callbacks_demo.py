@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 """Function-style callbacks demo."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import akquant as aq

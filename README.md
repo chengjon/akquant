@@ -222,23 +222,13 @@ result = aq.run_backtest(
 )
 ```
 
-`run_backtest` 也支持可选 `on_event`。如果不传，框架会使用内部 no-op 回调，
-保持与传统阻塞调用一致的返回语义；如果传入 `on_event`，即可在保持
-`run_backtest(...)` 调用方式不变的同时接入实时事件。
+`on_event` 为可选参数：不传时保持传统阻塞语义，传入时可实时消费事件。
 
 关键参数：
 
 *   `stream_progress_interval` / `stream_equity_interval`: 进度与权益事件采样间隔
 *   `stream_batch_size` / `stream_max_buffer`: 缓冲与批量刷新控制
 *   `stream_error_mode`: 回调异常策略，支持 `"continue"` 与 `"fail_fast"`
-
-阶段 5 迁移 FAQ：
-
-*   `run_backtest` 是否改名？不改名，调用方式保持不变。
-*   `run_backtest` 是否还能不传 `on_event`？可以，不传时仍返回同样的结果对象语义。
-*   如何回滚？阶段 5 后不再支持 `_engine_mode` 参数级回滚，建议使用版本级回滚。
-*   文档入口在哪里？可从 [中文文档首页的阶段 5 迁移入口](docs/zh/index.md#阶段-5-迁移入口) 快速跳转到 quickstart FAQ 和 API 兼容说明。
-*   英文入口在哪里？可从 [English docs Quick Links](docs/en/index.md#quick-links) 跳转到 Phase-5 Migration FAQ 与 Compatibility Notes。
 
 ## 可视化 (Visualization)
 
@@ -294,20 +284,21 @@ AKQuant 采用严格的测试流程以确保回测引擎的准确性：
 
 运行测试：
 ```bash
-# 1. 安装开发依赖
-pip install -e ".[dev]"
+# 1. 激活本地 conda 环境
+conda activate <env_name>
 
-# 2. 运行所有测试
+# 2. 构建并绑定 Rust 扩展
+maturin develop
+
+# 3. 运行所有测试
 pytest
 
-# 3. 运行 Rust 核心测试（自动处理 macOS + conda 动态库路径）
+# 4. 运行 Rust 核心测试（自动处理 macOS + conda 动态库路径）
 ./scripts/cargo-test.sh -q
 
-# 4. 仅运行黄金测试
+# 5. 仅运行黄金测试
 pytest tests/golden/test_golden.py
 ```
-
-## 贡献指南
 
 ## Citation
 
