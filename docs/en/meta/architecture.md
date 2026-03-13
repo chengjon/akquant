@@ -35,28 +35,30 @@ akquant/
 ├── pyproject.toml      # Python build system (maturin)
 ├── src/                # Rust source code
 │   ├── lib.rs          # PyO3 entry point
-│   ├── model/          # Data models (Order, Trade, Instrument, Bar, etc.)
-│   ├── data.rs         # Data source (DataFeed)
-│   ├── engine.rs       # Core backtest engine
-│   ├── event.rs        # Event definitions and bus messages
-│   ├── clock.rs        # Trading clock
-│   ├── execution.rs    # Exchange simulation and order matching
-│   ├── market.rs       # Market rules (Fees, T+1/T+0)
-│   ├── portfolio.rs    # Fund and position management
-│   ├── risk.rs         # Risk management (RiskManager)
+│   ├── engine/         # Engine core (Core, State, Python bindings)
+│   ├── data/           # Data layer (Feed, Client, Aggregator)
+│   ├── event.rs        # Event definitions
+│   ├── event_manager.rs # Event manager
+│   ├── execution/      # Execution layer (Matcher, Simulated, Realtime, Slippage)
+│   ├── market/         # Market layer (Manager, China, Simple, Stock, Futures)
+│   ├── risk/           # Risk layer (Manager, Rule, Config, Asset-specific)
+│   ├── portfolio.rs    # Funds and position management
 │   ├── context.rs      # Strategy interaction context
 │   ├── history.rs      # Historical data management (Zero-Copy View)
-│   ├── analysis.rs     # Performance metric calculation
-│   └── indicators.rs   # High-performance indicator implementation
+│   ├── analysis/       # Performance analysis
+│   ├── pipeline/       # Pipeline processing
+│   ├── settlement/     # Settlement logic
+│   ├── statistics/     # Statistics module
+│   └── model/          # Data models (Order, Trade, Instrument, Bar, etc.)
 ├── python/             # Python source code
 │   └── akquant/
 │       ├── ml/         # Machine Learning adapters
+│       ├── plot/       # Plotting and analysis modules
+│       ├── backtest/   # Backtest engine wrappers
 │       ├── __init__.py
 │       ├── akquant.pyi # Type hint file
-│       ├── backtest.py # Backtest entry
 │       ├── strategy.py # Strategy base class
-│       ├── indicator.py# Indicator wrapper
-│       ├── optimize.py # Parameter optimization
+│       ├── config.py   # Configuration definitions
 │       └── ...         # Other helper modules
 └── examples/           # Usage examples
 ```

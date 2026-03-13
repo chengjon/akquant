@@ -97,7 +97,6 @@ plugins:
             Multi-Timeframe Feed API: 多时间框架 Feed API
             Data Feed Adapter Spec: 数据适配层规范
             Broker Capability Matrix: Broker 能力矩阵
-            Complex Order Graph: 复杂订单图模型
             Analyzer Plugin Spec: Analyzer 插件规范
             TA-Lib Top20 Plan: TA-Lib Top20 迁移计划
             Capability Boost Plan: 能力补强路线图
@@ -167,7 +166,6 @@ plugins:
             Multi-Timeframe Feed API: Multi-Timeframe Feed API
             Data Feed Adapter Spec: Data Feed Adapter Spec
             Broker Capability Matrix: Broker Capability Matrix
-            Complex Order Graph: Complex Order Graph
             Analyzer Plugin Spec: Analyzer Plugin Spec
             TA-Lib Top20 Plan: TA-Lib Top20 Plan
             Capability Boost Plan: Capability Boost Plan
@@ -260,7 +258,6 @@ nav:
       - Multi-Timeframe Feed API: advanced/multi_timeframe_feed_api.md
       - Data Feed Adapter Spec: advanced/data_feed_adapter_spec.md
       - Broker Capability Matrix: advanced/broker_capability_matrix.md
-      - Complex Order Graph: advanced/complex_order_graph.md
       - Analyzer Plugin Spec: advanced/analyzer_plugin_spec.md
       - TA-Lib Top20 Plan: advanced/talib_top20_plan.md
       - Capability Boost Plan: advanced/capability_boost_plan.md

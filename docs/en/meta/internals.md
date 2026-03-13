@@ -43,27 +43,27 @@ akquant/
 │   └── akquant/            # Python package source (User Interface)
 │       ├── __init__.py     # Exports public API
 │       ├── strategy.py     # Strategy base class: encapsulates context, provides ML training & trading interface
-│       ├── backtest.py     # BacktestResult analysis & DataFrame conversion
+│       ├── backtest/       # Backtest result analysis and engine wrappers
 │       ├── config.py       # Config definitions: BacktestConfig, StrategyConfig, RiskConfig
 │       ├── risk.py         # Risk config adapter layer
 │       ├── data.py         # Data loading & catalog service (DataCatalog)
 │       ├── sizer.py        # Sizer base class: provides various position sizing implementations
 │       ├── indicator.py    # Python indicator interface
 │       ├── optimize.py     # Parameter optimization tool
-│       ├── plot.py         # Plotting tool
+│       ├── plot/           # Plotting tool package
 │       ├── log.py          # Logging module
-│       ├── utils.py        # Utility functions
+│       ├── utils/          # Utility functions
 │       ├── ml/             # Machine Learning framework (New)
 │       │   ├── __init__.py
 │       │   └── model.py    # QuantModel, SklearnAdapter, ValidationConfig
 │       └── akquant.pyi     # Type hint file (IDE completion support)
 ├── tests/                  # Test cases
 └── examples/               # Example code
-    ├── benchmark_akquant_multi.py  # Multi-threaded Benchmark
-    ├── ml_framework_demo.py        # ML framework basic example
-    ├── ml_walk_forward_demo.py     # Walk-forward training example
-    ├── optimization_demo.py        # Parameter optimization example
-    └── plot_demo.py                # Plotting example
+    ├── 18_benchmark_multisymbol.py # Multi-symbol benchmark example
+    ├── 09_ml_framework.py          # ML framework basic example
+    ├── 10_ml_walk_forward.py       # Walk-forward training example
+    ├── 02_parameter_optimization.py # Parameter optimization example
+    └── 11_plot_visualization.py    # Plotting example
 ```
 
 ## 2. Core Component Architecture Details
@@ -80,7 +80,7 @@ To ensure cross-language interaction performance and type safety, core data stru
 *   **`instrument.rs`**: `Instrument` contains `multiplier` (contract multiplier) and `tick_size`.
 *   **`market_data.rs`**: `Bar` (OHLCV) and `Tick` (Last Price/Volume).
 
-### 2.2 Execution Layer (`src/execution.rs`)
+### 2.2 Execution Layer (`src/execution/`)
 
 `ExchangeSimulator` is the core of backtest accuracy, responsible for simulating exchange matching logic.
 
@@ -89,14 +89,14 @@ To ensure cross-language interaction performance and type safety, core data stru
     *   **Market Order**: Matches at `Close` or `Open` based on `ExecutionMode`.
 *   **Trigger Mechanism**: Supports `trigger_price` (Stop Loss/Take Profit orders).
 
-### 2.3 Market Rule Layer (`src/market.rs`)
+### 2.3 Market Rule Layer (`src/market/`)
 
 Isolates rules of different markets via `MarketModel` Trait. Currently built-in `ChinaMarket` (A-share market rules):
 
 *   **Commission Calculation**: Supports stocks (Stamp Tax, Transfer Fee, Commission) and Futures (Per Lot or Per Amount).
 *   **Trading Restrictions**: Strict T+1 (Stocks) and T+0 (Futures) available position management.
 
-### 2.4 Risk Control Layer (`src/risk.rs`)
+### 2.4 Risk Control Layer (`src/risk/`)
 
 `RiskManager` is independent of the execution layer, intercepting every order:
 
@@ -112,7 +112,7 @@ Isolates rules of different markets via `MarketModel` Trait. Currently built-in 
 *   `available_positions`: Sellable positions (Core of T+1 logic).
 *   **Equity Calculation**: Real-time Mark-to-Market calculation.
 
-### 2.6 Engine Layer (`src/engine.rs` & `src/history.rs`)
+### 2.6 Engine Layer (`src/engine/` & `src/history.rs`)
 
 `Engine` is the system driver:
 
@@ -120,7 +120,7 @@ Isolates rules of different markets via `MarketModel` Trait. Currently built-in 
 *   **History Data Management**: `Engine` internally maintains a `History` module, an efficient ring buffer storing data for the last N bars, allowing strategies fast access via `get_history` without accumulating data on the Python side.
 *   **Day Cut Processing**: Triggers T+1 unlocking, expired order cleanup.
 
-### 2.7 Analysis Layer (`src/analysis.rs`)
+### 2.7 Analysis Layer (`src/analysis/`)
 
 Follows standard PnL calculation: `Gross PnL`, `Net PnL`, `Commission`.
 
@@ -134,7 +134,7 @@ Follows standard PnL calculation: `Gross PnL`, `Net PnL`, `Commission`.
         *   `set_rolling_window(train, step)`: Configure rolling training parameters.
         *   `on_train_signal(context)`: Periodically trigger model training.
         *   `prepare_features(df)`: Feature engineering interface.
-*   **`BacktestResult` (`backtest.py`)**:
+*   **`BacktestResult` (`backtest/result.py`)**:
     *   Encapsulates `BacktestResult` returned by Rust.
     *   Provides convenient properties like `metrics_df`, `positions`.
 *   **`Sizer` (`sizer.py`)**: Position sizing base class.
@@ -175,7 +175,7 @@ Signal -> Creation -> Submission -> Risk Check (Rust) -> Matching (Rust) -> Sett
 
 1.  `src/model/types.rs`: Add enum.
 2.  `src/model/order.rs`: Update struct.
-3.  `src/execution.rs`: Implement matching logic.
+3.  `src/execution/`: Implement matching logic.
 4.  `akquant.pyi`: Update type hints.
 
 ### 4.2 How to Customize Indicators

@@ -32,13 +32,6 @@
 
 👉 **[阅读完整文档](https://akquant.akfamily.xyz/)** | **[English Documentation](https://akquant.akfamily.xyz/en/)**
 
-## 快速导航
-
-*   动态策略加载（明文 / 加密）：[examples/44_strategy_source_loader_demo.py](examples/44_strategy_source_loader_demo.py)
-*   教材章节（动态策略加载）：[examples/textbook/ch15_strategy_loader.py](examples/textbook/ch15_strategy_loader.py)
-*   运行时配置与加载器说明（中文）：[docs/zh/advanced/runtime_config.md](docs/zh/advanced/runtime_config.md#9-动态策略加载strategysource--strategyloader)
-*   Runtime config and loader guide (English): [docs/en/advanced/runtime_config.md](docs/en/advanced/runtime_config.md#9-dynamic-strategy-loading-strategy_source--strategy_loader)
-
 ## 安装说明
 
 **AKQuant** 已发布至 PyPI，无需安装 Rust 环境即可直接使用。
@@ -269,10 +262,10 @@ executions_by_strategy = result.executions_by_strategy() # 按策略归属聚合
 ## 文档索引
 
 *   📖 **[核心特性与架构](docs/zh/index.md#核心特性)**: 了解 AKQuant 的设计理念与性能优势。
-*   🛠️ **[安装指南](docs/zh/installation.md)**: 详细的安装步骤（含源码编译）。
-*   🚀 **[快速入门](docs/zh/quickstart.md)**: 更多示例与基础用法。
-*   🤖 **[机器学习指南](docs/zh/ml_guide.md)**: 如何使用内置的 ML 框架进行滚动训练。
-*   📚 **[API 参考](docs/zh/api.md)**: 详细的类与函数文档。
+*   🛠️ **[安装指南](docs/zh/start/installation.md)**: 详细的安装步骤（含源码编译）。
+*   🚀 **[快速入门](docs/zh/start/quickstart.md)**: 更多示例与基础用法。
+*   🤖 **[机器学习指南](docs/zh/advanced/ml.md)**: 如何使用内置的 ML 框架进行滚动训练。
+*   📚 **[API 参考](docs/zh/reference/api.md)**: 详细的类与函数文档。
 *   💻 **[贡献指南](CONTRIBUTING.md)**: 如何参与项目开发。
 
 ## 🧪 测试与质量保证
