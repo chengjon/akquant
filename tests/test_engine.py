@@ -237,6 +237,86 @@ def test_run_backtest_accepts_data_feed_adapter() -> None:
     assert set(result.orders_df["symbol"].astype(str)) == {symbol}
 
 
+def test_run_backtest_dataframe_multisymbol_preserves_bar_symbol() -> None:
+    """Keep bar.symbol aligned with per-row symbol values in DataFrame mode."""
+
+    class CollectSymbolsStrategy(akquant.Strategy):
+        """Collect symbols observed in on_bar callbacks."""
+
+        def __init__(self) -> None:
+            """Initialize the collected symbol container."""
+            super().__init__()
+            self.seen_symbols: list[str] = []
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            """Record callback symbol for later assertions."""
+            self.seen_symbols.append(str(bar.symbol))
+
+    rows = [
+        {
+            "timestamp": "2024-01-02",
+            "symbol": "IF2401.CFX",
+            "open": 10.0,
+            "high": 11.0,
+            "low": 9.0,
+            "close": 10.5,
+            "volume": 1000.0,
+        },
+        {
+            "timestamp": "2024-01-02",
+            "symbol": "IF2402.CFX",
+            "open": 20.0,
+            "high": 21.0,
+            "low": 19.0,
+            "close": 20.5,
+            "volume": 1000.0,
+        },
+        {
+            "timestamp": "2024-01-03",
+            "symbol": "IF2401.CFX",
+            "open": 11.0,
+            "high": 12.0,
+            "low": 10.0,
+            "close": 11.5,
+            "volume": 1000.0,
+        },
+        {
+            "timestamp": "2024-01-03",
+            "symbol": "IF2402.CFX",
+            "open": 21.0,
+            "high": 22.0,
+            "low": 20.0,
+            "close": 21.5,
+            "volume": 1000.0,
+        },
+    ]
+    df = pd.DataFrame(rows)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.set_index("timestamp")
+
+    result = akquant.run_backtest(
+        data=df,
+        strategy=CollectSymbolsStrategy,
+        symbol=["IF2401.CFX", "IF2402.CFX"],
+        start_time="2024-01-02",
+        end_time="2024-01-03",
+        execution_mode="current_close",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    strategy = cast(CollectSymbolsStrategy, result.strategy)
+    assert len(strategy.seen_symbols) == len(df)
+    assert set(strategy.seen_symbols) == {"IF2401.CFX", "IF2402.CFX"}
+    assert strategy.seen_symbols.count("IF2401.CFX") == 2
+    assert strategy.seen_symbols.count("IF2402.CFX") == 2
+
+
 def test_engine_run_empty() -> None:
     """Test running engine with no data."""
     engine = akquant.Engine()

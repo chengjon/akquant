@@ -1016,27 +1016,36 @@ def run_backtest(
                 else:
                     df_input = df_input[df_input.index <= ts_end]
 
-            # Try to infer symbol from DataFrame if not explicitly provided or default
-            if (
-                not symbols or symbols == ["BENCHMARK"]
-            ) and "symbol" in df_input.columns:
-                unique_symbols = df_input["symbol"].unique()
-                if len(unique_symbols) == 1:
-                    inferred = unique_symbols[0]
-                    if symbols == ["BENCHMARK"]:
-                        symbols = [inferred]
-                    else:
-                        if inferred not in symbols:
-                            symbols.append(inferred)
-
-            target_symbol = symbols[0] if symbols else "BENCHMARK"
             df = prepare_dataframe(df_input)
-            data_map_for_indicators[target_symbol] = df
-            arrays = df_to_arrays(df, symbol=target_symbol)
-            feed.add_arrays(*arrays)  # type: ignore
-            feed.sort()
-            if target_symbol not in symbols:
-                symbols = [target_symbol]
+            if "symbol" in df.columns:
+                df = df.copy()
+                df["symbol"] = df["symbol"].astype(str)
+                filter_symbols = bool(symbols and "BENCHMARK" not in symbols)
+                if filter_symbols:
+                    df = df[df["symbol"].isin(symbols)]
+                if not df.empty:
+                    arrays = df_to_arrays(df)
+                    feed.add_arrays(*arrays)  # type: ignore
+                    grouped = df.groupby("symbol", sort=False)
+                    for grouped_symbol, grouped_df in grouped:
+                        sym = str(grouped_symbol)
+                        data_map_for_indicators[sym] = grouped_df.copy()
+                    detected_symbols = [str(s) for s in df["symbol"].unique().tolist()]
+                    if not symbols or symbols == ["BENCHMARK"]:
+                        symbols = detected_symbols
+                    else:
+                        for sym in detected_symbols:
+                            if sym not in symbols:
+                                symbols.append(sym)
+                feed.sort()
+            else:
+                target_symbol = symbols[0] if symbols else "BENCHMARK"
+                data_map_for_indicators[target_symbol] = df
+                arrays = df_to_arrays(df, symbol=target_symbol)
+                feed.add_arrays(*arrays)  # type: ignore
+                feed.sort()
+                if target_symbol not in symbols:
+                    symbols = [target_symbol]
         elif isinstance(data, dict):
             # If explicit symbols are provided (i.e., not just the default "BENCHMARK"),
             # we filter the data dictionary to only include requested symbols.
@@ -1155,11 +1164,15 @@ def run_backtest(
         day_bounds: Dict[str, Tuple[int, int]] = {}
         for df in data_map_for_indicators.values():
             if not df.empty and isinstance(df.index, pd.DatetimeIndex):
-                dates = df.index.normalize().unique()
+                normalized_index = cast(pd.DatetimeIndex, df.index.normalize())
+                dates = normalized_index.unique()
                 all_dates.update(dates)
-                grouped = df.groupby(df.index.normalize())
-                for day_ts, day_df in grouped:
-                    day_key = pd.Timestamp(day_ts).date().isoformat()
+                for raw_day_ts in dates:
+                    day_ts = pd.Timestamp(raw_day_ts)
+                    day_df = df[normalized_index == day_ts]
+                    if day_df.empty:
+                        continue
+                    day_key = day_ts.date().isoformat()
                     start_ns = int(day_df.index.min().value)
                     end_ns = int(day_df.index.max().value)
                     if day_key in day_bounds:
