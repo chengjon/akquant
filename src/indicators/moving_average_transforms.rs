@@ -5,6 +5,7 @@ macro_rules! define_unary_indicator {
     ($name:ident, $calc:expr) => {
         #[gen_stub_pyclass]
         #[pyclass(from_py_object)]
+        #[allow(non_camel_case_types)]
         #[derive(Debug, Clone)]
         pub struct $name {
             current_value: Option<f64>,
