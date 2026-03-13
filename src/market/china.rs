@@ -20,6 +20,7 @@ pub struct ChinaMarketConfig {
     pub fund: Option<fund::FundConfig>,
     pub option: Option<option::OptionConfig>,
     pub sessions: Vec<SessionRange>,
+    pub futures_fee_by_prefix: Vec<(String, futures::FuturesConfig)>,
 }
 
 fn default_sessions() -> Vec<SessionRange> {
@@ -72,6 +73,7 @@ impl Default for ChinaMarketConfig {
             fund: None,
             option: None,
             sessions: default_sessions(),
+            futures_fee_by_prefix: Vec::new(),
         }
     }
 }
@@ -95,6 +97,23 @@ impl ChinaMarket {
     }
     pub fn from_config(config: ChinaMarketConfig) -> Self {
         Self { config }
+    }
+
+    fn futures_config_for_symbol(&self, symbol: &str) -> Option<&futures::FuturesConfig> {
+        let mut best_match: Option<&futures::FuturesConfig> = None;
+        let mut best_len = 0usize;
+        let symbol_upper = symbol.to_uppercase();
+        for (prefix, cfg) in &self.config.futures_fee_by_prefix {
+            let normalized = prefix.trim().to_uppercase();
+            if normalized.is_empty() {
+                continue;
+            }
+            if symbol_upper.starts_with(&normalized) && normalized.len() > best_len {
+                best_match = Some(cfg);
+                best_len = normalized.len();
+            }
+        }
+        best_match
     }
 }
 
@@ -131,7 +150,10 @@ impl MarketModel for ChinaMarket {
                 }
             }
             AssetType::Futures => {
-                if let Some(config) = &self.config.futures {
+                if let Some(config) = self
+                    .futures_config_for_symbol(instrument.symbol())
+                    .or(self.config.futures.as_ref())
+                {
                     futures::calculate_commission(
                         config,
                         instrument,

@@ -122,12 +122,41 @@ impl MarketManager {
     /// 设置期货费率规则
     ///
     /// :param commission_rate: 佣金率 (如 0.0001)
-    pub fn set_future_fee_rules(&mut self, commission_rate: f64) {
+    pub fn set_futures_fee_rules(&mut self, commission_rate: f64) {
         if let MarketConfig::China(ref mut c) = self.config {
             let futures = c
                 .futures
                 .get_or_insert_with(futures::FuturesConfig::default);
             futures.commission_rate = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
+            self.model = self.config.create_model();
+        }
+    }
+
+    pub fn set_futures_fee_rules_by_prefix(
+        &mut self,
+        symbol_prefix: String,
+        commission_rate: f64,
+    ) {
+        if let MarketConfig::China(ref mut c) = self.config {
+            let prefix = symbol_prefix.trim().to_uppercase();
+            if prefix.is_empty() {
+                return;
+            }
+            let mut updated = false;
+            for (existing_prefix, cfg) in &mut c.futures_fee_by_prefix {
+                if existing_prefix == &prefix {
+                    cfg.commission_rate =
+                        Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
+                    updated = true;
+                    break;
+                }
+            }
+            if !updated {
+                let cfg = futures::FuturesConfig {
+                    commission_rate: Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO),
+                };
+                c.futures_fee_by_prefix.push((prefix, cfg));
+            }
             self.model = self.config.create_model();
         }
     }

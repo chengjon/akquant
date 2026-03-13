@@ -560,11 +560,48 @@ class Engine:
         """
         ...
 
-    def set_future_fee_rules(self, commission_rate: float) -> None:
+    def set_futures_fee_rules(self, commission_rate: float) -> None:
         r"""
         设置期货费率规则.
 
         :param commission_rate: 佣金率 (如 0.0001)
+        """
+        ...
+
+    def set_futures_fee_rules_by_prefix(
+        self, symbol_prefix: str, commission_rate: float
+    ) -> None:
+        r"""
+        设置期货品种前缀费率规则.
+
+        :param symbol_prefix: 品种前缀 (如 RB, IF)
+        :param commission_rate: 佣金率
+        """
+        ...
+
+    def set_futures_validation_options(
+        self, enforce_tick_size: bool, enforce_lot_size: bool
+    ) -> None:
+        r"""
+        设置期货撮合前校验开关.
+
+        :param enforce_tick_size: 是否启用最小变动价位校验
+        :param enforce_lot_size: 是否启用手数整数倍校验
+        """
+        ...
+
+    def set_futures_validation_options_by_prefix(
+        self,
+        symbol_prefix: str,
+        enforce_tick_size: typing.Optional[bool],
+        enforce_lot_size: typing.Optional[bool],
+    ) -> None:
+        r"""
+        设置期货品种前缀校验开关.
+
+        :param symbol_prefix: 品种前缀 (如 RB, IF)
+        :param enforce_tick_size: 覆盖最小变动价位校验, None 表示沿用默认
+        :param enforce_lot_size: 覆盖手数整数倍校验, None 表示沿用默认
         """
         ...
 

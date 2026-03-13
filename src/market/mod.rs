@@ -80,4 +80,40 @@ mod tests {
             Decimal::from(1),
         );
     }
+
+    #[test]
+    fn test_china_market_futures_fee_by_prefix() {
+        let mut config = ChinaMarketConfig {
+            futures: Some(futures::FuturesConfig::default()),
+            ..Default::default()
+        };
+        config.futures_fee_by_prefix.push((
+            "RB".to_string(),
+            futures::FuturesConfig {
+                commission_rate: Decimal::from_str("0.0005").unwrap(),
+            },
+        ));
+
+        let market = ChinaMarket::from_config(config);
+        use crate::model::instrument::{FuturesInstrument, InstrumentEnum};
+        let instr = Instrument {
+            asset_type: AssetType::Futures,
+            inner: InstrumentEnum::Futures(FuturesInstrument {
+                symbol: "RB2310".to_string(),
+                multiplier: Decimal::from(10),
+                tick_size: Decimal::from_str("1").unwrap(),
+                margin_ratio: Decimal::from_str("0.1").unwrap(),
+                expiry_date: None,
+                settlement_type: None,
+            }),
+        };
+
+        let commission = market.calculate_commission(
+            &instr,
+            OrderSide::Buy,
+            Decimal::from(3500),
+            Decimal::from(2),
+        );
+        assert_eq!(commission, Decimal::from_str("35").unwrap());
+    }
 }

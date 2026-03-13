@@ -46,6 +46,21 @@ pub trait ExecutionClient: Send + Sync {
     ) {
     }
 
+    fn set_futures_validation_options(
+        &mut self,
+        _enforce_tick_size: bool,
+        _enforce_lot_size: bool,
+    ) {
+    }
+
+    fn set_futures_validation_options_by_prefix(
+        &mut self,
+        _symbol_prefix: String,
+        _enforce_tick_size: Option<bool>,
+        _enforce_lot_size: Option<bool>,
+    ) {
+    }
+
     /// 是否为实盘模式
     #[allow(dead_code)]
     fn is_live(&self) -> bool {

@@ -2262,3 +2262,285 @@ def test_run_backtest_analyzer_plugins_multi_slot_owner_context() -> None:
     assert "owner_aware" in outputs
     assert outputs["owner_aware"]["bar_owner_ids"] == ["alpha", "beta"]
     assert outputs["owner_aware"]["trade_owner_ids"] == ["alpha", "beta"]
+
+
+def test_run_backtest_china_futures_validation_prefix_override() -> None:
+    """Prefix validation config should override default futures lot validation."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_futures_validation_options_by_prefix"):
+        pytest.skip("Engine binary does not expose futures prefix validation methods")
+
+    class FractionalFuturesBuyStrategy(akquant.Strategy):
+        def __init__(self) -> None:
+            super().__init__()
+            self._submitted = False
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            if self._submitted:
+                return
+            self.buy(symbol=bar.symbol, quantity=1.5)
+            self._submitted = True
+
+    symbol = "RB2310"
+    bars = _build_regression_bars(symbol)
+    config_reject = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(initial_cash=1_000_000.0),
+        instruments_config=[
+            akquant.InstrumentConfig(
+                symbol=symbol,
+                asset_type="FUTURES",
+                multiplier=10.0,
+                margin_ratio=0.1,
+                tick_size=0.2,
+            )
+        ],
+        china_futures=akquant.ChinaFuturesConfig(
+            enforce_lot_size=True,
+            enforce_tick_size=True,
+        ),
+    )
+    result_reject = akquant.run_backtest(
+        data=bars,
+        strategy=FractionalFuturesBuyStrategy,
+        symbol=symbol,
+        show_progress=False,
+        execution_mode="current_close",
+        config=config_reject,
+    )
+    reject_reasons = (
+        result_reject.orders_df["reject_reason"].fillna("").astype(str).tolist()
+    )
+    assert any("lot size" in reason for reason in reject_reasons)
+
+    config_accept = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(initial_cash=1_000_000.0),
+        instruments_config=[
+            akquant.InstrumentConfig(
+                symbol=symbol,
+                asset_type="FUTURES",
+                multiplier=10.0,
+                margin_ratio=0.1,
+                tick_size=0.2,
+            )
+        ],
+        china_futures=akquant.ChinaFuturesConfig(
+            enforce_lot_size=True,
+            enforce_tick_size=True,
+            validation_by_symbol_prefix=[
+                akquant.ChinaFuturesValidationConfig(
+                    symbol_prefix="RB",
+                    enforce_lot_size=False,
+                )
+            ],
+        ),
+    )
+    result_accept = akquant.run_backtest(
+        data=bars,
+        strategy=FractionalFuturesBuyStrategy,
+        symbol=symbol,
+        show_progress=False,
+        execution_mode="current_close",
+        config=config_accept,
+    )
+    accept_reject_reasons = (
+        result_accept.orders_df["reject_reason"].fillna("").astype(str).tolist()
+    )
+    assert not any("lot size" in reason for reason in accept_reject_reasons)
+
+
+def test_run_backtest_china_futures_instrument_template_multiplier() -> None:
+    """Instrument template should inject futures multiplier by symbol prefix."""
+
+    class BuyAndHoldOnceStrategy(akquant.Strategy):
+        def __init__(self) -> None:
+            super().__init__()
+            self._submitted = False
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            if self._submitted:
+                return
+            self.buy(symbol=bar.symbol, quantity=1.0)
+            self._submitted = True
+
+    symbol = "RB_TMPL_01"
+    bars = _build_regression_bars(symbol)
+    config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(
+            initial_cash=1_000_000.0,
+            commission_rate=0.0,
+            slippage=0.0,
+            min_commission=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+        ),
+        china_futures=akquant.ChinaFuturesConfig(
+            enforce_sessions=False,
+            instrument_templates_by_symbol_prefix=[
+                akquant.ChinaFuturesInstrumentTemplateConfig(
+                    symbol_prefix="RB",
+                    multiplier=10.0,
+                    margin_ratio=0.1,
+                    tick_size=0.2,
+                    lot_size=1.0,
+                )
+            ],
+        ),
+    )
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=BuyAndHoldOnceStrategy,
+        symbol=symbol,
+        show_progress=False,
+        execution_mode="current_close",
+        config=config,
+    )
+    final_equity = float(result.equity_curve.iloc[-1])
+    assert final_equity == pytest.approx(1_000_009.9977, rel=0.0, abs=1e-6)
+
+
+def test_run_backtest_china_futures_template_commission_prefix() -> None:
+    """Template commission should be merged into prefix fee rules."""
+    probe = akquant.Engine()
+    if not hasattr(probe, "set_futures_fee_rules_by_prefix"):
+        pytest.skip("Engine binary does not expose futures prefix fee methods")
+
+    class BuyAndHoldOnceStrategy(akquant.Strategy):
+        def __init__(self) -> None:
+            super().__init__()
+            self._submitted = False
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            if self._submitted:
+                return
+            self.buy(symbol=bar.symbol, quantity=1.0)
+            self._submitted = True
+
+    symbol = "RB_TMPL_FEE_01"
+    bars = _build_regression_bars(symbol)
+    base_config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(
+            initial_cash=1_000_000.0,
+            commission_rate=0.0,
+            slippage=0.0,
+            min_commission=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+        ),
+        china_futures=akquant.ChinaFuturesConfig(
+            enforce_sessions=False,
+            instrument_templates_by_symbol_prefix=[
+                akquant.ChinaFuturesInstrumentTemplateConfig(
+                    symbol_prefix="RB",
+                    multiplier=10.0,
+                    margin_ratio=0.1,
+                    tick_size=0.2,
+                    lot_size=1.0,
+                )
+            ],
+        ),
+    )
+    high_fee_config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(
+            initial_cash=1_000_000.0,
+            commission_rate=0.0,
+            slippage=0.0,
+            min_commission=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+        ),
+        china_futures=akquant.ChinaFuturesConfig(
+            enforce_sessions=False,
+            instrument_templates_by_symbol_prefix=[
+                akquant.ChinaFuturesInstrumentTemplateConfig(
+                    symbol_prefix="RB",
+                    multiplier=10.0,
+                    margin_ratio=0.1,
+                    tick_size=0.2,
+                    lot_size=1.0,
+                    commission_rate=0.001,
+                )
+            ],
+        ),
+    )
+    result_base = akquant.run_backtest(
+        data=bars,
+        strategy=BuyAndHoldOnceStrategy,
+        symbol=symbol,
+        show_progress=False,
+        execution_mode="current_close",
+        config=base_config,
+    )
+    result_high_fee = akquant.run_backtest(
+        data=bars,
+        strategy=BuyAndHoldOnceStrategy,
+        symbol=symbol,
+        show_progress=False,
+        execution_mode="current_close",
+        config=high_fee_config,
+    )
+    assert float(result_high_fee.equity_curve.iloc[-1]) < float(
+        result_base.equity_curve.iloc[-1]
+    )
+
+
+def test_run_backtest_china_futures_rejects_duplicate_template_prefix() -> None:
+    """Duplicate template prefixes should fail fast."""
+    bars = _build_regression_bars("RB_DUP_TPL")
+    with pytest.raises(
+        ValueError,
+        match=(
+            "instrument_templates_by_symbol_prefix\\[1\\] duplicates symbol_prefix 'RB'"
+        ),
+    ):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="RB_DUP_TPL",
+            show_progress=False,
+            config=akquant.BacktestConfig(
+                strategy_config=akquant.StrategyConfig(),
+                china_futures=akquant.ChinaFuturesConfig(
+                    instrument_templates_by_symbol_prefix=[
+                        akquant.ChinaFuturesInstrumentTemplateConfig(
+                            symbol_prefix="RB",
+                            multiplier=10.0,
+                        ),
+                        akquant.ChinaFuturesInstrumentTemplateConfig(
+                            symbol_prefix="rb",
+                            multiplier=20.0,
+                        ),
+                    ]
+                ),
+            ),
+        )
+
+
+def test_run_backtest_china_futures_rejects_negative_template_multiplier() -> None:
+    """Negative template multiplier should fail fast."""
+    bars = _build_regression_bars("RB_BAD_MULT")
+    with pytest.raises(ValueError, match="multiplier must be > 0"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbol="RB_BAD_MULT",
+            show_progress=False,
+            config=akquant.BacktestConfig(
+                strategy_config=akquant.StrategyConfig(),
+                china_futures=akquant.ChinaFuturesConfig(
+                    instrument_templates_by_symbol_prefix=[
+                        akquant.ChinaFuturesInstrumentTemplateConfig(
+                            symbol_prefix="RB",
+                            multiplier=-1.0,
+                        )
+                    ]
+                ),
+            ),
+        )
+
+
+def test_china_futures_validation_config_requires_at_least_one_switch() -> None:
+    """Validation config should fail if both switches are omitted."""
+    with pytest.raises(
+        ValueError, match="must set enforce_tick_size or enforce_lot_size"
+    ):
+        akquant.ChinaFuturesValidationConfig(symbol_prefix="RB")

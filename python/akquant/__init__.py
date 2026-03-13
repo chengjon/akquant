@@ -22,7 +22,17 @@ from .backtest import (  # type: ignore
     run_warm_start,
 )
 from .checkpoint import save_snapshot, warm_start
-from .config import BacktestConfig, InstrumentConfig, StrategyConfig, strategy_config
+from .config import (
+    BacktestConfig,
+    ChinaFuturesConfig,
+    ChinaFuturesFeeConfig,
+    ChinaFuturesInstrumentTemplateConfig,
+    ChinaFuturesSessionConfig,
+    ChinaFuturesValidationConfig,
+    InstrumentConfig,
+    StrategyConfig,
+    strategy_config,
+)
 from .data import DataLoader
 from .feed_adapter import (
     CSVFeedAdapter,
@@ -81,6 +91,11 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "get_logger",
         "register_logger",
         "strategy_config",
+        "ChinaFuturesConfig",
+        "ChinaFuturesFeeConfig",
+        "ChinaFuturesInstrumentTemplateConfig",
+        "ChinaFuturesSessionConfig",
+        "ChinaFuturesValidationConfig",
         "Indicator",
         "IndicatorSet",
         "run_backtest",

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `run_backtest_stream` is removed; stream scenarios should call `run_backtest(..., on_event=...)`.
 - `run_backtest` always uses the unified stream core; runtime rollback flag `_engine_mode` is removed.
+- Futures fee Engine API naming is standardized to `set_futures_fee_rules*`; legacy `set_future_fee_rules*` is removed.
 
 ## [0.1.13] - 2026-02-09
 

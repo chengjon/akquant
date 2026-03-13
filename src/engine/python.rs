@@ -726,8 +726,35 @@ impl Engine {
     /// 设置期货费率规则
     ///
     /// :param commission_rate: 佣金率 (如 0.0001)
-    pub fn set_future_fee_rules(&mut self, commission_rate: f64) {
-        self.market_manager.set_future_fee_rules(commission_rate);
+    pub fn set_futures_fee_rules(&mut self, commission_rate: f64) {
+        self.market_manager.set_futures_fee_rules(commission_rate);
+    }
+
+    pub fn set_futures_fee_rules_by_prefix(
+        &mut self,
+        symbol_prefix: String,
+        commission_rate: f64,
+    ) {
+        self.market_manager
+            .set_futures_fee_rules_by_prefix(symbol_prefix, commission_rate);
+    }
+
+    fn set_futures_validation_options(&mut self, enforce_tick_size: bool, enforce_lot_size: bool) {
+        self.execution_model
+            .set_futures_validation_options(enforce_tick_size, enforce_lot_size);
+    }
+
+    fn set_futures_validation_options_by_prefix(
+        &mut self,
+        symbol_prefix: String,
+        enforce_tick_size: Option<bool>,
+        enforce_lot_size: Option<bool>,
+    ) {
+        self.execution_model.set_futures_validation_options_by_prefix(
+            symbol_prefix,
+            enforce_tick_size,
+            enforce_lot_size,
+        );
     }
 
     /// 设置基金费率规则

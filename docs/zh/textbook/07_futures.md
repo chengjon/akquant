@@ -20,6 +20,82 @@ python examples/textbook/ch07_futures.py
 2. 结果中可体现保证金与杠杆对权益波动的放大效应。
 3. 调整合约参数或杠杆后，策略波动率变化符合预期。
 
+## 7.0 AKQuant 中国期货配置速览
+
+`akquant` 在 `BacktestConfig` 下提供了 `china_futures` 配置入口，可同时管理：
+
+- 品种前缀模板（乘数、保证金、tick、手数）
+- 品种前缀费率覆盖
+- 品种前缀校验开关（tick 对齐、手数整数倍）
+- 会话行为（是否强制交易时段）
+
+示例：
+
+```python
+from akquant import (
+    BacktestConfig,
+    ChinaFuturesConfig,
+    ChinaFuturesInstrumentTemplateConfig,
+    ChinaFuturesValidationConfig,
+    InstrumentConfig,
+    StrategyConfig,
+)
+
+config = BacktestConfig(
+    strategy_config=StrategyConfig(initial_cash=500_000),
+    instruments_config=[
+        InstrumentConfig(symbol="RB2310", asset_type="FUTURES")
+    ],
+    china_futures=ChinaFuturesConfig(
+        enforce_sessions=False,
+        instrument_templates_by_symbol_prefix=[
+            ChinaFuturesInstrumentTemplateConfig(
+                symbol_prefix="RB",
+                multiplier=10.0,
+                margin_ratio=0.1,
+                tick_size=1.0,
+                lot_size=1.0,
+                commission_rate=0.0001,
+            )
+        ],
+        validation_by_symbol_prefix=[
+            ChinaFuturesValidationConfig(
+                symbol_prefix="RB",
+                enforce_tick_size=False,
+                enforce_lot_size=True,
+            )
+        ],
+    ),
+)
+```
+
+构造校验（Fail Fast）：
+
+- `symbol_prefix` 会自动去空格并大写；空值会直接报错
+- 模板里 `multiplier / margin_ratio / tick_size / lot_size` 必须大于 0
+- 模板和前缀规则里的 `commission_rate` 必须大于等于 0
+- `validation_by_symbol_prefix` 每条规则至少设置一个开关
+- 同一列表内前缀重复会报错，并定位到冲突项索引
+
+配置优先级矩阵（从高到低）：
+
+| 场景 | 最高优先级 | 次级优先级 | 兜底 |
+|---|---|---|---|
+| 合约参数（乘数/保证金/tick/手数） | `InstrumentConfig` 显式字段 | `instrument_templates_by_symbol_prefix` | `run_backtest` 默认参数 |
+| 前缀费率 | `fee_by_symbol_prefix` | 模板里的 `commission_rate` | `StrategyConfig.commission_rate` |
+| 前缀校验开关 | `validation_by_symbol_prefix` | 模板里的 `enforce_tick_size / enforce_lot_size` | `ChinaFuturesConfig` 全局 `enforce_*` |
+| 市场选择 | `use_china_futures_market=False` 或混合资产触发中国市场 | `use_china_futures_market=True` 且纯期货资产 | `use_simple_market` |
+
+说明：
+
+- 同一优先级层内按“同名单项覆盖”处理，后定义的显式规则覆盖模板默认。
+- 在撮合校验路径中，前缀匹配采用更具体前缀优先（例如 `RB` 与 `RB2` 同时命中时优先 `RB2`）。
+
+低层引擎 API 命名说明：
+
+- 期货费率相关接口统一为 `set_futures_fee_rules` 与 `set_futures_fee_rules_by_prefix`。
+- 旧命名单数形式 `set_future_fee_rules*` 已移除，迁移时请直接替换为复数接口。
+
 ## 7.1 期货市场机制 (Market Mechanisms)
 
 ### 7.1.1 标准化合约

@@ -25,9 +25,15 @@ from ..akquant import (
     Engine,
     ExecutionMode,
     Instrument,
+    TradingSession,
 )
 from ..analyzer_plugin import AnalyzerManager, AnalyzerPlugin
-from ..config import BacktestConfig, RiskConfig
+from ..config import (
+    BacktestConfig,
+    ChinaFuturesConfig,
+    ChinaFuturesInstrumentTemplateConfig,
+    RiskConfig,
+)
 from ..data import ParquetDataCatalog
 from ..feed_adapter import DataFeedAdapter, FeedSlice
 from ..log import get_logger, register_logger
@@ -81,6 +87,68 @@ def _parse_stream_mode(value: Any) -> str:
 
 def _noop_stream_event_handler(_event: BacktestStreamEvent) -> None:
     return None
+
+
+def _parse_asset_type_name(value: Any) -> str:
+    if isinstance(value, AssetType):
+        if value == AssetType.Futures:
+            return "futures"
+        if value == AssetType.Stock:
+            return "stock"
+        if value == AssetType.Fund:
+            return "fund"
+        if value == AssetType.Option:
+            return "option"
+        return "other"
+    if isinstance(value, str):
+        v_lower = value.lower()
+        if "future" in v_lower:
+            return "futures"
+        if "stock" in v_lower:
+            return "stock"
+        if "fund" in v_lower:
+            return "fund"
+        if "option" in v_lower:
+            return "option"
+    return "stock"
+
+
+def _parse_trading_session(value: Any) -> Any:
+    if isinstance(value, TradingSession):
+        return value
+    call_auction = getattr(
+        TradingSession, "CallAuction", getattr(TradingSession, "Normal", None)
+    )
+    pre_open = getattr(
+        TradingSession, "PreOpen", getattr(TradingSession, "PreMarket", None)
+    )
+    continuous = getattr(
+        TradingSession, "Continuous", getattr(TradingSession, "Normal", None)
+    )
+    break_session = getattr(
+        TradingSession, "Break", getattr(TradingSession, "Normal", None)
+    )
+    post_close = getattr(
+        TradingSession, "PostClose", getattr(TradingSession, "PostMarket", None)
+    )
+    closed = getattr(
+        TradingSession, "Closed", getattr(TradingSession, "PostMarket", None)
+    )
+    v_lower = str(value).strip().lower()
+    mapping = {
+        "call_auction": call_auction,
+        "callauction": call_auction,
+        "pre_open": pre_open,
+        "preopen": pre_open,
+        "continuous": continuous,
+        "break": break_session,
+        "post_close": post_close,
+        "postclose": post_close,
+        "closed": closed,
+    }
+    if v_lower in mapping and mapping[v_lower] is not None:
+        return mapping[v_lower]
+    raise ValueError(f"Unsupported trading session: {value}")
 
 
 def _is_data_feed_adapter(value: Any) -> bool:
@@ -1495,17 +1563,58 @@ def run_backtest(
         engine.set_execution_mode(execution_mode)
 
     # 4.1 市场规则配置
-    # 如果启用了 T+1，必须使用 ChinaMarket
-    if t_plus_one:
-        # T+1 必须使用 ChinaMarket
+    china_futures_config: Optional[ChinaFuturesConfig] = None
+    has_futures_instruments = False
+    has_non_futures_instruments = False
+    if config is not None:
+        china_futures_config = config.china_futures
+        if config.instruments_config:
+            if isinstance(config.instruments_config, list):
+                for inst in config.instruments_config:
+                    asset_name = _parse_asset_type_name(inst.asset_type)
+                    if asset_name == "futures":
+                        has_futures_instruments = True
+                    else:
+                        has_non_futures_instruments = True
+            elif isinstance(config.instruments_config, dict):
+                for inst in config.instruments_config.values():
+                    asset_name = _parse_asset_type_name(inst.asset_type)
+                    if asset_name == "futures":
+                        has_futures_instruments = True
+                    else:
+                        has_non_futures_instruments = True
+    if not has_futures_instruments:
+        default_asset_name = _parse_asset_type_name(
+            kwargs.get("asset_type", AssetType.Stock)
+        )
+        has_futures_instruments = default_asset_name == "futures"
+    if (
+        not has_futures_instruments
+        and china_futures_config
+        and china_futures_config.instrument_templates_by_symbol_prefix
+    ):
+        has_futures_instruments = True
+
+    if china_futures_config and has_futures_instruments:
+        if (
+            not china_futures_config.use_china_futures_market
+            or has_non_futures_instruments
+        ):
+            engine.use_china_market()
+        else:
+            engine.use_china_futures_market()
+        if t_plus_one:
+            engine.set_t_plus_one(True)
+    elif t_plus_one:
         engine.use_china_market()
         engine.set_t_plus_one(True)
     else:
-        # T+0 模式
-        # 使用SimpleMarket（支持佣金率和印花税）
         engine.use_simple_market(commission_rate)
 
-    engine.set_force_session_continuous(True)
+    force_session_continuous = True
+    if china_futures_config and has_futures_instruments:
+        force_session_continuous = not china_futures_config.enforce_sessions
+    engine.set_force_session_continuous(force_session_continuous)
     # 无论使用 SimpleMarket 还是 ChinaMarket，set_stock_fee_rules 都能正确配置费率
     engine.set_stock_fee_rules(
         commission_rate, stamp_tax_rate, transfer_fee_rate, min_commission
@@ -1537,6 +1646,95 @@ def run_backtest(
 
     if "option_commission" in kwargs:
         engine.set_option_fee_rules(kwargs["option_commission"])
+
+    if china_futures_config and has_futures_instruments:
+        template_validation_by_prefix: Dict[
+            str, Tuple[Optional[bool], Optional[bool]]
+        ] = {}
+        template_fee_by_prefix: Dict[str, float] = {}
+        if china_futures_config.instrument_templates_by_symbol_prefix:
+            for template in china_futures_config.instrument_templates_by_symbol_prefix:
+                prefix = template.symbol_prefix.strip().upper()
+                if not prefix:
+                    continue
+                if template.commission_rate is not None:
+                    template_fee_by_prefix[prefix] = float(template.commission_rate)
+                if (
+                    template.enforce_tick_size is not None
+                    or template.enforce_lot_size is not None
+                ):
+                    template_validation_by_prefix[prefix] = (
+                        template.enforce_tick_size,
+                        template.enforce_lot_size,
+                    )
+
+        if hasattr(engine, "set_futures_validation_options"):
+            cast(Any, engine).set_futures_validation_options(
+                bool(china_futures_config.enforce_tick_size),
+                bool(china_futures_config.enforce_lot_size),
+            )
+        else:
+            logger.warning(
+                "set_futures_validation_options is not available "
+                "in current engine binary"
+            )
+        merged_validation_by_prefix = dict(template_validation_by_prefix)
+        if china_futures_config.validation_by_symbol_prefix:
+            for validation_rule in china_futures_config.validation_by_symbol_prefix:
+                prefix = validation_rule.symbol_prefix.strip().upper()
+                if not prefix:
+                    continue
+                merged_validation_by_prefix[prefix] = (
+                    validation_rule.enforce_tick_size,
+                    validation_rule.enforce_lot_size,
+                )
+        if merged_validation_by_prefix:
+            for prefix, (tick_opt, lot_opt) in merged_validation_by_prefix.items():
+                if hasattr(engine, "set_futures_validation_options_by_prefix"):
+                    cast(Any, engine).set_futures_validation_options_by_prefix(
+                        prefix,
+                        tick_opt,
+                        lot_opt,
+                    )
+                else:
+                    logger.warning(
+                        "set_futures_validation_options_by_prefix is not available "
+                        "in current engine binary"
+                    )
+                    break
+
+        merged_fee_by_prefix = dict(template_fee_by_prefix)
+        if china_futures_config.fee_by_symbol_prefix:
+            for fee_rule in china_futures_config.fee_by_symbol_prefix:
+                prefix = fee_rule.symbol_prefix.strip().upper()
+                if not prefix:
+                    continue
+                merged_fee_by_prefix[prefix] = float(fee_rule.commission_rate)
+        if merged_fee_by_prefix:
+            for prefix, commission_rate_value in merged_fee_by_prefix.items():
+                if hasattr(engine, "set_futures_fee_rules_by_prefix"):
+                    cast(Any, engine).set_futures_fee_rules_by_prefix(
+                        prefix,
+                        commission_rate_value,
+                    )
+                else:
+                    logger.warning(
+                        "set_futures_fee_rules_by_prefix is not available "
+                        "in current engine binary"
+                    )
+                    break
+        if china_futures_config.sessions:
+            session_ranges: List[Tuple[str, str, TradingSession]] = []
+            for session_rule in china_futures_config.sessions:
+                session_ranges.append(
+                    (
+                        session_rule.start,
+                        session_rule.end,
+                        _parse_trading_session(session_rule.session),
+                    )
+                )
+            if session_ranges:
+                engine.set_market_sessions(session_ranges)
 
     # Apply Risk Config
 
@@ -1667,6 +1865,26 @@ def run_backtest(
                 pass
         return None
 
+    def _match_futures_template(
+        symbol: str,
+    ) -> Optional[ChinaFuturesInstrumentTemplateConfig]:
+        if (
+            china_futures_config is None
+            or not china_futures_config.instrument_templates_by_symbol_prefix
+        ):
+            return None
+        symbol_upper = symbol.upper()
+        best_template: Optional[ChinaFuturesInstrumentTemplateConfig] = None
+        best_len = 0
+        for tpl in china_futures_config.instrument_templates_by_symbol_prefix:
+            prefix = tpl.symbol_prefix.strip().upper()
+            if not prefix:
+                continue
+            if symbol_upper.startswith(prefix) and len(prefix) > best_len:
+                best_template = tpl
+                best_len = len(prefix)
+        return best_template
+
     for sym in symbols:
         # Priority: Pre-built Instrument > Config > Default
         if sym in prebuilt_instruments:
@@ -1682,6 +1900,7 @@ def run_backtest(
 
         # Check specific config
         i_conf = inst_conf_map.get(sym)
+        futures_template = _match_futures_template(sym)
 
         if i_conf:
             p_asset_type = _parse_asset_type(i_conf.asset_type)
@@ -1689,18 +1908,57 @@ def run_backtest(
             p_margin = i_conf.margin_ratio
             p_tick = i_conf.tick_size
             # If config has lot_size, use it, otherwise use global setting
-            p_lot = i_conf.lot_size if i_conf.lot_size != 1 else (current_lot_size or 1)
+            p_lot = (
+                i_conf.lot_size
+                if i_conf.lot_size != 1
+                else float(current_lot_size or 1.0)
+            )
+            if futures_template and p_asset_type == AssetType.Futures:
+                if i_conf.multiplier == 1 and futures_template.multiplier is not None:
+                    p_multiplier = futures_template.multiplier
+                if (
+                    i_conf.margin_ratio == 1
+                    and futures_template.margin_ratio is not None
+                ):
+                    p_margin = futures_template.margin_ratio
+                if i_conf.tick_size == 0.01 and futures_template.tick_size is not None:
+                    p_tick = futures_template.tick_size
+                if i_conf.lot_size == 1 and futures_template.lot_size is not None:
+                    p_lot = futures_template.lot_size
 
             p_opt_type = _parse_option_type(i_conf.option_type)
             p_strike = i_conf.strike_price
             p_expiry = _parse_expiry(i_conf.expiry_date)
             p_underlying = i_conf.underlying_symbol
         else:
-            p_asset_type = default_asset_type
-            p_multiplier = default_multiplier
-            p_margin = default_margin_ratio
-            p_tick = default_tick_size
-            p_lot = current_lot_size or 1
+            if futures_template:
+                p_asset_type = AssetType.Futures
+                p_multiplier = (
+                    futures_template.multiplier
+                    if futures_template.multiplier is not None
+                    else default_multiplier
+                )
+                p_margin = (
+                    futures_template.margin_ratio
+                    if futures_template.margin_ratio is not None
+                    else default_margin_ratio
+                )
+                p_tick = (
+                    futures_template.tick_size
+                    if futures_template.tick_size is not None
+                    else default_tick_size
+                )
+                p_lot = (
+                    futures_template.lot_size
+                    if futures_template.lot_size is not None
+                    else float(current_lot_size or 1.0)
+                )
+            else:
+                p_asset_type = default_asset_type
+                p_multiplier = default_multiplier
+                p_margin = default_margin_ratio
+                p_tick = default_tick_size
+                p_lot = float(current_lot_size or 1.0)
 
             p_opt_type = default_option_type
             p_strike = default_strike_price

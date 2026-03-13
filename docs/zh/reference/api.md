@@ -319,6 +319,19 @@ BacktestConfig (回测场景)
     └── commission_rate (资产专用佣金，覆盖 StrategyConfig)
 ```
 
+中国期货扩展配置位于 `BacktestConfig.china_futures`，用于管理前缀级规则：
+
+- `instrument_templates_by_symbol_prefix`: 品种模板（乘数/保证金/tick/手数/费率）
+- `fee_by_symbol_prefix`: 品种费率覆盖
+- `validation_by_symbol_prefix`: 品种撮合校验开关覆盖
+- `enforce_sessions`: 是否严格按交易时段控制成交
+
+配置对象采用“构造即校验”：
+
+- `symbol_prefix` 为空会直接报错
+- 模板数值范围非法（如 `multiplier <= 0`）会直接报错
+- 同一列表内前缀重复会报错并标注冲突项索引
+
 #### 2. 参数优先级 (Priority)
 
 `run_backtest` 函数的参数解析遵循以下优先级（由高到低）：
@@ -333,6 +346,34 @@ BacktestConfig (回测场景)
         `strategy_risk_budget`、`portfolio_risk_budget`）。
 3.  **默认值 (Defaults)**:
     *   如果上述两者都未提供，则使用系统默认值。
+
+中国期货扩展（`BacktestConfig.china_futures`）推荐使用以下优先级口径：
+
+| 配置项 | 高优先级 | 中优先级 | 默认值 |
+|---|---|---|---|
+| 合约参数（乘数/保证金/tick/手数） | `InstrumentConfig` 显式字段 | `instrument_templates_by_symbol_prefix` | `run_backtest` 默认参数 |
+| 品种费率 | `fee_by_symbol_prefix` | 模板 `commission_rate` | `StrategyConfig.commission_rate` |
+| 品种校验开关 | `validation_by_symbol_prefix` | 模板 `enforce_tick_size / enforce_lot_size` | 全局 `ChinaFuturesConfig.enforce_*` |
+| 市场路由 | `use_china_futures_market=False` 或混合资产回落 | `use_china_futures_market=True` 且纯期货 | `use_simple_market` |
+
+口径说明：
+
+*   同级规则冲突时，以显式规则覆盖模板规则。
+*   撮合校验路径按更具体前缀优先（更长匹配优先）。
+
+股票配置推荐使用以下优先级口径：
+
+| 配置项 | 高优先级 | 中优先级 | 默认值 |
+|---|---|---|---|
+| 股票费率（佣金/印花税/过户费/最低佣金） | `InstrumentConfig` 单标的费率字段 | `StrategyConfig` 全局费率字段 | `run_backtest` 内置默认值 |
+| 交易单位（`lot_size`） | `InstrumentConfig.lot_size`（显式设置） | `run_backtest(lot_size=...)` 全局设置 | `1` |
+| 市场制度（T+1） | `run_backtest(t_plus_one=...)` 显式参数 | `Engine.set_t_plus_one(...)` 引擎设置 | `False` |
+| 市场模型 | `use_china_market()` | `use_simple_market()` | 引擎默认市场配置 |
+
+股票侧说明：
+
+*   当前股票没有按代码前缀的模板层（不像期货的 `china_futures` 前缀模板）。
+*   生产场景建议优先用 `InstrumentConfig` 精确配置重点股票，再用 `StrategyConfig` 作为全局兜底。
 
 #### 3. 风控配置合并 (Risk Config Merging)
 
@@ -498,12 +539,20 @@ Tick 数据对象。
 *   `use_china_market()`: 启用中国市场 (股票)。
 *   `use_china_futures_market()`: 启用中国期货市场。
 *   `set_stock_fee_rules(commission, stamp_tax, transfer_fee, min_commission)`: 设置股票费率。
-*   `set_future_fee_rules(commission_rate)`: 设置期货费率。
+*   `set_futures_fee_rules(commission_rate)`: 设置期货费率。
+*   `set_futures_fee_rules_by_prefix(symbol_prefix, commission_rate)`: 设置期货品种前缀费率。
+*   `set_futures_validation_options(enforce_tick_size, enforce_lot_size)`: 设置期货撮合前校验开关。
+*   `set_futures_validation_options_by_prefix(symbol_prefix, enforce_tick_size, enforce_lot_size)`: 设置期货品种前缀校验开关。
 *   `set_fund_fee_rules(...)`: 设置基金费率。
 *   `set_option_fee_rules(...)`: 设置期权费率。
 *   `set_slippage(type, value)`: 设置滑点 (Fixed 或 Percent)。
 *   `set_volume_limit(limit)`: 设置成交量限制 (如 0.1 表示不超过 Bar 成交量的 10%)。
 *   `set_market_sessions(sessions)`: 设置交易时段。
+
+命名约定说明：
+
+*   期货费率接口统一使用复数命名 `set_futures_fee_rules*`。
+*   旧单数命名 `set_future_fee_rules*` 已移除，不再对外暴露。
 
 ### `akquant.gateway` 自定义 Broker 注册
 

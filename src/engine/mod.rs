@@ -58,7 +58,7 @@ mod tests {
         // We can verify via commission calculation if we had a way to invoke it without full run.
 
         // Let's at least verify future fee rules
-        engine.set_future_fee_rules(0.0005);
+        engine.set_futures_fee_rules(0.0005);
     }
 
     #[test]

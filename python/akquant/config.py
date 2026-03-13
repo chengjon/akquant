@@ -119,6 +119,135 @@ class InstrumentConfig:
 
 
 @dataclass
+class ChinaFuturesFeeConfig:
+    """中国期货费率配置."""
+
+    symbol_prefix: str
+    commission_rate: float
+
+    def __post_init__(self) -> None:
+        """Validate and normalize fee config."""
+        self.symbol_prefix = self.symbol_prefix.strip().upper()
+        if not self.symbol_prefix:
+            raise ValueError("symbol_prefix must not be empty")
+        if self.commission_rate < 0:
+            raise ValueError("commission_rate must be >= 0")
+
+
+@dataclass
+class ChinaFuturesSessionConfig:
+    """中国期货交易时段配置."""
+
+    start: str
+    end: str
+    session: str = "continuous"
+
+
+@dataclass
+class ChinaFuturesValidationConfig:
+    """中国期货校验开关配置."""
+
+    symbol_prefix: str
+    enforce_tick_size: Optional[bool] = None
+    enforce_lot_size: Optional[bool] = None
+
+    def __post_init__(self) -> None:
+        """Validate and normalize validation switch config."""
+        self.symbol_prefix = self.symbol_prefix.strip().upper()
+        if not self.symbol_prefix:
+            raise ValueError("symbol_prefix must not be empty")
+        if self.enforce_tick_size is None and self.enforce_lot_size is None:
+            raise ValueError(
+                "must set enforce_tick_size or enforce_lot_size "
+                "in ChinaFuturesValidationConfig"
+            )
+
+
+@dataclass
+class ChinaFuturesInstrumentTemplateConfig:
+    """中国期货品种模板配置."""
+
+    symbol_prefix: str
+    multiplier: Optional[float] = None
+    margin_ratio: Optional[float] = None
+    tick_size: Optional[float] = None
+    lot_size: Optional[float] = None
+    commission_rate: Optional[float] = None
+    enforce_tick_size: Optional[bool] = None
+    enforce_lot_size: Optional[bool] = None
+
+    def __post_init__(self) -> None:
+        """Validate and normalize template config."""
+        self.symbol_prefix = self.symbol_prefix.strip().upper()
+        if not self.symbol_prefix:
+            raise ValueError("symbol_prefix must not be empty")
+        if self.multiplier is not None and self.multiplier <= 0:
+            raise ValueError("multiplier must be > 0")
+        if self.margin_ratio is not None and self.margin_ratio <= 0:
+            raise ValueError("margin_ratio must be > 0")
+        if self.tick_size is not None and self.tick_size <= 0:
+            raise ValueError("tick_size must be > 0")
+        if self.lot_size is not None and self.lot_size <= 0:
+            raise ValueError("lot_size must be > 0")
+        if self.commission_rate is not None and self.commission_rate < 0:
+            raise ValueError("commission_rate must be >= 0")
+
+
+@dataclass
+class ChinaFuturesConfig:
+    """中国期货增强配置."""
+
+    enforce_sessions: bool = True
+    use_china_futures_market: bool = True
+    enforce_tick_size: bool = True
+    enforce_lot_size: bool = True
+    fee_by_symbol_prefix: Optional[List[ChinaFuturesFeeConfig]] = None
+    validation_by_symbol_prefix: Optional[List[ChinaFuturesValidationConfig]] = None
+    instrument_templates_by_symbol_prefix: Optional[
+        List[ChinaFuturesInstrumentTemplateConfig]
+    ] = None
+    sessions: Optional[List[ChinaFuturesSessionConfig]] = None
+
+    def __post_init__(self) -> None:
+        """Validate duplicate prefixes across config lists."""
+        if self.fee_by_symbol_prefix:
+            seen_fee: Dict[str, int] = {}
+            for idx, fee in enumerate(self.fee_by_symbol_prefix):
+                if fee.symbol_prefix in seen_fee:
+                    prev_idx = seen_fee[fee.symbol_prefix]
+                    raise ValueError(
+                        "fee_by_symbol_prefix"
+                        f"[{idx}] duplicates symbol_prefix '{fee.symbol_prefix}' "
+                        f"already used at fee_by_symbol_prefix[{prev_idx}]"
+                    )
+                seen_fee[fee.symbol_prefix] = idx
+        if self.validation_by_symbol_prefix:
+            seen_validation: Dict[str, int] = {}
+            for idx, rule in enumerate(self.validation_by_symbol_prefix):
+                if rule.symbol_prefix in seen_validation:
+                    prev_idx = seen_validation[rule.symbol_prefix]
+                    raise ValueError(
+                        "validation_by_symbol_prefix"
+                        f"[{idx}] duplicates symbol_prefix '{rule.symbol_prefix}' "
+                        "already used at "
+                        f"validation_by_symbol_prefix[{prev_idx}]"
+                    )
+                seen_validation[rule.symbol_prefix] = idx
+        if self.instrument_templates_by_symbol_prefix:
+            seen_template: Dict[str, int] = {}
+            for idx, template in enumerate(self.instrument_templates_by_symbol_prefix):
+                if template.symbol_prefix in seen_template:
+                    prev_idx = seen_template[template.symbol_prefix]
+                    raise ValueError(
+                        "instrument_templates_by_symbol_prefix"
+                        f"[{idx}] duplicates symbol_prefix "
+                        f"'{template.symbol_prefix}' already used at "
+                        f"instrument_templates_by_symbol_prefix[{prev_idx}]"
+                    )
+                seen_template[template.symbol_prefix] = idx
+
+
+@dataclass
 class RiskConfig:
     """
     [Risk Level] Configuration for Risk Management.
@@ -293,6 +422,7 @@ class BacktestConfig:
     instruments_config: Optional[
         Union[List[InstrumentConfig], Dict[str, InstrumentConfig]]
     ] = None  # Detailed props (Overrides defaults)
+    china_futures: Optional[ChinaFuturesConfig] = None
 
     benchmark: Optional[str] = None
     timezone: str = "Asia/Shanghai"

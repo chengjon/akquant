@@ -116,12 +116,19 @@ if __name__ == "__main__":
 
     # 1. 定义期货合约属性 (关键步骤)
     # 螺纹钢：乘数 10，保证金 10%
-    from akquant import BacktestConfig, InstrumentConfig, StrategyConfig
+    from akquant import (
+        BacktestConfig,
+        ChinaFuturesConfig,
+        ChinaFuturesInstrumentTemplateConfig,
+        ChinaFuturesValidationConfig,
+        InstrumentConfig,
+        StrategyConfig,
+    )
 
     rb_config = InstrumentConfig(
         symbol="RB2310",
-        asset_type="future",  # 资产类型
-        multiplier=10,  # 合约乘数 (1手 = 10吨)
+        asset_type="FUTURES",  # 资产类型
+        multiplier=10.0,  # 合约乘数 (1手 = 10吨)
         margin_ratio=0.1,  # 保证金比率 (10%)
     )
 
@@ -130,6 +137,28 @@ if __name__ == "__main__":
     config = BacktestConfig(
         strategy_config=StrategyConfig(initial_cash=500_000, commission_rate=0.0001),
         instruments_config=[rb_config],
+        china_futures=ChinaFuturesConfig(
+            enforce_sessions=False,
+            instrument_templates_by_symbol_prefix=[
+                ChinaFuturesInstrumentTemplateConfig(
+                    symbol_prefix="RB",
+                    multiplier=10.0,
+                    margin_ratio=0.1,
+                    tick_size=1.0,
+                    lot_size=1.0,
+                    commission_rate=0.0001,
+                    enforce_tick_size=False,
+                    enforce_lot_size=True,
+                )
+            ],
+            validation_by_symbol_prefix=[
+                ChinaFuturesValidationConfig(
+                    symbol_prefix="RB",
+                    enforce_tick_size=False,
+                    enforce_lot_size=True,
+                )
+            ],
+        ),
     )
 
     result = aq.run_backtest(
