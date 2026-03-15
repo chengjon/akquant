@@ -479,6 +479,127 @@ def test_backtest_performance_baseline() -> None:
     assert result.metrics.initial_market_value == pytest.approx(100000.0, rel=1e-9)
 
 
+def test_run_backtest_engine_oco_avoids_same_batch_double_fill() -> None:
+    """Engine OCO should avoid double fill when both legs are matchable in one bar."""
+
+    class OcoSameBarStrategy(akquant.Strategy):
+        """Submit two same-bar matchable orders and bind them as OCO."""
+
+        def __init__(self) -> None:
+            """Initialize submit-once state."""
+            super().__init__()
+            self.submitted = False
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            """Submit OCO legs on first bar."""
+            if self.submitted:
+                return
+            first = self.buy(symbol=bar.symbol, quantity=1, price=bar.close)
+            second = self.buy(symbol=bar.symbol, quantity=1, price=bar.close)
+            self.create_oco_order_group(first, second)
+            self.submitted = True
+
+    symbol = "OCO_SAME_BAR"
+    bars = [
+        akquant.Bar(
+            _ns(datetime(2023, 1, 2, 15, 0, tzinfo=timezone.utc)),
+            10.0,
+            10.0,
+            10.0,
+            10.0,
+            1000.0,
+            symbol,
+        )
+    ]
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=OcoSameBarStrategy,
+        symbol=symbol,
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert len(result.orders_df) == 2
+    total_filled_qty = float(result.orders_df["filled_quantity"].sum())
+    assert total_filled_qty == pytest.approx(1.0, rel=1e-9)
+    filled_quantities = sorted(
+        float(v) for v in result.orders_df["filled_quantity"].tolist()
+    )
+    assert filled_quantities == [0.0, 1.0]
+
+
+def test_run_backtest_engine_bracket_activates_exit_orders() -> None:
+    """Engine bracket plan should activate exit orders after entry fill."""
+
+    class BracketEngineStrategy(akquant.Strategy):
+        """Submit one bracket and rely on engine-side activation."""
+
+        def __init__(self) -> None:
+            """Initialize one-shot state."""
+            super().__init__()
+            self.submitted = False
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            """Submit bracket on first bar only."""
+            if self.submitted:
+                return
+            self.place_bracket_order(
+                symbol=bar.symbol,
+                quantity=1.0,
+                entry_price=100.0,
+                stop_trigger_price=95.0,
+                take_profit_price=110.0,
+                entry_tag="entry",
+                stop_tag="stop",
+                take_profit_tag="take",
+            )
+            self.submitted = True
+
+    symbol = "BRACKET_ENGINE"
+    bars = [
+        akquant.Bar(
+            _ns(datetime(2023, 1, 2, 15, 0, tzinfo=timezone.utc)),
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            1000.0,
+            symbol,
+        ),
+        akquant.Bar(
+            _ns(datetime(2023, 1, 3, 15, 0, tzinfo=timezone.utc)),
+            110.0,
+            111.0,
+            100.0,
+            110.0,
+            1000.0,
+            symbol,
+        ),
+    ]
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=BracketEngineStrategy,
+        symbol=symbol,
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+    )
+
+    tags = set(result.orders_df["tag"].astype(str))
+    assert {"entry", "stop", "take"}.issubset(tags)
+
+
 def test_run_backtest_on_event_emits_ordered_events() -> None:
     """Stream API should emit ordered lifecycle events."""
     data = _build_benchmark_data(n=20, symbol="STREAM")

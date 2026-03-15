@@ -236,6 +236,19 @@ class Strategy:
     _trading_day_bounds: Dict[str, Tuple[int, int]]
     _oco_groups: Dict[str, set[str]]
     _oco_order_to_group: Dict[str, str]
+    _use_engine_oco: bool
+    _pending_engine_oco_groups: List[Tuple[str, str, str]]
+    _use_engine_bracket: bool
+    _pending_engine_bracket_plans: List[
+        Tuple[
+            str,
+            Optional[float],
+            Optional[float],
+            Optional[TimeInForce],
+            Optional[str],
+            Optional[str],
+        ]
+    ]
     _pending_brackets: Dict[str, Dict[str, Any]]
     _order_group_seq: int
 
@@ -335,6 +348,10 @@ class Strategy:
         instance._trading_day_bounds = {}
         instance._oco_groups = {}
         instance._oco_order_to_group = {}
+        instance._use_engine_oco = False
+        instance._pending_engine_oco_groups = []
+        instance._use_engine_bracket = False
+        instance._pending_engine_bracket_plans = []
         instance._pending_brackets = {}
         instance._order_group_seq = 0
 
@@ -416,6 +433,14 @@ class Strategy:
             self._oco_groups = {}
         if not hasattr(self, "_oco_order_to_group"):
             self._oco_order_to_group = {}
+        if not hasattr(self, "_use_engine_oco"):
+            self._use_engine_oco = False
+        if not hasattr(self, "_pending_engine_oco_groups"):
+            self._pending_engine_oco_groups = []
+        if not hasattr(self, "_use_engine_bracket"):
+            self._use_engine_bracket = False
+        if not hasattr(self, "_pending_engine_bracket_plans"):
+            self._pending_engine_bracket_plans = []
         if not hasattr(self, "_pending_brackets"):
             self._pending_brackets = {}
         if not hasattr(self, "_order_group_seq"):
@@ -1125,6 +1150,18 @@ class Strategy:
             group_id = f"oco-{self._order_group_seq}"
         group_key = str(group_id).strip()
 
+        engine = getattr(self, "_engine", None)
+        register_oco = getattr(engine, "register_oco_group", None)
+        if callable(register_oco):
+            try:
+                register_oco(group_key, first, second)
+                self._use_engine_oco = True
+                return group_key
+            except Exception:
+                self._pending_engine_oco_groups.append((group_key, first, second))
+                self._use_engine_oco = True
+                return group_key
+
         self._detach_oco_order(first)
         self._detach_oco_order(second)
 
@@ -1165,6 +1202,34 @@ class Strategy:
         if not entry_order_id:
             raise RuntimeError("failed to submit bracket entry order")
 
+        engine = getattr(self, "_engine", None)
+        register_bracket = getattr(engine, "register_bracket_plan", None)
+        if callable(register_bracket):
+            try:
+                register_bracket(
+                    entry_order_id,
+                    stop_trigger_price,
+                    take_profit_price,
+                    time_in_force,
+                    stop_tag,
+                    take_profit_tag,
+                )
+                self._use_engine_bracket = True
+                return entry_order_id
+            except Exception:
+                self._pending_engine_bracket_plans.append(
+                    (
+                        entry_order_id,
+                        stop_trigger_price,
+                        take_profit_price,
+                        time_in_force,
+                        stop_tag,
+                        take_profit_tag,
+                    )
+                )
+                self._use_engine_bracket = True
+                return entry_order_id
+
         self._pending_brackets[entry_order_id] = {
             "symbol": symbol,
             "quantity": float(quantity),
@@ -1181,6 +1246,8 @@ class Strategy:
         self._process_oco_trade(trade)
 
     def _process_pending_bracket(self, trade: Any) -> None:
+        if self._use_engine_bracket:
+            return
         order_id = str(getattr(trade, "order_id", "") or "")
         if not order_id:
             return
@@ -1226,6 +1293,8 @@ class Strategy:
             self.create_oco_order_group(stop_order_id, take_order_id)
 
     def _process_oco_trade(self, trade: Any) -> None:
+        if self._use_engine_oco:
+            return
         order_id = str(getattr(trade, "order_id", "") or "")
         if not order_id:
             return

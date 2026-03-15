@@ -1,13 +1,16 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::analysis::TradeTracker;
 use crate::history::HistoryBuffer;
 use crate::market::MarketModel;
-use crate::model::{Instrument, Order, OrderStatus, Trade};
+use crate::model::{
+    Instrument, Order, OrderRole, OrderSide, OrderStatus, OrderType, TimeInForce, Trade,
+};
 use crate::portfolio::Portfolio;
 
 /// 订单管理器
@@ -24,6 +27,24 @@ pub struct OrderManager {
     pub current_step_trades: Vec<Trade>,
     /// 交易追踪器 (用于计算 PnL 和统计)
     pub trade_tracker: TradeTracker,
+    /// OCO 订单组映射: group_id -> {order_id}
+    #[serde(default)]
+    pub oco_groups: HashMap<String, HashSet<String>>,
+    /// OCO 订单反向索引: order_id -> group_id
+    #[serde(default)]
+    pub oco_order_to_group: HashMap<String, String>,
+    /// Bracket 激活计划: entry_order_id -> plan
+    #[serde(default)]
+    pub pending_bracket_plans: HashMap<String, PendingBracketPlan>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PendingBracketPlan {
+    pub stop_trigger_price: Option<Decimal>,
+    pub take_profit_price: Option<Decimal>,
+    pub time_in_force: TimeInForce,
+    pub stop_tag: String,
+    pub take_profit_tag: String,
 }
 
 impl OrderManager {
@@ -34,7 +55,176 @@ impl OrderManager {
             trades: Vec::new(),
             current_step_trades: Vec::new(),
             trade_tracker: TradeTracker::new(),
+            oco_groups: HashMap::new(),
+            oco_order_to_group: HashMap::new(),
+            pending_bracket_plans: HashMap::new(),
         }
+    }
+
+    pub fn register_oco_group(
+        &mut self,
+        group_id: String,
+        first_order_id: String,
+        second_order_id: String,
+    ) {
+        let first = first_order_id.trim().to_string();
+        let second = second_order_id.trim().to_string();
+        let group_key = group_id.trim().to_string();
+        if first.is_empty() || second.is_empty() || first == second || group_key.is_empty() {
+            return;
+        }
+
+        self.detach_oco_order(&first);
+        self.detach_oco_order(&second);
+
+        let mut members = HashSet::new();
+        members.insert(first.clone());
+        members.insert(second.clone());
+        self.oco_groups.insert(group_key.clone(), members);
+        self.oco_order_to_group.insert(first, group_key.clone());
+        self.oco_order_to_group.insert(second, group_key);
+    }
+
+    pub fn consume_oco_peer_cancels_on_fill(&mut self, order_id: &str) -> Vec<String> {
+        let Some(group_id) = self.oco_order_to_group.get(order_id).cloned() else {
+            return Vec::new();
+        };
+        let Some(group_members) = self.oco_groups.remove(&group_id) else {
+            self.oco_order_to_group.remove(order_id);
+            return Vec::new();
+        };
+
+        let mut peers = Vec::new();
+        for member in group_members {
+            self.oco_order_to_group.remove(&member);
+            if member != order_id {
+                peers.push(member);
+            }
+        }
+        peers
+    }
+
+    pub fn cancel_active_order(&mut self, order_id: &str, updated_at: i64) -> Option<Order> {
+        let order = self.active_orders.iter_mut().find(|o| o.id == order_id)?;
+        if order.status == OrderStatus::New
+            || order.status == OrderStatus::Submitted
+            || order.status == OrderStatus::PartiallyFilled
+        {
+            order.status = OrderStatus::Cancelled;
+            order.updated_at = updated_at;
+            let snapshot = order.clone();
+            self.handle_oco_terminal_without_fill(order_id);
+            return Some(snapshot);
+        }
+        None
+    }
+
+    pub fn register_bracket_plan(
+        &mut self,
+        entry_order_id: String,
+        stop_trigger_price: Option<Decimal>,
+        take_profit_price: Option<Decimal>,
+        time_in_force: TimeInForce,
+        stop_tag: Option<String>,
+        take_profit_tag: Option<String>,
+    ) {
+        let entry_id = entry_order_id.trim().to_string();
+        if entry_id.is_empty() {
+            return;
+        }
+        if stop_trigger_price.is_none() && take_profit_price.is_none() {
+            return;
+        }
+        self.pending_bracket_plans.insert(
+            entry_id,
+            PendingBracketPlan {
+                stop_trigger_price,
+                take_profit_price,
+                time_in_force,
+                stop_tag: stop_tag.unwrap_or_default(),
+                take_profit_tag: take_profit_tag.unwrap_or_default(),
+            },
+        );
+    }
+
+    pub fn consume_bracket_activation_on_fill(&mut self, filled_order: &Order) -> Vec<Order> {
+        let Some(plan) = self.pending_bracket_plans.remove(&filled_order.id) else {
+            return Vec::new();
+        };
+
+        let quantity = if filled_order.filled_quantity > Decimal::ZERO {
+            filled_order.filled_quantity
+        } else {
+            filled_order.quantity
+        };
+        if quantity <= Decimal::ZERO {
+            return Vec::new();
+        }
+
+        let created_at = filled_order.updated_at;
+        let graph_id = format!("bracket-{}", filled_order.id);
+        let mut created_orders: Vec<Order> = Vec::new();
+
+        if let Some(stop_trigger_price) = plan.stop_trigger_price {
+            created_orders.push(Order {
+                id: Uuid::new_v4().to_string(),
+                symbol: filled_order.symbol.clone(),
+                side: OrderSide::Sell,
+                order_type: OrderType::StopMarket,
+                quantity,
+                price: None,
+                time_in_force: plan.time_in_force,
+                trigger_price: Some(stop_trigger_price),
+                trail_offset: None,
+                trail_reference_price: None,
+                graph_id: Some(graph_id.clone()),
+                parent_order_id: Some(filled_order.id.clone()),
+                order_role: OrderRole::StopLoss,
+                status: OrderStatus::New,
+                filled_quantity: Decimal::ZERO,
+                average_filled_price: None,
+                created_at,
+                updated_at: created_at,
+                commission: Decimal::ZERO,
+                tag: plan.stop_tag.clone(),
+                reject_reason: String::new(),
+                owner_strategy_id: filled_order.owner_strategy_id.clone(),
+            });
+        }
+
+        if let Some(take_profit_price) = plan.take_profit_price {
+            created_orders.push(Order {
+                id: Uuid::new_v4().to_string(),
+                symbol: filled_order.symbol.clone(),
+                side: OrderSide::Sell,
+                order_type: OrderType::Limit,
+                quantity,
+                price: Some(take_profit_price),
+                time_in_force: plan.time_in_force,
+                trigger_price: None,
+                trail_offset: None,
+                trail_reference_price: None,
+                graph_id: Some(graph_id.clone()),
+                parent_order_id: Some(filled_order.id.clone()),
+                order_role: OrderRole::TakeProfit,
+                status: OrderStatus::New,
+                filled_quantity: Decimal::ZERO,
+                average_filled_price: None,
+                created_at,
+                updated_at: created_at,
+                commission: Decimal::ZERO,
+                tag: plan.take_profit_tag.clone(),
+                reject_reason: String::new(),
+                owner_strategy_id: filled_order.owner_strategy_id.clone(),
+            });
+        }
+
+        if created_orders.len() == 2 {
+            let first = created_orders[0].id.clone();
+            let second = created_orders[1].id.clone();
+            self.register_oco_group(format!("{}-exit-oco", graph_id), first, second);
+        }
+        created_orders
     }
 
     /// 添加新订单 (例如从 OrderValidated 事件)
@@ -45,6 +235,7 @@ impl OrderManager {
     /// 处理执行报告 (ExecutionReport)
     /// 更新活跃订单状态
     pub fn on_execution_report(&mut self, report: Order) {
+        let mut terminal_without_fill_id: Option<String> = None;
         // Find existing order
         if let Some(existing) = self.active_orders.iter_mut().find(|o| o.id == report.id) {
             existing.status = report.status;
@@ -52,6 +243,13 @@ impl OrderManager {
             existing.average_filled_price = report.average_filled_price;
             existing.updated_at = report.updated_at;
             existing.reject_reason = report.reject_reason;
+            if existing.status != OrderStatus::Filled
+                && (existing.status == OrderStatus::Cancelled
+                    || existing.status == OrderStatus::Expired
+                    || existing.status == OrderStatus::Rejected)
+            {
+                terminal_without_fill_id = Some(existing.id.clone());
+            }
         } else {
             // If it's a new order report (e.g. Rejected immediately), add to active so it can be moved to history later
             if report.status == OrderStatus::Rejected
@@ -59,8 +257,15 @@ impl OrderManager {
                 || report.status == OrderStatus::PartiallyFilled
                 || report.status == OrderStatus::Submitted
             {
+                if report.status == OrderStatus::Rejected {
+                    terminal_without_fill_id = Some(report.id.clone());
+                }
                 self.active_orders.push(report);
             }
+        }
+        if let Some(order_id) = terminal_without_fill_id {
+            self.handle_oco_terminal_without_fill(&order_id);
+            self.pending_bracket_plans.remove(&order_id);
         }
     }
 
@@ -75,6 +280,12 @@ impl OrderManager {
                     || o.status == OrderStatus::Rejected
             });
 
+        for order in &finished {
+            if order.status != OrderStatus::Filled {
+                self.handle_oco_terminal_without_fill(&order.id);
+                self.pending_bracket_plans.remove(&order.id);
+            }
+        }
         self.orders.extend(finished);
         self.active_orders = active;
     }
@@ -185,10 +396,96 @@ impl OrderManager {
             self.current_step_trades.push(trade);
         }
     }
+
+    fn detach_oco_order(&mut self, order_id: &str) {
+        let Some(old_group) = self.oco_order_to_group.remove(order_id) else {
+            return;
+        };
+        if let Some(group_orders) = self.oco_groups.get_mut(&old_group) {
+            group_orders.remove(order_id);
+            if group_orders.len() <= 1 {
+                let leftovers: Vec<String> = group_orders.iter().cloned().collect();
+                self.oco_groups.remove(&old_group);
+                for oid in leftovers {
+                    self.oco_order_to_group.remove(&oid);
+                }
+            }
+        }
+    }
+
+    fn handle_oco_terminal_without_fill(&mut self, order_id: &str) {
+        self.detach_oco_order(order_id);
+    }
 }
 
 impl Default for OrderManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{OrderRole, OrderSide, OrderType, TimeInForce};
+    use rust_decimal_macros::dec;
+
+    fn make_order(id: &str, status: OrderStatus) -> Order {
+        Order {
+            id: id.to_string(),
+            symbol: "TEST".to_string(),
+            side: OrderSide::Buy,
+            order_type: OrderType::Limit,
+            quantity: dec!(10),
+            price: Some(dec!(100)),
+            time_in_force: TimeInForce::Day,
+            trigger_price: None,
+            trail_offset: None,
+            trail_reference_price: None,
+            graph_id: None,
+            parent_order_id: None,
+            order_role: OrderRole::Standalone,
+            status,
+            filled_quantity: Decimal::ZERO,
+            average_filled_price: None,
+            created_at: 0,
+            updated_at: 0,
+            commission: Decimal::ZERO,
+            tag: String::new(),
+            reject_reason: String::new(),
+            owner_strategy_id: None,
+        }
+    }
+
+    #[test]
+    fn test_register_oco_group_and_consume_on_fill() {
+        let mut manager = OrderManager::new();
+        manager.register_oco_group(
+            "oco-1".to_string(),
+            "order-a".to_string(),
+            "order-b".to_string(),
+        );
+
+        let peer_ids = manager.consume_oco_peer_cancels_on_fill("order-a");
+        assert_eq!(peer_ids, vec!["order-b".to_string()]);
+        assert!(manager.oco_groups.is_empty());
+        assert!(manager.oco_order_to_group.is_empty());
+    }
+
+    #[test]
+    fn test_cancel_active_order_updates_status_and_cleans_oco_mapping() {
+        let mut manager = OrderManager::new();
+        manager.active_orders.push(make_order("order-a", OrderStatus::Submitted));
+        manager.active_orders.push(make_order("order-b", OrderStatus::Submitted));
+        manager.register_oco_group(
+            "oco-1".to_string(),
+            "order-a".to_string(),
+            "order-b".to_string(),
+        );
+
+        let cancelled = manager.cancel_active_order("order-b", 123).expect("cancelled");
+        assert_eq!(cancelled.status, OrderStatus::Cancelled);
+        assert_eq!(cancelled.updated_at, 123);
+        assert!(!manager.oco_order_to_group.contains_key("order-b"));
     }
 }
