@@ -115,6 +115,39 @@ impl Engine {
         self.default_strategy_id.clone()
     }
 
+    fn register_oco_group(
+        &mut self,
+        group_id: String,
+        first_order_id: String,
+        second_order_id: String,
+    ) {
+        self.state
+            .order_manager
+            .register_oco_group(group_id, first_order_id, second_order_id);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register_bracket_plan(
+        &mut self,
+        entry_order_id: String,
+        stop_trigger_price: Option<f64>,
+        take_profit_price: Option<f64>,
+        time_in_force: Option<crate::model::TimeInForce>,
+        stop_tag: Option<String>,
+        take_profit_tag: Option<String>,
+    ) {
+        let stop_trigger_decimal = stop_trigger_price.and_then(rust_decimal::Decimal::from_f64);
+        let take_profit_decimal = take_profit_price.and_then(rust_decimal::Decimal::from_f64);
+        self.state.order_manager.register_bracket_plan(
+            entry_order_id,
+            stop_trigger_decimal,
+            take_profit_decimal,
+            time_in_force.unwrap_or(crate::model::TimeInForce::GTC),
+            stop_tag,
+            take_profit_tag,
+        );
+    }
+
     fn get_strategy_slot_ids(&self) -> Vec<String> {
         self.strategy_slots
             .iter()

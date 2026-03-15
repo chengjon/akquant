@@ -2656,6 +2656,214 @@ def test_oco_group_rebind_detaches_old_group() -> None:
     assert strategy._oco_order_to_group == {"order-b": "oco-2", "order-c": "oco-2"}
 
 
+def test_oco_group_prefers_engine_registration_when_available() -> None:
+    """Engine OCO registration should be preferred when capability exists."""
+
+    class _FakeEngine:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str]] = []
+
+        def register_oco_group(
+            self, group_id: str, first_order_id: str, second_order_id: str
+        ) -> None:
+            self.calls.append((group_id, first_order_id, second_order_id))
+
+    strategy = MyStrategy()
+    fake_engine = _FakeEngine()
+    setattr(strategy, "_engine", fake_engine)
+
+    group_id = strategy.create_oco_order_group("order-a", "order-b")
+
+    assert group_id == "oco-1"
+    assert strategy._use_engine_oco is True
+    assert fake_engine.calls == [("oco-1", "order-a", "order-b")]
+    assert strategy._oco_groups == {}
+    assert strategy._oco_order_to_group == {}
+
+
+def test_oco_trade_processing_skips_python_fallback_when_engine_enabled() -> None:
+    """Python OCO fallback should not run after engine OCO is enabled."""
+
+    class _OcoSpyStrategy(Strategy):
+        def __init__(self) -> None:
+            self.cancelled: list[str] = []
+
+        def cancel_order(self, order_id: str) -> None:
+            self.cancelled.append(order_id)
+
+    strategy = _OcoSpyStrategy()
+    strategy._use_engine_oco = True
+    strategy._oco_groups = {"oco-1": {"order-a", "order-b"}}
+    strategy._oco_order_to_group = {"order-a": "oco-1", "order-b": "oco-1"}
+
+    strategy._process_oco_trade(SimpleNamespace(order_id="order-a"))
+
+    assert strategy.cancelled == []
+    assert strategy._oco_groups == {"oco-1": {"order-a", "order-b"}}
+    assert strategy._oco_order_to_group == {"order-a": "oco-1", "order-b": "oco-1"}
+
+
+def test_oco_group_falls_back_to_deferred_engine_queue_on_runtime_error() -> None:
+    """OCO should queue engine registration when immediate call raises."""
+
+    class _FailingEngine:
+        def register_oco_group(
+            self, group_id: str, first_order_id: str, second_order_id: str
+        ) -> None:
+            raise RuntimeError("engine borrow conflict")
+
+    strategy = MyStrategy()
+    setattr(strategy, "_engine", _FailingEngine())
+
+    group_id = strategy.create_oco_order_group("order-a", "order-b")
+
+    assert group_id == "oco-1"
+    assert strategy._use_engine_oco is True
+    assert strategy._pending_engine_oco_groups == [("oco-1", "order-a", "order-b")]
+    assert strategy._oco_groups == {}
+    assert strategy._oco_order_to_group == {}
+
+
+def test_bracket_prefers_engine_registration_when_available() -> None:
+    """Bracket plan should be registered to engine when capability exists."""
+
+    class _FakeEngine:
+        def __init__(self) -> None:
+            self.calls: list[
+                tuple[
+                    str,
+                    float | None,
+                    float | None,
+                    Any,
+                    str | None,
+                    str | None,
+                ]
+            ] = []
+
+        def register_bracket_plan(
+            self,
+            entry_order_id: str,
+            stop_trigger_price: float | None,
+            take_profit_price: float | None,
+            time_in_force: Any,
+            stop_tag: str | None,
+            take_profit_tag: str | None,
+        ) -> None:
+            self.calls.append(
+                (
+                    entry_order_id,
+                    stop_trigger_price,
+                    take_profit_price,
+                    time_in_force,
+                    stop_tag,
+                    take_profit_tag,
+                )
+            )
+
+    class _BracketEngineStrategy(Strategy):
+        def __init__(self) -> None:
+            self.buy_calls: list[dict[str, Any]] = []
+
+        def buy(
+            self,
+            symbol: str | None = None,
+            quantity: float | None = None,
+            price: float | None = None,
+            time_in_force: Any = None,
+            trigger_price: float | None = None,
+            tag: str | None = None,
+        ) -> str:
+            self.buy_calls.append(
+                {
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "price": price,
+                    "time_in_force": time_in_force,
+                    "trigger_price": trigger_price,
+                    "tag": tag,
+                }
+            )
+            return "entry-1"
+
+    strategy = _BracketEngineStrategy()
+    fake_engine = _FakeEngine()
+    setattr(strategy, "_engine", fake_engine)
+
+    entry_id = strategy.place_bracket_order(
+        symbol="AAPL",
+        quantity=2.0,
+        entry_price=100.0,
+        stop_trigger_price=95.0,
+        take_profit_price=110.0,
+        entry_tag="entry",
+        stop_tag="stop",
+        take_profit_tag="take",
+    )
+
+    assert entry_id == "entry-1"
+    assert strategy._use_engine_bracket is True
+    assert strategy._pending_brackets == {}
+    assert fake_engine.calls == [("entry-1", 95.0, 110.0, None, "stop", "take")]
+
+
+def test_bracket_falls_back_to_deferred_engine_queue_on_runtime_error() -> None:
+    """Bracket plan should queue deferred registration when engine call raises."""
+
+    class _FailingEngine:
+        def register_bracket_plan(
+            self,
+            entry_order_id: str,
+            stop_trigger_price: float | None,
+            take_profit_price: float | None,
+            time_in_force: Any,
+            stop_tag: str | None,
+            take_profit_tag: str | None,
+        ) -> None:
+            _ = (
+                entry_order_id,
+                stop_trigger_price,
+                take_profit_price,
+                time_in_force,
+                stop_tag,
+                take_profit_tag,
+            )
+            raise RuntimeError("engine borrow conflict")
+
+    class _BracketEngineStrategy(Strategy):
+        def buy(
+            self,
+            symbol: str | None = None,
+            quantity: float | None = None,
+            price: float | None = None,
+            time_in_force: Any = None,
+            trigger_price: float | None = None,
+            tag: str | None = None,
+        ) -> str:
+            _ = (symbol, quantity, price, time_in_force, trigger_price, tag)
+            return "entry-1"
+
+    strategy = _BracketEngineStrategy()
+    setattr(strategy, "_engine", _FailingEngine())
+
+    entry_id = strategy.place_bracket_order(
+        symbol="AAPL",
+        quantity=2.0,
+        entry_price=100.0,
+        stop_trigger_price=95.0,
+        take_profit_price=110.0,
+        entry_tag="entry",
+        stop_tag="stop",
+        take_profit_tag="take",
+    )
+
+    assert entry_id == "entry-1"
+    assert strategy._use_engine_bracket is True
+    assert strategy._pending_brackets == {}
+    assert strategy._pending_engine_bracket_plans == [
+        ("entry-1", 95.0, 110.0, None, "stop", "take")
+    ]
+
+
 def test_bracket_places_exit_orders_and_builds_oco() -> None:
     """Bracket entry fill should create stop/take exits and bind OCO."""
 

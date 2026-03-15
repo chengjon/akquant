@@ -5,6 +5,7 @@ use crate::event::Event;
 use crate::model::{Bar, ExecutionMode, Order, OrderStatus, TradingSession};
 use crate::pipeline::processor::{Processor, ProcessorResult};
 use pyo3::prelude::*;
+use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -116,6 +117,7 @@ impl Processor for ChannelProcessor {
     ) -> PyResult<ProcessorResult> {
         let mut trades_to_process = Vec::new();
         let mut pending_order_requests = Vec::new();
+        let mut oco_suppressed_fill_order_ids: HashSet<String> = HashSet::new();
         loop {
             let mut drained_event = false;
             while let Some(event) = engine.event_manager.try_recv() {
@@ -127,8 +129,21 @@ impl Processor for ChannelProcessor {
                         engine.state.order_manager.add_active_order(order);
                     }
                     Event::ExecutionReport(order, trade) => {
+                        if order.status == OrderStatus::Filled
+                            && oco_suppressed_fill_order_ids.contains(&order.id)
+                        {
+                            continue;
+                        }
+                        let report_order_id = order.id.clone();
+                        let report_status = order.status;
+                        let report_updated_at = order.updated_at;
                         engine.state.order_manager.on_execution_report(order);
-                        let updated_order = engine.state.order_manager.orders.last().cloned();
+                        let updated_order = engine
+                            .state
+                            .order_manager
+                            .get_all_orders()
+                            .into_iter()
+                            .find(|o| o.id == report_order_id);
                         if let Some(order_snapshot) = updated_order {
                             let mut order_payload = HashMap::new();
                             order_payload.insert("order_id", order_snapshot.id.clone());
@@ -147,6 +162,68 @@ impl Processor for ChannelProcessor {
                                 "info",
                                 order_payload,
                             );
+                        }
+
+                        if report_status == OrderStatus::Filled {
+                            let peer_ids = engine
+                                .state
+                                .order_manager
+                                .consume_oco_peer_cancels_on_fill(&report_order_id);
+                            for peer_id in peer_ids {
+                                oco_suppressed_fill_order_ids.insert(peer_id.clone());
+                                engine.execution_model.on_cancel(&peer_id);
+                                let cancelled_order_snapshot = engine
+                                    .state
+                                    .order_manager
+                                    .cancel_active_order(&peer_id, report_updated_at);
+                                if let Some(cancelled_order_snapshot) = cancelled_order_snapshot {
+                                    let mut cancel_payload = HashMap::new();
+                                    cancel_payload
+                                        .insert("order_id", cancelled_order_snapshot.id.clone());
+                                    cancel_payload.insert(
+                                        "status",
+                                        format!("{:?}", cancelled_order_snapshot.status),
+                                    );
+                                    cancel_payload.insert(
+                                        "filled_qty",
+                                        cancelled_order_snapshot.filled_quantity.to_string(),
+                                    );
+                                    cancel_payload.insert(
+                                        "symbol",
+                                        cancelled_order_snapshot.symbol.clone(),
+                                    );
+                                    cancel_payload.insert(
+                                        "owner_strategy_id",
+                                        cancelled_order_snapshot
+                                            .owner_strategy_id
+                                            .clone()
+                                            .unwrap_or_default(),
+                                    );
+                                    engine.emit_stream_event(
+                                        py,
+                                        "order",
+                                        Some(cancelled_order_snapshot.symbol.as_str()),
+                                        "info",
+                                        cancel_payload,
+                                    );
+                                }
+                            }
+
+                            if let Some(filled_order_snapshot) = engine
+                                .state
+                                .order_manager
+                                .get_all_orders()
+                                .into_iter()
+                                .find(|o| o.id == report_order_id)
+                            {
+                                let bracket_exit_orders = engine
+                                    .state
+                                    .order_manager
+                                    .consume_bracket_activation_on_fill(&filled_order_snapshot);
+                                for bracket_order in bracket_exit_orders {
+                                    let _ = engine.event_manager.send(Event::OrderRequest(bracket_order));
+                                }
+                            }
                         }
 
                         if let Some(t) = trade {
@@ -420,6 +497,76 @@ impl Processor for DataProcessor {
 
 pub struct StrategyProcessor;
 
+fn flush_pending_engine_oco_groups(
+    engine: &mut Engine,
+    strategy_obj: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let pending_any = match strategy_obj.getattr("_pending_engine_oco_groups") {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+    let pending_groups: Vec<(String, String, String)> = pending_any.extract().unwrap_or_default();
+    if pending_groups.is_empty() {
+        return Ok(());
+    }
+    for (group_id, first_order_id, second_order_id) in pending_groups {
+        engine
+            .state
+            .order_manager
+            .register_oco_group(group_id, first_order_id, second_order_id);
+    }
+    strategy_obj.setattr(
+        "_pending_engine_oco_groups",
+        Vec::<(String, String, String)>::new(),
+    )?;
+    Ok(())
+}
+
+fn flush_pending_engine_bracket_plans(
+    engine: &mut Engine,
+    strategy_obj: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let pending_any = match strategy_obj.getattr("_pending_engine_bracket_plans") {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+    let pending_plans: Vec<(
+        String,
+        Option<f64>,
+        Option<f64>,
+        Option<crate::model::TimeInForce>,
+        Option<String>,
+        Option<String>,
+    )> = pending_any.extract().unwrap_or_default();
+    if pending_plans.is_empty() {
+        return Ok(());
+    }
+    for (entry_order_id, stop_trigger_price, take_profit_price, time_in_force, stop_tag, take_profit_tag) in pending_plans {
+        let stop_trigger_decimal = stop_trigger_price.and_then(rust_decimal::Decimal::from_f64);
+        let take_profit_decimal = take_profit_price.and_then(rust_decimal::Decimal::from_f64);
+        engine.state.order_manager.register_bracket_plan(
+            entry_order_id,
+            stop_trigger_decimal,
+            take_profit_decimal,
+            time_in_force.unwrap_or(crate::model::TimeInForce::GTC),
+            stop_tag,
+            take_profit_tag,
+        );
+    }
+    strategy_obj.setattr(
+        "_pending_engine_bracket_plans",
+        Vec::<(
+            String,
+            Option<f64>,
+            Option<f64>,
+            Option<crate::model::TimeInForce>,
+            Option<String>,
+            Option<String>,
+        )>::new(),
+    )?;
+    Ok(())
+}
+
 impl Processor for StrategyProcessor {
     fn process(
         &mut self,
@@ -443,21 +590,27 @@ impl Processor for StrategyProcessor {
                 let (new_orders, new_timers, canceled_ids) =
                     if let Some(ref slot_py) = slot_strategy {
                         let slot_bound = slot_py.bind(py);
-                        engine.call_strategy_for_slot(
+                        let result = engine.call_strategy_for_slot(
                             slot_bound,
                             &event,
                             slot_index,
                             active_orders.clone(),
                             step_trades.clone(),
-                        )?
+                        )?;
+                        flush_pending_engine_oco_groups(engine, slot_bound)?;
+                        flush_pending_engine_bracket_plans(engine, slot_bound)?;
+                        result
                     } else {
-                        engine.call_strategy_for_slot(
+                        let result = engine.call_strategy_for_slot(
                             strategy,
                             &event,
                             slot_index,
                             active_orders.clone(),
                             step_trades.clone(),
-                        )?
+                        )?;
+                        flush_pending_engine_oco_groups(engine, strategy)?;
+                        flush_pending_engine_bracket_plans(engine, strategy)?;
+                        result
                     };
 
                 for id in canceled_ids {

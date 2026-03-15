@@ -26,6 +26,7 @@
 
 *   **极致性能**：得益于 Rust 的零开销抽象与 **Zero-Copy** 数据架构，回测速度较传统纯 Python 框架（如 Backtrader）提升 **X倍+**。
 *   **原生 ML 支持**：内置 **Walk-forward Validation**（滚动训练）框架，无缝集成 PyTorch/Scikit-learn，让 AI 策略开发从实验到回测一气呵成。
+*   **TA-Lib 指标生态**：内置 `akquant.talib` 双后端（`python/rust`）兼容能力，支持 **103 个指标**。
 *   **因子表达式引擎**：内置 **Polars** 驱动的高性能因子计算引擎，支持 `Rank(Ts_Mean(Close, 5))` 等 Alpha101 风格公式，自动处理并行计算与数据对齐。
 *   **参数优化**：内置多进程网格搜索（Grid Search）框架，支持策略参数的高效并行优化。
 *   **专业级风控**：内置完善的订单流管理与即时风控模块，支持多资产组合回测。
