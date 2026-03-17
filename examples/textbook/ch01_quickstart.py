@@ -45,7 +45,7 @@ class DualMAStrategy(Strategy):
         super().__init__()
         self.short_window = 5
         self.long_window = 20
-        self.warmup_period = 20
+        self.warmup_period = self.long_window
 
     def on_start(self) -> None:
         """策略初始化时调用."""
@@ -56,16 +56,11 @@ class DualMAStrategy(Strategy):
         symbol = bar.symbol
 
         # 1. 获取历史数据
-        closes = self.get_history(
-            count=self.long_window + 1, symbol=symbol, field="close"
-        )
-        if len(closes) < self.long_window + 1:
-            return
+        closes = self.get_history(count=self.long_window, symbol=symbol, field="close")
 
-        # 2. 计算均线 (使用截止到昨天的数据)
-        history_closes = closes[:-1]
-        ma5_curr = history_closes[-self.short_window :].mean()
-        ma20_curr = history_closes[-self.long_window :].mean()
+        # 2. 计算均线
+        ma5_curr = closes[-self.short_window :].mean()
+        ma20_curr = closes[-self.long_window :].mean()
 
         # 3. 获取持仓
         position = self.get_position(symbol)
