@@ -17,6 +17,7 @@ python examples/textbook/ch01_quickstart.py
 1. 脚本可在本地直接运行完成，无异常退出。
 2. 终端输出包含回测结果统计字段（如 `total_return_pct`、`max_drawdown_pct`）。
 3. 能基于输出解释“收益”和“回撤”两个核心指标。
+4. 理解本示例默认采用 `ExecutionMode.NextOpen`，即“当根算信号、下一根开盘成交”。
 
 ## 1.1 量化投资的定义与特征
 
@@ -193,11 +194,11 @@ JetBrains 出品的专业 Python IDE。
 
 ## 1.6 第一个量化策略 (Hello World)
 
-让我们通过一个简单的例子来体验 `akquant` 的工作流程。我们将编写一个简单的策略：**买入并持有**。
+让我们通过一个简单的例子来体验 `AKQuant` 的工作流程。我们将编写一个经典的策略：**双均线策略（MA5/MA20）**。
 
 ### 代码示例
 
-创建一个名为 `quickstart.py` 的文件，输入以下代码：
+直接运行仓库内示例 `examples/textbook/ch01_quickstart.py`：
 
 ```python
 --8<-- "examples/textbook/ch01_quickstart.py"
@@ -206,23 +207,25 @@ JetBrains 出品的专业 Python IDE。
 ### 代码解析
 
 1.  **数据准备**：
-    我们使用 `akshare` 获取了 `sh600000` (浦发银行) 等几只股票的历史数据。`akquant` 支持直接传入 Pandas DataFrame。
+    我们使用 `akshare` 获取 `sh600000`（浦发银行）历史日线数据。`AKQuant` 支持直接传入 Pandas DataFrame。
 
-2.  **策略定义 (`MyStrategy`)**：
-    *   继承自 `akquant.Strategy`。
-    *   `on_bar(self, bar)`：这是策略的核心。回测引擎会按时间顺序，每产生一根 K 线（Bar），就调用一次该函数。
-    *   `self.order_target_percent(target_percent=0.33, symbol=symbol)`：下单函数，将仓位调整到目标比例（这里是 33%）。
+2.  **策略定义 (`DualMAStrategy`)**：
+    *   继承自 `AKQuant.Strategy`。
+    *   `on_bar(self, bar)`：这是策略核心回调。引擎每到一根 K 线（Bar）都会调用一次。
+    *   `warmup_period=self.long_window`：先完成均线所需历史数据预热，再开始产生交易信号。
+    *   通过 `get_history(count=self.long_window, field="close")` 取最近收盘价序列，计算 MA5 与 MA20。
+    *   当 `MA5 > MA20` 且空仓时，用 `order_target_percent(0.95, symbol)` 建仓；当 `MA5 < MA20` 且有仓位时，用 `order_target_percent(0.0, symbol)` 清仓。
 
 3.  **回测配置与运行**：
-    *   `BacktestConfig`：配置回测参数（如手续费、初始资金）。
-    *   `aq.run_backtest`：启动回测引擎。
+    *   `aq.run_backtest`：启动回测引擎，并传入初始资金、手续费和最小交易单位等参数。
+    *   默认执行模式为 `ExecutionMode.NextOpen`（下一根开盘成交）。
 
 ### 运行结果
 
 在终端运行该脚本：
 
 ```bash
-python quickstart.py
+python examples/textbook/ch01_quickstart.py
 ```
 
 你将看到类似以下的输出日志：
@@ -230,8 +233,13 @@ python quickstart.py
 ```text
 正在获取数据...
 开始回测...
-2026-02-24 20:29:07 | INFO | Running backtest via run_backtest()...
-[2020-01-02 00:00:00] 首次买入 600000，目标仓位 95%
+策略初始化...
+2026-03-17 13:34:30 | INFO | Running backtest via run_backtest()...
+[2020-02-21 00:00:00] 金叉买入 (MA5=8.56, MA20=8.55)
+[2020-03-10 00:00:00] 死叉卖出 (MA5=8.45, MA20=8.47)
+...
+[2023-11-15 00:00:00] 金叉买入 (MA5=6.47, MA20=6.45)
+[2023-11-29 00:00:00] 死叉卖出 (MA5=6.45, MA20=6.47)
   [00:00:00] [########################################] 970/970 (0s)
 ==============================
 回测结果摘要
@@ -242,29 +250,29 @@ start_time              2020-01-02 00:00:00+08:00
 end_time                2023-12-29 00:00:00+08:00
 duration                       1457 days, 0:00:00
 total_bars                                    970
-trade_count                                   0.0
+trade_count                                  33.0
 initial_market_value                     100000.0
-end_market_value                       66014.3989
-total_pnl                                     0.0
-unrealized_pnl                           -33957.0
-total_return_pct                       -33.985601
-annualized_return                       -0.098809
-volatility                               0.168118
-total_profit                                  0.0
-total_loss                                    0.0
-total_commission                          28.6011
-max_drawdown                              36630.0
-max_drawdown_pct                        36.568054
-win_rate                                      0.0
-sharpe_ratio                            -0.587735
-calmar_ratio                            -0.270206
+end_market_value                       70668.3408
+total_pnl                                -25232.0
+unrealized_pnl                                0.0
+total_return_pct                       -29.331659
+annualized_return                       -0.083297
+volatility                               0.117848
+total_profit                              15085.0
+total_loss                               -40317.0
+total_commission                        4099.6592
+max_drawdown                           35228.0889
+max_drawdown_pct                         33.26655
+win_rate                                24.242424
+sharpe_ratio                            -0.706817
+calmar_ratio                            -0.250393
 ```
 
-> *注：由于浦发银行 (600000) 在 2020-2023 年表现不佳，简单的买入持有策略并未盈利。但这正是回测的意义——验证策略在历史上的表现。*
+> *注：示例结果会随数据区间、手续费设置和双均线信号变化而变化。重点是理解完整流程：数据准备 → 信号生成 → 下单执行 → 指标评估。*
 
 ### 结果解析
 
-下表详细解释了回测结果中的各项核心指标。这些指标的计算逻辑均基于 `akquant` 源码实现。
+下表详细解释了回测结果中的各项核心指标。这些指标的计算逻辑均基于 `AKQuant` 源码实现。
 
 | 指标 (Metric) | 含义 (Meaning) | 计算公式 / 逻辑 | 评价标准 |
 | :--- | :--- | :--- | :--- |
@@ -276,6 +284,14 @@ calmar_ratio                            -0.270206
 | **Volatility** <br> (年化波动率) | 收益率标准差的年化值，反映策略的稳定性。 | $\sigma_{daily} \times \sqrt{252}$ | 越低越稳定。 |
 | **Win Rate** <br> (胜率) | 盈利交易次数占总交易次数的比例。 | $\frac{\text{Winning Trades}}{\text{Total Trades}}$ | 取决于策略类型。趋势策略通常胜率低但盈亏比高。 |
 
+结合本次示例输出（`total_return_pct=-29.33%`、`max_drawdown_pct=33.27%`、`sharpe_ratio=-0.71`）可以快速得到三点结论：
+
+1. **收益端偏弱**：累计收益率为负，说明该参数下双均线在该区间未跑赢“空仓”。
+2. **风险端偏高**：最大回撤超过 30%，资金曲线经历了较深回撤，持有体验较差。
+3. **收益风险比不理想**：夏普为负、卡玛为负，意味着承担波动和回撤后没有获得正向风险补偿。
+
+因此，这个示例更适合作为“流程演示”与“指标解读”样本，而不是可直接实盘的策略参数。后续可通过参数优化、风控过滤（如趋势过滤、止损）进一步改进。
+
 通过这个简单的 "Hello World"，我们跑通了量化回测的全流程：数据 -> 策略 -> 回测 -> 结果。
 
 ---
@@ -283,7 +299,7 @@ calmar_ratio                            -0.270206
 ## 本章小结
 
 1. 量化投资的核心是“数据、策略、交易、风控”四段闭环。
-2. `akquant` 通过 Python + Rust 混合架构兼顾研发效率与执行性能。
+2. `AKQuant` 通过 Python + Rust 混合架构兼顾研发效率与执行性能。
 3. 首个回测示例的重点不在收益高低，而在建立可复现的研究流程。
 
 ## 课后练习
@@ -297,3 +313,4 @@ calmar_ratio                            -0.270206
 1. 数据拉取失败：先检查网络和数据源可用性，再重试脚本。
 2. 依赖缺失报错：按安装文档补齐环境后重新运行。
 3. 指标解读混淆：优先关注 `total_return_pct` 与 `max_drawdown_pct` 两项基线指标。
+4. 命令不可用（如 `conda` / `python` / `ruff` / `mypy`）：优先确认已激活本地 conda 环境（如 `ak_dev`），并检查 `C:\Users\xxx\miniconda3\Scripts\conda.exe` 路径是否可用。
