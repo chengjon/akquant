@@ -52,6 +52,7 @@ def run_backtest(
     risk_budget_mode: Literal["order_notional", "trade_notional"] = "order_notional",
     risk_budget_reset_daily: bool = False,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
+    broker_profile: Optional[str] = None,
     **kwargs: Any,
 ) -> BacktestResult
 ```
@@ -84,6 +85,7 @@ def run_backtest(
 *   `risk_budget_mode` / `risk_budget_reset_daily`: Risk budget accounting mode and reset policy.
 *   `analyzer_plugins`: Optional analyzer plugin list. Plugins receive `on_start/on_bar/on_trade/on_finish` callbacks and final outputs are stored in `result.analyzer_outputs`.
 *   `on_event`: Optional stream callback. When omitted, an internal no-op callback keeps legacy blocking return semantics; when provided, runtime events are emitted.
+*   `broker_profile`: Optional broker template preset for quick defaults (fees/slippage/lot size). Built-ins: `cn_stock_miniqmt`, `cn_stock_t1_low_fee`, `cn_stock_sim_high_slippage`.
 
 ### `akquant.run_warm_start`
 
@@ -471,6 +473,7 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `stop_sell(symbol, trigger_price, quantity, ...)`: Stop sell (Stop Market). Triggers a market sell order when price drops below `trigger_price`.
 *   `submit_order(..., order_type="StopTrail", trail_offset=..., trail_reference_price=None)`: Submit a trailing stop order. `trail_offset` must be greater than 0.
 *   `submit_order(..., order_type="StopTrailLimit", price=..., trail_offset=..., trail_reference_price=None)`: Submit a trailing stop-limit order. `price` and `trail_offset` are required.
+*   `submit_order(..., broker_options={...})`: Optional broker extension fields passthrough (backtest currently records them on `order.broker_options` for debugging/audit).
 *   `place_trailing_stop(symbol, quantity, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: Helper for trailing stop orders, promoted to market order when triggered.
 *   `place_trailing_stop_limit(symbol, quantity, price, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: Helper for trailing stop-limit orders, promoted to limit order when triggered.
 *   `order_target_value(target_value, symbol, price=None)`: Adjust position to target value.
@@ -657,6 +660,7 @@ Backtest result object.
 *   `capacity_df(freq="D")`: Capacity proxy metrics (order count, fill rates, turnover).
 *   `orders_by_strategy()`: Strategy-ownership order aggregation by `owner_strategy_id`.
 *   `executions_by_strategy()`: Strategy-ownership execution aggregation by `owner_strategy_id`.
+*   `get_event_stats()`: Unified stream summary stats (for example `processed_events`, `dropped_event_count`, `callback_error_count`, `backpressure_policy`, `stream_mode`).
 
 ```python
 orders_by_strategy = result.orders_by_strategy()
@@ -671,4 +675,9 @@ executions_by_strategy = result.executions_by_strategy()
 # executions_by_strategy:
 # - owner_strategy_id, execution_count, total_quantity,
 #   total_notional, total_commission, avg_fill_price
+
+event_stats = result.get_event_stats()
+# Common fields:
+# - processed_events, dropped_event_count, callback_error_count,
+#   backpressure_policy, stream_mode, reason
 ```

@@ -237,6 +237,8 @@ class BacktestResult:
         r"""Get orders as a dictionary of columns for fast DataFrame creation."""
         ...
 
+    def get_event_stats(self) -> dict[str, typing.Any]: ...
+
 class Bar:
     r"""
     K 线数据结构.

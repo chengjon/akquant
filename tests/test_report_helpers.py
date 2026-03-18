@@ -10,7 +10,7 @@ class DummyMetrics:
     """Minimal metrics object for report helper tests."""
 
     total_return_pct = 10.0
-    annualized_return = 5.0
+    annualized_return = 0.05
     sharpe_ratio = 1.2
     max_drawdown_pct = 3.0
     volatility = 0.2
@@ -193,4 +193,6 @@ def test_build_metrics_html_contains_key_labels() -> None:
     """Metrics HTML should contain expected labels and formatted values."""
     html = _build_metrics_html(DummyResult(with_data=True))
     assert "累计收益率 (Total Return)" in html
+    assert "年化收益率 (CAGR)" in html
+    assert "5.00%" in html
     assert "交易次数 (Trades)" in html

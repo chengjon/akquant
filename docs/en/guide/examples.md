@@ -468,3 +468,7 @@ The `examples/` directory contains more scripts demonstrating AKShare integratio
 *   **[43_target_weights_rebalance.py](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py)**:
     *   Demonstrates TopN dynamic weights: rank symbols by momentum, select winners, then rebalance with `order_target_weights`.
     *   Shows practical usage of `liquidate_unmentioned` and `rebalance_tolerance`, then prints `selected_history` / `final_positions` / `final_equity`.
+
+*   **[46_broker_profile_demo.py](https://github.com/akfamily/akquant/blob/main/examples/46_broker_profile_demo.py)**:
+    *   Demonstrates template injection with `run_backtest(..., broker_profile=...)` and prints effective fee/lot parameters at strategy startup.
+    *   Useful for quick alignment with built-ins such as `cn_stock_miniqmt`, `cn_stock_t1_low_fee`, and `cn_stock_sim_high_slippage`.

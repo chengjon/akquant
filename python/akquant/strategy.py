@@ -1392,6 +1392,7 @@ class Strategy:
         client_order_id: Optional[str] = None,
         order_type: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
+        broker_options: Optional[Dict[str, Any]] = None,
         trail_offset: Optional[float] = None,
         trail_reference_price: Optional[float] = None,
     ) -> str:
@@ -1412,6 +1413,7 @@ class Strategy:
             client_order_id=client_order_id,
             order_type=order_type,
             extra=extra,
+            broker_options=broker_options,
             trail_offset=trail_offset,
             trail_reference_price=trail_reference_price,
         )

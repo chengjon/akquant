@@ -320,6 +320,8 @@ result = run_backtest(
     stream_max_buffer=256,
     stream_error_mode="continue",
 )
+
+print("event_stats:", result.get_event_stats())
 ```
 
 Common streaming options:

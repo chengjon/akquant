@@ -469,3 +469,7 @@ class AdjSignal(Strategy):
 *   **[43_target_weights_rebalance.py](https://github.com/akfamily/akquant/blob/main/examples/43_target_weights_rebalance.py)**:
     *   演示 TopN 动态权重调仓：先按动量打分选强势标的，再通过 `order_target_weights` 一次性完成组合再平衡。
     *   展示 `liquidate_unmentioned` 与 `rebalance_tolerance` 的组合用法，并输出 `selected_history` / `final_positions` / `final_equity`。
+
+*   **[46_broker_profile_demo.py](https://github.com/akfamily/akquant/blob/main/examples/46_broker_profile_demo.py)**:
+    *   演示 `run_backtest(..., broker_profile=...)` 的模板注入行为，并打印策略启动时实际生效的费率与手数参数。
+    *   适合快速对齐 `cn_stock_miniqmt`、`cn_stock_t1_low_fee`、`cn_stock_sim_high_slippage` 等预设风格。

@@ -151,3 +151,40 @@ result = run_backtest(
 
 `run_warm_start(...)` currently restores strategy instance from checkpoint and does not
 reload strategy implementation via `strategy_source` / `strategy_loader`.
+
+## 10. broker_profile Selection Guide
+
+`run_backtest(..., broker_profile=...)` injects a preset of fee/slippage/lot defaults, useful when you want to align execution assumptions quickly before finalizing broker-specific params.
+
+Priority rule:
+
+- Explicit arguments override `broker_profile` template values
+- Template values override system defaults
+
+| Template | Recommended Scenario | Main Characteristics | Typical Risk |
+|---|---|---|---|
+| `cn_stock_miniqmt` | General A-share simulation, baseline MiniQMT alignment | Default commission + stamp duty + transfer fee + minimum commission + 100-share lot | Can be optimistic under extreme impact conditions |
+| `cn_stock_t1_low_fee` | Low-fee account sensitivity tests, net-return stress checks | Lower commission/transfer fee and lower minimum commission | Can overestimate high-turnover strategy performance |
+| `cn_stock_sim_high_slippage` | Intraday impact/liquidity stress scenarios, robustness replay | Higher slippage and more conservative turnover assumptions | Can underestimate low-impact strategy performance |
+
+Template parameter details (current built-in values):
+
+| Template | commission_rate | stamp_tax_rate | transfer_fee_rate | min_commission | slippage | volume_limit_pct | lot_size |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `cn_stock_miniqmt` | 0.0003 | 0.001 | 0.00001 | 5.0 | 0.0002 | 0.2 | 100 |
+| `cn_stock_t1_low_fee` | 0.0002 | 0.001 | 0.000005 | 3.0 | 0.0001 | 0.25 | 100 |
+| `cn_stock_sim_high_slippage` | 0.0003 | 0.001 | 0.00001 | 5.0 | 0.001 | 0.1 | 100 |
+
+Quick example:
+
+```python
+result = run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    symbol="000001.SZ",
+    broker_profile="cn_stock_t1_low_fee",
+    show_progress=False,
+)
+```
+
+If you already have broker-confirmed live parameters, prefer explicit values such as `commission_rate`, `slippage`, and `lot_size` as your final baseline.

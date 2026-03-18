@@ -69,13 +69,47 @@ def get_open_orders(strategy: Any, symbol: Optional[str] = None) -> List[Any]:
 def get_order(strategy: Any, order_id: str) -> Optional[Any]:
     """获取指定订单详情."""
     if order_id in strategy._known_orders:
-        return strategy._known_orders[order_id]
+        order = strategy._known_orders[order_id]
+        _attach_broker_options(strategy, order_id, order)
+        return order
 
     if strategy.ctx:
         for o in strategy.ctx.active_orders:
             if o.id == order_id:
+                _attach_broker_options(strategy, order_id, o)
                 return o
     return None
+
+
+def _record_broker_options(
+    strategy: Any, order_id: Optional[str], broker_options: Optional[Dict[str, Any]]
+) -> None:
+    if not order_id or not broker_options:
+        return
+    if not isinstance(broker_options, dict):
+        raise TypeError("broker_options must be a dict when provided")
+    store = getattr(strategy, "_broker_options_by_order_id", None)
+    if not isinstance(store, dict):
+        store = {}
+        setattr(strategy, "_broker_options_by_order_id", store)
+    normalized = dict(broker_options)
+    store[str(order_id)] = normalized
+    order = get_order(strategy, str(order_id))
+    if order is not None:
+        _attach_broker_options(strategy, str(order_id), order)
+
+
+def _attach_broker_options(strategy: Any, order_id: str, order: Any) -> None:
+    store = getattr(strategy, "_broker_options_by_order_id", None)
+    if not isinstance(store, dict):
+        return
+    options = store.get(str(order_id))
+    if not isinstance(options, dict):
+        return
+    try:
+        setattr(order, "broker_options", dict(options))
+    except Exception:
+        return
 
 
 def cancel_order(strategy: Any, order_id: str) -> None:
@@ -312,6 +346,7 @@ def submit_order(
     client_order_id: Optional[str] = None,
     order_type: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
+    broker_options: Optional[Dict[str, Any]] = None,
     trail_offset: Optional[float] = None,
     trail_reference_price: Optional[float] = None,
 ) -> str:
@@ -338,7 +373,7 @@ def submit_order(
 
     side_text = side.strip().lower()
     if side_text == "buy":
-        return _submit_buy_side(
+        order_id = _submit_buy_side(
             strategy=strategy,
             symbol=symbol,
             quantity=quantity,
@@ -350,8 +385,10 @@ def submit_order(
             trail_offset=trail_offset,
             trail_reference_price=trail_reference_price,
         )
+        _record_broker_options(strategy, order_id, broker_options)
+        return order_id
     if side_text == "sell":
-        return _submit_sell_side(
+        order_id = _submit_sell_side(
             strategy=strategy,
             symbol=symbol,
             quantity=quantity,
@@ -363,6 +400,8 @@ def submit_order(
             trail_offset=trail_offset,
             trail_reference_price=trail_reference_price,
         )
+        _record_broker_options(strategy, order_id, broker_options)
+        return order_id
     raise ValueError(f"Unsupported side: {side}")
 
 

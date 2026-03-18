@@ -1,3 +1,4 @@
+import re
 from functools import cached_property
 from typing import (
     Any,
@@ -9,14 +10,8 @@ from typing import (
 
 import pandas as pd
 
-from ..akquant import (
-    BacktestResult as RustBacktestResult,
-)
-from ..akquant import (
-    ClosedTrade,
-    Order,
-    Trade,
-)
+from ..akquant import BacktestResult as RustBacktestResult
+from ..akquant import ClosedTrade, Order, Trade
 
 
 class BacktestResult:
@@ -958,6 +953,79 @@ class BacktestResult:
         )
         grouped = grouped.sort_values("owner_strategy_id").reset_index(drop=True)
         return cast(pd.DataFrame, grouped[columns])
+
+    def get_event_stats(self) -> dict[str, Any]:
+        """Return normalized event stream statistics from payload and run summary."""
+        keys = {
+            "processed_events",
+            "dropped_event_count",
+            "callback_error_count",
+            "backpressure_policy",
+            "stream_mode",
+            "sampling_enabled",
+            "sampling_rate",
+            "reason",
+        }
+        stats: dict[str, Any] = {}
+        direct_stats = getattr(self, "_event_stats", None)
+        if isinstance(direct_stats, dict):
+            stats.update(direct_stats)
+        try:
+            metrics_df = self.metrics_df
+            if not metrics_df.empty:
+                value_col = "value" if "value" in metrics_df.columns else None
+                for key in keys:
+                    if key not in metrics_df.index:
+                        continue
+                    raw_value: Any
+                    if value_col is not None:
+                        raw_value = metrics_df.at[key, value_col]
+                    else:
+                        row = metrics_df.loc[key]
+                        if isinstance(row, pd.Series):
+                            raw_value = row.iloc[0]
+                        else:
+                            raw_value = row
+                    if pd.isna(raw_value):
+                        continue
+                    if hasattr(raw_value, "item"):
+                        try:
+                            stats[key] = raw_value.item()
+                            continue
+                        except Exception:
+                            pass
+                    stats[key] = raw_value
+        except Exception:
+            pass
+
+        summary = getattr(self, "_engine_summary", None)
+        if isinstance(summary, str) and summary:
+            parsed: dict[str, Any] = {}
+            for part in summary.split(","):
+                token = part.strip()
+                if "=" not in token:
+                    continue
+                raw_key, raw_value = token.split("=", 1)
+                key = raw_key.strip()
+                value_text = raw_value.strip()
+                lowered = value_text.lower()
+                if lowered in {"true", "false"}:
+                    parsed[key] = lowered == "true"
+                else:
+                    try:
+                        parsed[key] = int(value_text)
+                    except ValueError:
+                        try:
+                            parsed[key] = float(value_text)
+                        except ValueError:
+                            parsed[key] = value_text
+            matched = re.search(r"Processed\s+(\d+)\s+events", summary, re.IGNORECASE)
+            if matched and "processed_events" not in parsed:
+                parsed["processed_events"] = int(matched.group(1))
+            for key in keys:
+                if key in parsed and key not in stats:
+                    stats[key] = parsed[key]
+        return stats
 
     def _risk_reason_masks(self, rejected: pd.DataFrame) -> dict[str, pd.Series]:
         reason_lower = rejected["reject_reason"].fillna("").astype(str).str.lower()

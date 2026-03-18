@@ -64,6 +64,36 @@ BacktestDataInput = Union[
     pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed, DataFeedAdapter
 ]
 
+_BROKER_PROFILE_TEMPLATES: Dict[str, Dict[str, Any]] = {
+    "cn_stock_miniqmt": {
+        "commission_rate": 0.0003,
+        "stamp_tax_rate": 0.001,
+        "transfer_fee_rate": 0.00001,
+        "min_commission": 5.0,
+        "slippage": 0.0002,
+        "volume_limit_pct": 0.2,
+        "lot_size": 100,
+    },
+    "cn_stock_t1_low_fee": {
+        "commission_rate": 0.0002,
+        "stamp_tax_rate": 0.001,
+        "transfer_fee_rate": 0.000005,
+        "min_commission": 3.0,
+        "slippage": 0.0001,
+        "volume_limit_pct": 0.25,
+        "lot_size": 100,
+    },
+    "cn_stock_sim_high_slippage": {
+        "commission_rate": 0.0003,
+        "stamp_tax_rate": 0.001,
+        "transfer_fee_rate": 0.00001,
+        "min_commission": 5.0,
+        "slippage": 0.001,
+        "volume_limit_pct": 0.1,
+        "lot_size": 100,
+    },
+}
+
 
 def _parse_positive_int_option(name: str, value: Any) -> int:
     parsed = int(value)
@@ -88,6 +118,20 @@ def _parse_stream_mode(value: Any) -> str:
 
 def _noop_stream_event_handler(_event: BacktestStreamEvent) -> None:
     return None
+
+
+def _resolve_broker_profile(profile: Optional[str]) -> Dict[str, Any]:
+    if profile is None:
+        return {}
+    key = str(profile).strip().lower()
+    if not key:
+        return {}
+    if key not in _BROKER_PROFILE_TEMPLATES:
+        available = ", ".join(sorted(_BROKER_PROFILE_TEMPLATES.keys()))
+        raise ValueError(
+            f"Unknown broker_profile '{profile}', available profiles: {available}"
+        )
+    return dict(_BROKER_PROFILE_TEMPLATES[key])
 
 
 def _parse_asset_type_name(value: Any) -> str:
@@ -509,6 +553,7 @@ def run_backtest(
     risk_budget_reset_daily: bool = False,
     analyzer_plugins: Optional[Sequence[AnalyzerPlugin]] = None,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
+    broker_profile: Optional[str] = None,
     **kwargs: Any,
 ) -> BacktestResult:
     """
@@ -588,6 +633,10 @@ def run_backtest(
                              接收 on_start/on_bar/on_trade/on_finish 生命周期事件
     :param on_event: 可选流式事件回调。阶段 5 后 `run_backtest` 始终走统一事件内核；
                      不传时内部使用 no-op 回调并保持返回语义不变。
+    :param broker_profile: 可选 broker 参数模板名称，
+                           如 "cn_stock_miniqmt" / "cn_stock_t1_low_fee" /
+                           "cn_stock_sim_high_slippage"，
+                           用于快速注入一组回测参数默认值。
     故障速查可参考 docs/zh/advanced/runtime_config.md，
     英文文档参考 docs/en/advanced/runtime_config.md
     :param instruments_config: 标的配置列表或字典 (可选)
@@ -697,6 +746,39 @@ def run_backtest(
                 Optional[Dict[str, Any]],
                 getattr(strategy_config, "strategy_loader_options", None),
             )
+    broker_profile_values = _resolve_broker_profile(broker_profile)
+    if broker_profile_values:
+        if initial_cash is None:
+            initial_cash = cast(
+                Optional[float], broker_profile_values.get("initial_cash")
+            )
+        if commission_rate is None:
+            commission_rate = cast(
+                Optional[float], broker_profile_values.get("commission_rate")
+            )
+        if slippage is None:
+            slippage = cast(Optional[float], broker_profile_values.get("slippage"))
+        if volume_limit_pct is None:
+            volume_limit_pct = cast(
+                Optional[float], broker_profile_values.get("volume_limit_pct")
+            )
+        if lot_size is None:
+            lot_size = cast(
+                Optional[Union[int, Dict[str, int]]],
+                broker_profile_values.get("lot_size"),
+            )
+        if stamp_tax_rate == 0.0:
+            stamp_tax_rate = float(
+                broker_profile_values.get("stamp_tax_rate", stamp_tax_rate)
+            )
+        if transfer_fee_rate == 0.0:
+            transfer_fee_rate = float(
+                broker_profile_values.get("transfer_fee_rate", transfer_fee_rate)
+            )
+        if min_commission == 0.0:
+            min_commission = float(
+                broker_profile_values.get("min_commission", min_commission)
+            )
     if strategies_by_slot is not None and not isinstance(strategies_by_slot, dict):
         raise TypeError("strategies_by_slot must be a dict when provided")
     if strategy_max_order_value is not None and not isinstance(
@@ -753,9 +835,25 @@ def run_backtest(
         stream_on_event = _noop_stream_event_handler
     effective_strategy_id = strategy_id or "_default"
     original_stream_handler = stream_on_event
+    event_stats_snapshot: Dict[str, Any] = {}
 
     def wrapped_stream_on_event(event: BacktestStreamEvent) -> None:
         event_type = str(event.get("event_type", ""))
+        if event_type == "finished":
+            payload_obj = event.get("payload", {})
+            if isinstance(payload_obj, dict):
+                for key in (
+                    "processed_events",
+                    "dropped_event_count",
+                    "callback_error_count",
+                    "backpressure_policy",
+                    "stream_mode",
+                    "sampling_enabled",
+                    "sampling_rate",
+                    "reason",
+                ):
+                    if key in payload_obj:
+                        event_stats_snapshot[key] = payload_obj.get(key)
         if event_type in {"order", "trade", "risk"}:
             payload_obj = event.get("payload", {})
             if isinstance(payload_obj, dict):
@@ -2138,8 +2236,9 @@ def run_backtest(
             ):
                 current_strategy._prepare_indicators(data_map_for_indicators)
 
+    engine_summary: str = ""
     try:
-        engine.run(strategy_instance, show_progress)
+        engine_summary = str(engine.run(strategy_instance, show_progress))
     except Exception as e:
         logger.error(f"Backtest failed: {e}")
         raise e
@@ -2178,6 +2277,8 @@ def run_backtest(
         strategy=strategy_instance,
         engine=engine,
     )
+    setattr(result, "_engine_summary", engine_summary)
+    setattr(result, "_event_stats", dict(event_stats_snapshot))
     analyzer_outputs: Dict[str, Dict[str, Any]] = {}
     if analyzer_manager.plugins:
         try:
@@ -2371,6 +2472,29 @@ def run_warm_start(
         raise TypeError("on_event must be callable when provided")
     if stream_on_event is None:
         stream_on_event = _noop_stream_event_handler
+    original_stream_handler = stream_on_event
+    event_stats_snapshot: Dict[str, Any] = {}
+
+    def wrapped_stream_on_event(event: BacktestStreamEvent) -> None:
+        event_type = str(event.get("event_type", ""))
+        if event_type == "finished":
+            payload_obj = event.get("payload", {})
+            if isinstance(payload_obj, dict):
+                for key in (
+                    "processed_events",
+                    "dropped_event_count",
+                    "callback_error_count",
+                    "backpressure_policy",
+                    "stream_mode",
+                    "sampling_enabled",
+                    "sampling_rate",
+                    "reason",
+                ):
+                    if key in payload_obj:
+                        event_stats_snapshot[key] = payload_obj.get(key)
+        original_stream_handler(event)
+
+    stream_on_event = wrapped_stream_on_event
     stream_progress_interval = _parse_positive_int_option(
         "stream_progress_interval", kwargs.pop("stream_progress_interval", 1)
     )
@@ -2946,8 +3070,9 @@ def run_warm_start(
                     logger.error(f"Failed to update indicators for warm start: {e}")
 
     # 4. 运行
+    engine_summary: str = ""
     try:
-        engine.run(strategy_instance, show_progress)
+        engine_summary = str(engine.run(strategy_instance, show_progress))
     except Exception as e:
         logger.error(f"Warm start backtest failed: {e}")
         raise e
@@ -2989,5 +3114,7 @@ def run_warm_start(
         strategy=strategy_instance,
         engine=engine,
     )
+    setattr(result, "_engine_summary", engine_summary)
+    setattr(result, "_event_stats", dict(event_stats_snapshot))
     setattr(result, "_owner_strategy_id", effective_strategy_id)
     return result

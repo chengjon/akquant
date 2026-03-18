@@ -39,6 +39,7 @@ def run_backtest(
     risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
     strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
+    broker_profile: Optional[str] = None,
     **kwargs: Any,
 ) -> BacktestResult
 ```
@@ -98,6 +99,7 @@ def run_warm_start(
 *   `strategies_by_slot`: 可选多策略映射。键为 slot id，值为策略类/实例/函数式 on_bar 回调；用于启用 slot 迭代执行。
 *   `analyzer_plugins`: 可选 Analyzer 插件列表。插件接收 `on_start/on_bar/on_trade/on_finish` 生命周期回调，结果汇总到 `result.analyzer_outputs`。
 *   `on_event`: 可选事件回调。不传时内部使用 no-op 回调并保持阻塞返回语义；传入时可实时消费事件。
+*   `broker_profile`: 可选 broker 参数模板，用于快速注入费率/滑点/最小手数等默认值。内置模板：`cn_stock_miniqmt`、`cn_stock_t1_low_fee`、`cn_stock_sim_high_slippage`。
 
 **DataFeedAdapter 用法（多时间框）:**
 
@@ -491,6 +493,7 @@ result = run_backtest(
 *   `sell(symbol, quantity, price=None, trigger_price=None, ...)`: 卖出（平多/开空）。参数同上。
 *   `submit_order(..., order_type="StopTrail", trail_offset=..., trail_reference_price=None)`: 提交跟踪止损单。`trail_offset` 必须大于 0。
 *   `submit_order(..., order_type="StopTrailLimit", price=..., trail_offset=..., trail_reference_price=None)`: 提交跟踪止损限价单。`price` 与 `trail_offset` 必填。
+*   `submit_order(..., broker_options={...})`: 可选 broker 扩展参数透传（回测阶段仅记录在订单对象 `order.broker_options` 上，便于联调与审计）。
 *   `place_trailing_stop(symbol, quantity, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: 跟踪止损助手，触发后按市价执行。
 *   `place_trailing_stop_limit(symbol, quantity, price, trail_offset, side="Sell", trail_reference_price=None, ...) -> str`: 跟踪止损限价助手，触发后按限价执行。
 *   `order_target_weights(target_weights, price_map=None, liquidate_unmentioned=False, allow_leverage=False, rebalance_tolerance=0.0, ...)`: 按多标的目标权重调仓。
@@ -719,6 +722,7 @@ class RiskConfig:
 *   `capacity_df(freq="D")`: 容量代理指标（订单数、成交率、换手）。
 *   `orders_by_strategy()`: 按 `owner_strategy_id` 聚合订单统计。
 *   `executions_by_strategy()`: 按 `owner_strategy_id` 聚合成交流水统计。
+*   `get_event_stats()`: 返回流式事件统计摘要（如 `processed_events`、`dropped_event_count`、`callback_error_count`、`backpressure_policy`、`stream_mode`）。
 
 ```python
 orders_by_strategy = result.orders_by_strategy()
@@ -733,4 +737,9 @@ executions_by_strategy = result.executions_by_strategy()
 # executions_by_strategy:
 # - owner_strategy_id, execution_count, total_quantity,
 #   total_notional, total_commission, avg_fill_price
+
+event_stats = result.get_event_stats()
+# 常见字段:
+# - processed_events, dropped_event_count, callback_error_count,
+#   backpressure_policy, stream_mode, reason
 ```

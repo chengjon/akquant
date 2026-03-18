@@ -611,7 +611,7 @@ def _build_metrics_html(result: Any) -> str:
         (
             "年化收益率 (CAGR)",
             metrics.annualized_return,
-            f"{metrics.annualized_return:.2f}%",
+            f"{metrics.annualized_return:.2%}",
             get_color_class(metrics.annualized_return),
         ),
         (

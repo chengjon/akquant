@@ -45,6 +45,25 @@ class NoopStrategy(akquant.Strategy):
         return
 
 
+class ProfileCaptureStrategy(akquant.Strategy):
+    """Capture resolved market profile fields from strategy runtime."""
+
+    def __init__(self) -> None:
+        """Initialize captured snapshot container."""
+        super().__init__()
+        self.snapshot: dict[str, float | int] = {}
+
+    def on_start(self) -> None:
+        """Capture strategy runtime fields after backtest startup."""
+        self.snapshot = {
+            "commission_rate": float(self.commission_rate),
+            "stamp_tax_rate": float(self.stamp_tax_rate),
+            "transfer_fee_rate": float(self.transfer_fee_rate),
+            "min_commission": float(self.min_commission),
+            "lot_size": int(self.lot_size),
+        }
+
+
 class SingleBuyStrategy(akquant.Strategy):
     """Place a single buy order on first bar only."""
 
@@ -2286,6 +2305,106 @@ def test_run_backtest_on_event_audit_mode_latency_budget_benchmark() -> None:
     assert event_counts[5] == event_counts[0]
     assert durations[1] > durations[0]
     assert durations[5] > durations[1]
+
+
+def test_run_backtest_broker_profile_applies_defaults() -> None:
+    """broker_profile should inject template defaults when explicit args are omitted."""
+    result = akquant.run_backtest(
+        data=_build_regression_bars("PROFILE"),
+        strategy=ProfileCaptureStrategy,
+        symbol="PROFILE",
+        execution_mode="current_close",
+        broker_profile="cn_stock_miniqmt",
+        show_progress=False,
+    )
+
+    strategy = cast(ProfileCaptureStrategy, result.strategy)
+    assert strategy.snapshot["commission_rate"] == pytest.approx(0.0003, rel=1e-12)
+    assert strategy.snapshot["stamp_tax_rate"] == pytest.approx(0.001, rel=1e-12)
+    assert strategy.snapshot["transfer_fee_rate"] == pytest.approx(0.00001, rel=1e-12)
+    assert strategy.snapshot["min_commission"] == pytest.approx(5.0, rel=1e-12)
+    assert strategy.snapshot["lot_size"] == 100
+
+
+def test_run_backtest_broker_profile_explicit_args_override_profile() -> None:
+    """Explicit parameters should keep highest precedence over broker_profile values."""
+    result = akquant.run_backtest(
+        data=_build_regression_bars("PROFILE_OVERRIDE"),
+        strategy=ProfileCaptureStrategy,
+        symbol="PROFILE_OVERRIDE",
+        execution_mode="current_close",
+        broker_profile="cn_stock_miniqmt",
+        commission_rate=0.0011,
+        stamp_tax_rate=0.0022,
+        min_commission=1.5,
+        lot_size=10,
+        show_progress=False,
+    )
+
+    strategy = cast(ProfileCaptureStrategy, result.strategy)
+    assert strategy.snapshot["commission_rate"] == pytest.approx(0.0011, rel=1e-12)
+    assert strategy.snapshot["stamp_tax_rate"] == pytest.approx(0.0022, rel=1e-12)
+    assert strategy.snapshot["min_commission"] == pytest.approx(1.5, rel=1e-12)
+    assert strategy.snapshot["lot_size"] == 10
+
+
+def test_run_backtest_broker_profile_rejects_unknown_profile() -> None:
+    """Unknown broker_profile should raise a validation error."""
+    with pytest.raises(ValueError, match="Unknown broker_profile"):
+        akquant.run_backtest(
+            data=_build_regression_bars("PROFILE_BAD"),
+            strategy=NoopStrategy,
+            symbol="PROFILE_BAD",
+            broker_profile="does_not_exist",
+            show_progress=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected_commission", "expected_min_commission"),
+    [
+        ("cn_stock_t1_low_fee", 0.0002, 3.0),
+        ("cn_stock_sim_high_slippage", 0.0003, 5.0),
+    ],
+)
+def test_run_backtest_broker_profile_additional_templates(
+    profile: str, expected_commission: float, expected_min_commission: float
+) -> None:
+    """Additional built-in broker profiles should be available and injectable."""
+    result = akquant.run_backtest(
+        data=_build_regression_bars("PROFILE_EXTRA"),
+        strategy=ProfileCaptureStrategy,
+        symbol="PROFILE_EXTRA",
+        execution_mode="current_close",
+        broker_profile=profile,
+        show_progress=False,
+    )
+
+    strategy = cast(ProfileCaptureStrategy, result.strategy)
+    assert strategy.snapshot["commission_rate"] == pytest.approx(
+        expected_commission, rel=1e-12
+    )
+    assert strategy.snapshot["min_commission"] == pytest.approx(
+        expected_min_commission, rel=1e-12
+    )
+
+
+def test_backtest_result_get_event_stats_from_finished_payload() -> None:
+    """Result wrapper should expose stream event summary stats in a unified dict."""
+    result = akquant.run_backtest(
+        data=_build_benchmark_data(n=120, symbol="EVENT_STATS"),
+        strategy=NoopStrategy,
+        symbol="EVENT_STATS",
+        show_progress=False,
+        on_event=lambda _event: None,
+        stream_mode="audit",
+    )
+
+    stats = result.get_event_stats()
+    assert isinstance(stats, dict)
+    assert int(stats.get("processed_events", 0)) > 0
+    assert str(stats.get("stream_mode")) == "audit"
+    assert int(stats.get("callback_error_count", 0)) == 0
 
 
 def test_run_backtest_analyzer_plugins_lifecycle_and_output() -> None:

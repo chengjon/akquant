@@ -2483,6 +2483,7 @@ def test_strategy_buy_sell_delegate_to_submit_order() -> None:
             client_order_id: str | None = None,
             order_type: str | None = None,
             extra: dict[str, Any] | None = None,
+            broker_options: dict[str, Any] | None = None,
             trail_offset: float | None = None,
             trail_reference_price: float | None = None,
         ) -> str:
@@ -2493,6 +2494,7 @@ def test_strategy_buy_sell_delegate_to_submit_order() -> None:
             _ = client_order_id
             _ = order_type
             _ = extra
+            _ = broker_options
             _ = trail_offset
             _ = trail_reference_price
             assert symbol is not None
@@ -2531,6 +2533,31 @@ def test_strategy_submit_order_trailing_validation() -> None:
         )
 
 
+def test_strategy_submit_order_records_broker_options_in_backtest_mode() -> None:
+    """submit_order should accept broker_options and attach them to known orders."""
+    strategy = MyStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    order = SimpleNamespace(id="oid-broker-options")
+    ctx.buy.return_value = order.id
+    ctx.active_orders = [order]
+    strategy.ctx = ctx
+
+    order_id = strategy.submit_order(
+        symbol="AAPL",
+        side="Buy",
+        quantity=1.0,
+        broker_options={"xt_price_type": "LATEST_PRICE", "order_remark": "demo"},
+    )
+
+    assert order_id == "oid-broker-options"
+    queried = strategy.get_order(order_id)
+    assert queried is order
+    assert getattr(queried, "broker_options") == {
+        "xt_price_type": "LATEST_PRICE",
+        "order_remark": "demo",
+    }
+
+
 def test_strategy_trailing_helpers_delegate_to_submit_order() -> None:
     """Trailing helper APIs should call unified submit_order with trailing args."""
 
@@ -2550,6 +2577,7 @@ def test_strategy_trailing_helpers_delegate_to_submit_order() -> None:
             client_order_id: str | None = None,
             order_type: str | None = None,
             extra: dict[str, Any] | None = None,
+            broker_options: dict[str, Any] | None = None,
             trail_offset: float | None = None,
             trail_reference_price: float | None = None,
         ) -> str:
@@ -2557,6 +2585,7 @@ def test_strategy_trailing_helpers_delegate_to_submit_order() -> None:
             _ = trigger_price
             _ = client_order_id
             _ = extra
+            _ = broker_options
             self.calls.append(
                 {
                     "symbol": symbol,

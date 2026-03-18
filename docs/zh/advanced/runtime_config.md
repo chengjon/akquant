@@ -151,3 +151,40 @@ result = run_backtest(
 
 `run_warm_start(...)` 当前从 checkpoint 恢复策略实例，不会通过
 `strategy_source` / `strategy_loader` 重新加载策略实现。
+
+## 10. broker_profile 选择建议
+
+`run_backtest(..., broker_profile=...)` 可快速注入一组费率/滑点/手数默认值，适合在“参数还未完全定稿”阶段快速对齐不同执行风格。
+
+优先级规则：
+
+- 显式参数优先于 `broker_profile` 模板值
+- 模板值优先于系统默认值
+
+| 模板名 | 推荐场景 | 主要特征 | 典型风险 |
+|---|---|---|---|
+| `cn_stock_miniqmt` | A 股常规仿真、对齐 MiniQMT 基础口径 | 默认佣金 + 印花税 + 过户费 + 最小佣金 + 百股一手 | 对极端冲击成本刻画偏保守 |
+| `cn_stock_t1_low_fee` | 低费率账户压力测试、策略净值敏感性分析 | 更低佣金/过户费、较低最小佣金 | 可能高估高换手策略净收益 |
+| `cn_stock_sim_high_slippage` | 盘中冲击/流动性压力场景、稳健性回归 | 较高滑点、较保守成交约束 | 可能低估低冲击策略表现 |
+
+模板参数明细（当前内置值）：
+
+| 模板名 | commission_rate | stamp_tax_rate | transfer_fee_rate | min_commission | slippage | volume_limit_pct | lot_size |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `cn_stock_miniqmt` | 0.0003 | 0.001 | 0.00001 | 5.0 | 0.0002 | 0.2 | 100 |
+| `cn_stock_t1_low_fee` | 0.0002 | 0.001 | 0.000005 | 3.0 | 0.0001 | 0.25 | 100 |
+| `cn_stock_sim_high_slippage` | 0.0003 | 0.001 | 0.00001 | 5.0 | 0.001 | 0.1 | 100 |
+
+快速示例：
+
+```python
+result = run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    symbol="000001.SZ",
+    broker_profile="cn_stock_t1_low_fee",
+    show_progress=False,
+)
+```
+
+如果你已有明确的券商实盘参数，建议直接显式传入 `commission_rate`、`slippage`、`lot_size` 等字段，作为最终基线。
