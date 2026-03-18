@@ -148,12 +148,12 @@ conda activate ak_env
 
 ### 1.5.2 安装 AKQuant
 
-`akquant` 是一个基于 Rust 核心的高性能事件驱动量化回测框架。它结合了 Rust 的极致速度与 Python 的生态易用性，专为追求高性能回测与实盘一体化的量化开发者设计。
+`AKQuant` 是一个基于 Rust 核心的高性能事件驱动量化回测框架。它结合了 Rust 的极致速度与 Python 的生态易用性，专为追求高性能回测与实盘一体化的量化开发者设计。
 
 **核心特性**：
 
 1.  **Rust 驱动的高性能**：底层撮合引擎、订单管理系统 (OMS) 和风控模块 (RMS) 均由 Rust 编写，彻底告别 Python 的 GIL 锁限制，回测速度比纯 Python 框架快 10-100 倍。
-2.  **事件驱动架构 (Event-Driven)**：不同于简单的向量化回测，`akquant` 采用严格的时间序列事件驱动模型，能够精确模拟限价单 (Limit Order)、止损单 (Stop Order) 以及复杂的成交撮合逻辑，杜绝“未来函数”。
+2.  **事件驱动架构 (Event-Driven)**：不同于简单的向量化回测，`AKQuant` 采用严格的时间序列事件驱动模型，能够精确模拟限价单 (Limit Order)、止损单 (Stop Order) 以及复杂的成交撮合逻辑，杜绝“未来函数”。
 3.  **全资产覆盖**：原生支持 **股票 (Stock)**、**期货 (Futures)**、**期权 (Options)** 及 **基金 (Fund)** 等多种金融资产，并针对 A 股的 T+1 制度和涨跌停机制做了深度适配。
 4.  **回测实盘一体化**：坚持 "Code Once, Run Anywhere" 理念。同一套策略代码，既可以在历史数据上回测，也可以直接切换到 CTP / MiniQMT / PTrade 等实盘接口进行交易。
 
@@ -163,10 +163,10 @@ conda activate ak_env
 pip install akquant akshare pandas matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-*   `akquant`: **高性能事件驱动量化框架**。作为本课程的核心，它提供了回测引擎、订单管理、风控模块等全套基础设施，让用户只需专注于编写策略逻辑 (`Strategy`)。
+*   `AKQuant`: **高性能事件驱动量化框架**。作为本课程的核心，它提供了回测引擎、订单管理、风控模块等全套基础设施，让用户只需专注于编写策略逻辑 (`Strategy`)。
 *   `akshare`: **强大的开源财经数据接口库**。它专为 Python 量化交易员设计，提供了从股票、期货、期权、基金到宏观经济、另类数据等全方位的金融数据获取能力。其完全开源、免费且持续更新的特性，使其成为国内量化社区的首选数据源。
 *   `pandas`: **Python 数据分析标准库**。在量化中，它几乎无处不在：我们用 `DataFrame` 存储历史行情，用 `Series` 计算技术指标，用 `Timestamp` 处理时间序列。掌握 Pandas 是成为量化开发者的第一道门槛。
-*   `matplotlib`: **基础绘图库**。量化不仅是数字的游戏，更是图形的艺术。我们使用 Matplotlib 绘制资金曲线、K 线图和技术指标，直观地评估策略表现。此外，`akquant` 内置的绘图功能也是基于它构建的。
+*   `matplotlib`: **基础绘图库**。量化不仅是数字的游戏，更是图形的艺术。我们使用 Matplotlib 绘制资金曲线、K 线图和技术指标，直观地评估策略表现。此外，`AKQuant` 内置的绘图功能也是基于它构建的。
 
 ### 1.5.3 IDE 选择 (Trae / VS Code / PyCharm)
 
@@ -174,7 +174,7 @@ pip install akquant akshare pandas matplotlib -i https://pypi.tuna.tsinghua.edu.
 
 **Trae** 是字节跳动推出的一款 AI 原生 IDE，内置了强大的 **AI 编程助手**。
 
-*   **Context7 深度集成**：能够理解你的整个项目上下文，准确回答关于 `akquant` 架构的问题。
+*   **Context7 深度集成**：能够理解你的整个项目上下文，准确回答关于 `AKQuant` 架构的问题。
 *   **智能代码补全**：根据你的策略逻辑，自动补全 `on_bar` 中的代码。
 *   **一键重构**：帮你把复杂的 Python 循环重构为高效的 Pandas 向量化操作。
 
@@ -313,4 +313,4 @@ calmar_ratio                            -0.250393
 1. 数据拉取失败：先检查网络和数据源可用性，再重试脚本。
 2. 依赖缺失报错：按安装文档补齐环境后重新运行。
 3. 指标解读混淆：优先关注 `total_return_pct` 与 `max_drawdown_pct` 两项基线指标。
-4. 命令不可用（如 `conda` / `python` / `ruff` / `mypy`）：优先确认已激活本地 conda 环境（如 `ak_dev`），并检查 `C:\Users\xxx\miniconda3\Scripts\conda.exe` 路径是否可用。
+4. 命令不可用（如 `conda` / `python` / `ruff` / `mypy`）：优先确认已激活本地 conda 环境（如 `ak_env`），并检查 `C:\Users\xxx\miniconda3\Scripts\conda.exe` 路径是否可用。

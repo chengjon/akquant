@@ -1,6 +1,6 @@
 # 第 13 章：策略可视化与报表分析
 
-数据可视化 (Data Visualization) 不仅是展示结果的手段，更是**探索性数据分析 (Exploratory Data Analysis, EDA)** 的核心工具。通过高质量的图表，我们可以直观地识别策略的风险特征、收益来源以及潜在的过拟合迹象。本章将介绍如何使用 `akquant` 及第三方工具生成专业的量化回测报告。
+数据可视化 (Data Visualization) 不仅是展示结果的手段，更是**探索性数据分析 (Exploratory Data Analysis, EDA)** 的核心工具。通过高质量的图表，我们可以直观地识别策略的风险特征、收益来源以及潜在的过拟合迹象。本章将介绍如何使用 `AKQuant` 及第三方工具生成专业的量化回测报告。
 
 ## 本章实践入口
 
@@ -64,7 +64,7 @@ python examples/textbook/ch13_visualization.py
 
 ## 13.3 AKQuant 内置绘图工具
 
-`akquant` 提供了简洁的 API，基于 `matplotlib` 生成核心图表。
+`AKQuant` 提供了简洁的 API，基于 `matplotlib` 生成核心图表。
 
 ### 13.3.1 基础绘图
 
@@ -91,7 +91,7 @@ result.plot(engine="plotly", filename="backtest.html")
 
 ## 13.4 第三方工具集成：QuantStats
 
-`akquant` 完美支持 `QuantStats`，这是一个强大的 Python 量化分析库，能生成媲美专业基金的 Tearsheet。
+`AKQuant` 完美支持 `QuantStats`，这是一个强大的 Python 量化分析库，能生成媲美专业基金的 Tearsheet。
 
 ### 13.4.1 安装与使用
 
@@ -121,7 +121,7 @@ qs.reports.html(
 
 ## 13.5 完整示例代码
 
-下面的代码演示了如何运行策略，并分别使用 `akquant` 内置工具和 `QuantStats` 生成可视化报告。
+下面的代码演示了如何运行策略，并分别使用 `AKQuant` 内置工具和 `QuantStats` 生成可视化报告。
 
 ```python
 --8<-- "examples/textbook/ch13_visualization.py"

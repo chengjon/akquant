@@ -22,7 +22,7 @@ python examples/textbook/ch05_strategy.py
 
 ## 5.1 策略类结构与继承
 
-一个标准的 `akquant` 策略通常继承自 `akquant.Strategy` 基类，并重写以下几个核心回调方法 (Callbacks)：
+一个标准的 `AKQuant` 策略通常继承自 `AKQuant.Strategy` 基类，并重写以下几个核心回调方法 (Callbacks)：
 
 1.  `__init__`: **构造函数**。定义策略参数和内部变量。
 2.  `on_start`: **初始化钩子**。回测开始前触发，常用于订阅数据、设置风控参数。
@@ -56,7 +56,7 @@ python examples/textbook/ch05_strategy.py
 
 ### 5.2.3 类风格与函数式入口边界
 
-`akquant` 同时支持两种策略入口：
+`AKQuant` 同时支持两种策略入口：
 
 1.  **类风格**：`strategy=MyStrategy`，适合中长期维护、复杂状态管理。
 2.  **函数式**：`strategy=on_bar` + `initialize=...`，适合快速原型、脚本化调试。
@@ -88,7 +88,7 @@ result = aq.run_backtest(
 
 ## 5.3 交易接口详解 (Trading API)
 
-`akquant` 提供了多种便捷的下单接口，底层会自动处理报单验证和资金冻结。
+`AKQuant` 提供了多种便捷的下单接口，底层会自动处理报单验证和资金冻结。
 
 ### 5.3.1 `order_target_percent(symbol, target)`
 
@@ -175,11 +175,11 @@ class FSMStrategy(Strategy):
 
 ## 5.5 自定义指标开发 (Custom Indicators)
 
-`akquant` 目前已经提供了 `akquant.talib` 兼容层，并支持 `python/rust` 双后端；但在实战中，我们仍会频繁遇到需要开发私有指标或策略专用信号的场景。
+`AKQuant` 目前已经提供了 `AKQuant.talib` 兼容层，并支持 `python/rust` 双后端；但在实战中，我们仍会频繁遇到需要开发私有指标或策略专用信号的场景。
 
 ### 5.5.1 继承 `Indicator` 基类
 
-所有的指标都应继承自 `akquant.Indicator`，并实现 `update` 方法。这种设计支持**增量计算 (Incremental Calculation)**，避免了每次重算整个历史序列的浪费。
+所有的指标都应继承自 `AKQuant.Indicator`，并实现 `update` 方法。这种设计支持**增量计算 (Incremental Calculation)**，避免了每次重算整个历史序列的浪费。
 
 ```python
 class MyMomentum(Indicator):
@@ -211,7 +211,7 @@ def on_bar(self, bar):
         # Do something...
 ```
 
-### 5.5.3 使用 `akquant.talib` 双后端
+### 5.5.3 使用 `AKQuant.talib` 双后端
 
 当策略从 TA-Lib 迁移时，建议先保持函数签名不变，再通过 `backend` 参数切换执行后端。
 
@@ -390,7 +390,7 @@ if pnl_pct < -self.stop_loss_pct:
 
 ## 5.7 事件回调处理 (Event Handling)
 
-除了 `on_bar`，`akquant` 还提供了丰富的事件回调，让你能精确控制交易流程。
+除了 `on_bar`，`AKQuant` 还提供了丰富的事件回调，让你能精确控制交易流程。
 
 ### 5.7.1 `on_order`
 
@@ -429,10 +429,10 @@ result = aq.run_backtest(
 
 ## 5.8 调试与日志 (Debugging & Logging)
 
-策略开发中最痛苦的莫过于逻辑不符合预期。`akquant` 提供了完善的日志系统。
+策略开发中最痛苦的莫过于逻辑不符合预期。`AKQuant` 提供了完善的日志系统。
 
 *   `self.log(msg)`: 会自动打上当前回测时间的标签 `[2023-01-05 15:00:00] msg`。
-*   **断点调试**: 由于 `akquant` 是纯 Python/Rust 混合，你完全可以在 PyCharm/VSCode 中打断点调试 `on_bar` 逻辑。
+*   **断点调试**: 由于 `AKQuant` 是纯 Python/Rust 混合，你完全可以在 PyCharm/VSCode 中打断点调试 `on_bar` 逻辑。
 
 ---
 
