@@ -161,7 +161,6 @@ def test_attribution_df_keeps_total_pnl_consistent() -> None:
         data=_build_multi_symbol_data(),
         strategy=AttributionBySymbolStrategy,
         symbols=["AAA", "BBB"],
-        symbol="BENCHMARK",
         initial_cash=300000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,

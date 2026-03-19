@@ -62,7 +62,7 @@ def chapter_plain_loader() -> None:
             strategy_source=str(strategy_path),
             strategy_loader="python_plain",
             strategy_loader_options={"strategy_attr": "ChapterPlainStrategy"},
-            symbol="CH15_PLAIN",
+            symbols="CH15_PLAIN",
             show_progress=False,
         )
     strategy = result.strategy
@@ -93,7 +93,7 @@ def chapter_encrypted_loader() -> None:
         strategy_source=b"chapter15_encrypted_payload",
         strategy_loader="encrypted_external",
         strategy_loader_options={"decrypt_and_load": decrypt_and_load},
-        symbol="CH15_ENC",
+        symbols="CH15_ENC",
         show_progress=False,
     )
     strategy = result.strategy

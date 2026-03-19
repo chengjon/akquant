@@ -133,7 +133,7 @@ feed_1h = base.replay(
 result = aq.run_backtest(
     data=feed_1h,
     strategy=MyStrategy,
-    symbol="000001",
+    symbols="000001",
     show_progress=False,
 )
 ```

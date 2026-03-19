@@ -62,7 +62,7 @@ df = generate_data()
 result = run_backtest(
     strategy=MyStrategy,  # 传递类或实例
     data=df,              # 显式传入数据
-    symbol="600000",      # 浦发银行
+    symbols="600000",      # 浦发银行
     initial_cash=500_000.0,       # 初始资金
     commission_rate=0.0003     # 万三佣金
 )
@@ -102,7 +102,7 @@ run_backtest(
     strategy=on_bar,
     initialize=initialize,
     data=df, # 使用上文生成的数据
-    symbol="600000"
+    symbols="600000"
 )
 ```
 
@@ -147,7 +147,7 @@ class MyStrategy(Strategy):
             self.buy(bar.symbol, 100)
 
 # 4. 运行回测
-run_backtest(strategy=MyStrategy, data=df, symbol="600000")
+run_backtest(strategy=MyStrategy, data=df, symbols="600000")
 ```
 
 更多示例请参考 `examples/` 目录。

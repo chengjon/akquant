@@ -169,7 +169,7 @@ def main() -> None:
     result1 = aq.run_backtest(
         data=data_phase1,
         strategy=MovingAverageStrategy,
-        symbol=symbol,
+        symbols=symbol,
         initial_cash=1_000_000.0,
         commission_rate=0.0003,  # A股佣金
     )
@@ -211,7 +211,7 @@ def main() -> None:
     result2 = aq.run_warm_start(
         checkpoint_path=checkpoint_file,
         data=data_phase2,
-        symbol=symbol,
+        symbols=symbol,
         commission_rate=0.0003,
     )
 
@@ -244,7 +244,7 @@ def main() -> None:
     result_full = aq.run_backtest(
         data=data_full,
         strategy=MovingAverageStrategy,
-        symbol=symbol,
+        symbols=symbol,
         initial_cash=1_000_000.0,
         commission_rate=0.0003,
     )

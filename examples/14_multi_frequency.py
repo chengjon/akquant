@@ -319,7 +319,7 @@ if __name__ == "__main__":
     result = aq.run_backtest(
         data=data,
         strategy=MultiFreqStrategy,
-        symbol=["000001.SZ", "000001.SZ_1D"],
+        symbols=["000001.SZ", "000001.SZ_1D"],
         config=config,
     )
 

@@ -79,7 +79,7 @@ def main() -> None:
         config=backtest_config,
         start_time="20250101",
         end_time="20250105",
-        symbol=["600000", "600004", "600006"],
+        symbols=["600000", "600004", "600006"],
         on_event=events.append,
         show_progress=False,
         stream_progress_interval=1,

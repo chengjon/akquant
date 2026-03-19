@@ -80,7 +80,7 @@ result = aq.run_backtest(
     data=data_feed,
     strategy=on_bar,
     initialize=initialize,
-    symbol="TEST",
+    symbols="TEST",
 )
 ```
 
@@ -418,7 +418,7 @@ events = []
 result = aq.run_backtest(
     data=data_feed,
     strategy=MyStrategy,
-    symbol="AAPL",
+    symbols="AAPL",
     on_event=events.append,
 )
 ```

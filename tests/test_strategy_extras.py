@@ -1087,6 +1087,83 @@ def test_run_warm_start_end_to_end_lifecycle(tmp_path: Path) -> None:
     assert result2.metrics.initial_market_value == result1.metrics.end_market_value
 
 
+def test_run_warm_start_accepts_symbols_alias(tmp_path: Path) -> None:
+    """run_warm_start should accept symbols as the primary symbol argument."""
+    checkpoint = tmp_path / "snapshot_symbols_alias.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbols="TEST",
+        show_progress=False,
+    )
+    strategy = result2.strategy
+    assert strategy is not None
+    assert strategy.bar_seen == 4
+
+
+def test_run_warm_start_warns_when_using_deprecated_symbol_argument(
+    tmp_path: Path,
+) -> None:
+    """run_warm_start should emit deprecation warning for symbol argument."""
+    checkpoint = tmp_path / "snapshot_symbols_warn.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.warns(DeprecationWarning, match="run_warm_start\\(symbol=\\.\\.\\.\\)"):
+        result2 = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbol="TEST",
+            show_progress=False,
+        )
+    strategy = result2.strategy
+    assert strategy is not None
+    assert strategy.bar_seen == 4
+
+
+def test_run_warm_start_rejects_conflicting_symbol_and_symbols(tmp_path: Path) -> None:
+    """run_warm_start should reject conflicting symbol and symbols inputs."""
+    checkpoint = tmp_path / "snapshot_symbols_conflict.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="AAA")
+    phase2 = _make_bars("2023-01-03", 1, symbol="AAA", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbol="AAA",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="both `symbol` and `symbols`"):
+        run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbol="AAA",
+            symbols=["BBB"],
+            show_progress=False,
+        )
+
+
 def test_run_warm_start_accepts_strategy_runtime_config(tmp_path: Path) -> None:
     """run_warm_start should inject runtime config into restored strategy."""
     checkpoint = tmp_path / "snapshot_runtime_config.pkl"
@@ -1096,7 +1173,7 @@ def test_run_warm_start_accepts_strategy_runtime_config(tmp_path: Path) -> None:
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmStartStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1104,7 +1181,7 @@ def test_run_warm_start_accepts_strategy_runtime_config(tmp_path: Path) -> None:
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         strategy_runtime_config={"error_mode": "continue"},
     )

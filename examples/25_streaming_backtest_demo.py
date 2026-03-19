@@ -53,7 +53,7 @@ def run_continue_mode(data: list[Bar]) -> None:
     aq.run_backtest(
         data=data,
         strategy=StreamDemoStrategy,
-        symbol="STREAM",
+        symbols="STREAM",
         show_progress=False,
         initial_cash=100000.0,
         on_event=on_event,
@@ -80,7 +80,7 @@ def run_fail_fast_mode(data: list[Bar]) -> None:
         aq.run_backtest(
             data=data,
             strategy=StreamDemoStrategy,
-            symbol="STREAM",
+            symbols="STREAM",
             show_progress=False,
             initial_cash=100000.0,
             on_event=on_event,

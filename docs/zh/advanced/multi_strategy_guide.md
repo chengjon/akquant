@@ -47,7 +47,7 @@ config = BacktestConfig(
 result = run_backtest(
     data=data,
     strategy=MyStrategy,
-    symbol="TEST",
+    symbols="TEST",
     config=config,
     show_progress=False,
 )

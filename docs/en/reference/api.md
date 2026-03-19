@@ -13,6 +13,7 @@ def run_backtest(
     data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]]] = None,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
     symbol: Union[str, List[str]] = "BENCHMARK",
+    symbols: Optional[Union[str, List[str]]] = None,
     initial_cash: Optional[float] = None,
     commission_rate: Optional[float] = None,
     stamp_tax_rate: float = 0.0,
@@ -62,7 +63,8 @@ def run_backtest(
 *   `data`: Backtest data. Supports a single DataFrame, a `{symbol: DataFrame}` dictionary, `List[Bar]`, or any object implementing `DataFeedAdapter.load(request)`.
 *   `strategy`: Strategy class or instance. Also supports passing an `on_bar` function (functional style).
 *   `initialize` / `on_start` / `on_stop`: Functional-strategy lifecycle callbacks for initialization, start, and stop stages.
-*   `symbol`: Symbol or list of symbols.
+*   `symbols`: Preferred parameter. Symbol or list of symbols.
+*   `symbol`: Compatibility parameter. Used only when `symbols` is not provided.
 *   `initial_cash`: Initial cash (default 1,000,000.0).
 *   `execution_mode`: Execution mode.
     *   `ExecutionMode.NextOpen`: Match at next Bar Open (Default).
@@ -97,6 +99,7 @@ def run_warm_start(
     data: Optional[BacktestDataInput] = None,
     show_progress: bool = True,
     symbol: Union[str, List[str]] = "BENCHMARK",
+    symbols: Optional[Union[str, List[str]]] = None,
     strategy_runtime_config: Optional[Union[StrategyRuntimeConfig, Dict[str, Any]]] = None,
     runtime_config_override: bool = True,
     strategy_id: Optional[str] = None,
@@ -145,7 +148,7 @@ feed_replay = base.replay(
 result = aq.run_backtest(
     data=feed_replay,
     strategy=MyStrategy,
-    symbol="000001",
+    symbols="000001",
     show_progress=False,
 )
 ```
@@ -153,6 +156,8 @@ result = aq.run_backtest(
 *   `align="session"`: Partition by trading day, optionally with `session_windows`.
 *   `align="day"`: Partition by day without `session_windows`; `day_mode` supports `trading/calendar`.
 *   `align="global"`: Aggregate on the full timeline without day partitioning.
+*   Parameter recommendation: prefer `symbols`. If both `symbol` and `symbols` are provided, compatibility is allowed only when `symbol="BENCHMARK"`; otherwise a validation error is raised.
+*   Deprecation timeline: in current versions, using only `symbol` emits `DeprecationWarning`; a later minor release will remove `symbol`, so migrate to `symbols` early.
 
 **Compatibility & Migration Notes:**
 
@@ -166,6 +171,7 @@ result = aq.run_backtest(
 *   Is `run_backtest` renamed? No, the public entry name stays unchanged.
 *   Can `run_backtest` still be called without `on_event`? Yes, and result-return semantics stay the same.
 *   How do we roll back in production? Use release-level rollback; `_engine_mode` runtime fallback is removed.
+*   Can we still use `symbol`? Yes for compatibility, but it is deprecated and emits `DeprecationWarning`; migrate to `symbols`.
 
 ### Stream Parameters & Events (`run_backtest`)
 

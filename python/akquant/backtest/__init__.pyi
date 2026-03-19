@@ -43,6 +43,7 @@ def run_backtest(
     strategy_loader: Optional[str] = ...,
     strategy_loader_options: Optional[Dict[str, Any]] = ...,
     symbol: Union[str, List[str]] = ...,
+    symbols: Optional[Union[str, List[str]]] = ...,
     initial_cash: Optional[float] = ...,
     commission_rate: Optional[float] = ...,
     stamp_tax_rate: float = ...,
@@ -100,6 +101,7 @@ def run_warm_start(
     data: Optional[BacktestDataInput] = ...,
     show_progress: bool = ...,
     symbol: Union[str, List[str]] = ...,
+    symbols: Optional[Union[str, List[str]]] = ...,
     strategy_runtime_config: Optional[
         Union[StrategyRuntimeConfig, Dict[str, Any]]
     ] = ...,

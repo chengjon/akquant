@@ -346,7 +346,7 @@ def run_backtest_thread(
     result = aq.run_backtest(
         data=build_data(),
         strategy=LiveWebStrategy,
-        symbol="LIVE_WEB",
+        symbols="LIVE_WEB",
         show_progress=False,
         initial_cash=500000.0,
         commission_rate=0.0,

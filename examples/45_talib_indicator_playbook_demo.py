@@ -170,7 +170,7 @@ def run_example(
     result = aq.run_backtest(
         data=df,
         strategy=TalibIndicatorPlaybookStrategy,
-        symbol=symbol,
+        symbols=symbol,
         initial_cash=100000.0,
         commission_rate=0.0,
         min_commission=0.0,

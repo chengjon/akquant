@@ -47,7 +47,7 @@ result = run_backtest(
     data=df,  # Input data
     strategy=MyStrategy,  # Input strategy
     initial_cash=100000.0,  # Initial cash
-    symbol="sh600000"  # Trading symbol
+    symbols="sh600000"  # Trading symbol
 )
 
 # 4. View Results
@@ -311,7 +311,7 @@ def on_event(event):
 result = run_backtest(
     data=df,
     strategy=MyStrategy,
-    symbol="sh600000",
+    symbols="sh600000",
     on_event=on_event,
     show_progress=False,
     stream_progress_interval=10,

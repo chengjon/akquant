@@ -165,7 +165,7 @@ if __name__ == "__main__":
     run_backtest(
         data=df,
         strategy=WalkForwardStrategy,
-        symbol="TEST",
+        symbols="TEST",
         lot_size=1,
         execution_mode="current_close",
         history_depth=60,  # Explicitly pass history depth to ensure engine enables it

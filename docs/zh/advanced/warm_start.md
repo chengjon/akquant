@@ -52,7 +52,7 @@ config = aq.BacktestConfig(
 result2 = aq.run_warm_start(
     checkpoint_path="checkpoint_phase1.pkl",
     data=data_phase2,
-    symbol="AAPL",  # 你的主要标的
+    symbols="AAPL",  # 你的主要标的
     # 重要：必须重新传入市场费用配置，因为 MarketModel 不会被保存
     commission_rate=0.0003,
     stamp_tax_rate=0.001,

@@ -163,7 +163,7 @@ data_feed = aq.CSVFeedAdapter(path_template="latest_data_{symbol}.csv")
 engine_result = aq.run_warm_start(
     checkpoint_path="strategy_checkpoint.pkl",
     data=data_feed,
-    symbol="rb2310",
+    symbols="rb2310",
 )
 
 # 获取恢复后的引擎和策略

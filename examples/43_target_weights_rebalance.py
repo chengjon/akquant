@@ -99,7 +99,6 @@ def main() -> None:
         data=make_data(),
         strategy=TargetWeightsRebalanceStrategy,
         symbols=symbols,
-        symbol="BENCHMARK",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,

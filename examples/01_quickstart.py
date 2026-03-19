@@ -104,7 +104,7 @@ result = aq.run_backtest(
     config=backtest_config,
     start_time="20250101",
     end_time="20250105",
-    symbol=["600000", "600004", "600006"],
+    symbols=["600000", "600004", "600006"],
     on_event=events.append,
 )
 

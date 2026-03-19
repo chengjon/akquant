@@ -74,7 +74,7 @@ result = run_backtest(
 result = run_warm_start(
     checkpoint_path="snapshot.pkl",
     data=new_data,
-    symbol="TEST",
+    symbols="TEST",
     strategy_runtime_config={"error_mode": "continue"},
 )
 ```
@@ -181,7 +181,7 @@ result = run_backtest(
 result = run_backtest(
     data=data,
     strategy=MyStrategy,
-    symbol="000001.SZ",
+    symbols="000001.SZ",
     broker_profile="cn_stock_t1_low_fee",
     show_progress=False,
 )

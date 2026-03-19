@@ -119,7 +119,7 @@ def run_one_config(short_window: int, long_window: int) -> Any:
     result = aq.run_backtest(
         data=build_demo_data(),
         strategy=strategy_factory(short_window, long_window),
-        symbol="STREAM_MONITOR",
+        symbols="STREAM_MONITOR",
         show_progress=False,
         initial_cash=500000.0,
         commission_rate=0.0,

@@ -1,4 +1,5 @@
 import time
+import warnings
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -254,6 +255,86 @@ def test_run_backtest_accepts_data_feed_adapter() -> None:
     assert adapter.requested_symbols == [symbol]
     assert not result.orders_df.empty
     assert set(result.orders_df["symbol"].astype(str)) == {symbol}
+
+
+def test_run_backtest_accepts_symbols_alias_for_single_symbol() -> None:
+    """run_backtest should accept symbols as the primary symbol argument."""
+    data = _build_benchmark_data(6, "ALIAS_SYMBOL")
+    result = akquant.run_backtest(
+        data=data,
+        strategy=SingleBuyStrategy,
+        symbols="ALIAS_SYMBOL",
+        execution_mode="current_close",
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+    assert not result.orders_df.empty
+    assert set(result.orders_df["symbol"].astype(str)) == {"ALIAS_SYMBOL"}
+
+
+def test_run_backtest_warns_when_using_deprecated_symbol_argument() -> None:
+    """run_backtest should emit deprecation warning for symbol argument."""
+    data = _build_benchmark_data(6, "DEPREC_SYMBOL")
+    with pytest.warns(DeprecationWarning, match="run_backtest\\(symbol=\\.\\.\\.\\)"):
+        result = akquant.run_backtest(
+            data=data,
+            strategy=SingleBuyStrategy,
+            symbol="DEPREC_SYMBOL",
+            execution_mode="current_close",
+            initial_cash=100000.0,
+            commission_rate=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+            min_commission=0.0,
+            lot_size=1,
+            show_progress=False,
+        )
+    assert not result.orders_df.empty
+
+
+def test_run_backtest_does_not_warn_when_using_symbols_argument() -> None:
+    """run_backtest should not emit deprecation warning for symbols argument."""
+    data = _build_benchmark_data(6, "NO_WARN_SYMBOLS")
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = akquant.run_backtest(
+            data=data,
+            strategy=SingleBuyStrategy,
+            symbols="NO_WARN_SYMBOLS",
+            execution_mode="current_close",
+            initial_cash=100000.0,
+            commission_rate=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+            min_commission=0.0,
+            lot_size=1,
+            show_progress=False,
+        )
+    assert not result.orders_df.empty
+    deprecations = [
+        warning
+        for warning in record
+        if issubclass(warning.category, DeprecationWarning)
+    ]
+    assert len(deprecations) == 0
+
+
+def test_run_backtest_rejects_conflicting_symbol_and_symbols() -> None:
+    """run_backtest should reject conflicting symbol and symbols inputs."""
+    data = _build_benchmark_data(4, "AAA")
+    with pytest.raises(ValueError, match="both `symbol` and `symbols`"):
+        akquant.run_backtest(
+            data=data,
+            strategy=SingleBuyStrategy,
+            symbol="AAA",
+            symbols=["BBB"],
+            show_progress=False,
+        )
 
 
 def test_run_backtest_dataframe_multisymbol_preserves_bar_symbol() -> None:

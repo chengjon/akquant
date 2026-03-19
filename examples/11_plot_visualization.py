@@ -72,7 +72,7 @@ if __name__ == "__main__":
     result = run_backtest(
         data=df,
         strategy=MyStrategy,
-        symbol=SYMBOL,
+        symbols=SYMBOL,
         initial_cash=INITIAL_CASH,
         show_progress=True,
         # config=backtest_config,

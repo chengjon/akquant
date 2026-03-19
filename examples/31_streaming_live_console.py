@@ -129,7 +129,7 @@ def run_live_console_demo() -> None:
     result = aq.run_backtest(
         data=build_data(),
         strategy=LiveDemoStrategy,
-        symbol="LIVE_STREAM",
+        symbols="LIVE_STREAM",
         show_progress=False,
         initial_cash=500000.0,
         commission_rate=0.0,

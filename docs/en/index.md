@@ -123,7 +123,7 @@ df = generate_data()
 result = run_backtest(
     strategy=MyStrategy,  # Pass class or instance
     data=df,              # Explicitly pass data
-    symbol="600000",      # SPD Bank
+    symbols="600000",      # SPD Bank
     initial_cash=500_000.0,       # Initial cash
     commission_rate=0.0003     # 0.03% commission
 )
@@ -163,7 +163,7 @@ run_backtest(
     strategy=on_bar,
     initialize=initialize,
     data=df, # Use data generated above
-    symbol="600000"
+    symbols="600000"
 )
 ```
 
@@ -208,7 +208,7 @@ class MyStrategy(Strategy):
             self.buy(bar.symbol, 100)
 
 # 4. Run Backtest
-run_backtest(strategy=MyStrategy, data=df, symbol="600000")
+run_backtest(strategy=MyStrategy, data=df, symbols="600000")
 ```
 
 For more examples, please refer to the `examples/` directory.

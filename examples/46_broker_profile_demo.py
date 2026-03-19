@@ -48,7 +48,7 @@ def run_example() -> None:
     result = run_backtest(
         data=_build_data(),
         strategy=BrokerProfileDemoStrategy,
-        symbol="PROFILE",
+        symbols="PROFILE",
         execution_mode="current_close",
         broker_profile="cn_stock_t1_low_fee",
         show_progress=False,

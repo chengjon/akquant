@@ -119,7 +119,7 @@ if __name__ == "__main__":
     result = aq.run_backtest(
         data=data_map,
         strategy=TimerMomentumRotationStrategy,
-        symbol=symbols,
+        symbols=symbols,
         initial_cash=1_000_000.0,
         commission_rate=0.0003,
         stamp_tax_rate=0.001,

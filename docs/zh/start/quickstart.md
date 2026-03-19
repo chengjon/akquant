@@ -47,7 +47,7 @@ result = run_backtest(
     data=df,  # 输入数据
     strategy=MyStrategy,  # 输入策略
     initial_cash=100000.0,  # 初始资金
-    symbol="sh600000"  # 交易的股票代码
+    symbols="sh600000"  # 交易的股票代码
 )
 
 # 4. 查看结果
@@ -323,7 +323,7 @@ def on_event(event):
 result = run_backtest(
     data=df,
     strategy=MyStrategy,
-    symbol="sh600000",
+    symbols="sh600000",
     on_event=on_event,
     show_progress=False,
     stream_progress_interval=10,
@@ -375,7 +375,7 @@ def on_event(event):
 result = run_backtest(
     data=df,
     strategy=MyStrategy,
-    symbol="sh600000",
+    symbols="sh600000",
     on_event=on_event,
     show_progress=False,
     stream_progress_interval=5,

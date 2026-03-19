@@ -137,7 +137,7 @@ if __name__ == "__main__":
     result = run_backtest(
         data=df,
         strategy=WalkForwardStrategy,
-        symbol="TEST",
+        symbols="TEST",
         lot_size=1,
         execution_mode="current_close",  # 在当根 bar 结束时撮合
         history_depth=60,

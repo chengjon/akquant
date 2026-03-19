@@ -78,7 +78,7 @@ def main() -> None:
         on_order=on_order,
         on_trade=on_trade,
         on_timer=on_timer,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         initial_cash=100000.0,
     )

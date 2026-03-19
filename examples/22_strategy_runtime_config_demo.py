@@ -79,14 +79,14 @@ def scenario_backtest_override_true() -> None:
     aq.run_backtest(
         data=bars,
         strategy=shared_strategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         strategy_runtime_config={"error_mode": "continue"},
     )
     aq.run_backtest(
         data=bars,
         strategy=shared_strategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         strategy_runtime_config={"error_mode": "continue"},
     )
@@ -101,7 +101,7 @@ def scenario_backtest_override_false() -> None:
         aq.run_backtest(
             data=bars,
             strategy=RuntimeBacktestConflictStrategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config={"error_mode": "continue"},
             runtime_config_override=False,
@@ -121,7 +121,7 @@ def scenario_warm_start_override_true() -> None:
     result1 = aq.run_backtest(
         data=phase1,
         strategy=RuntimeWarmConflictStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     aq.save_snapshot(result1.engine, result1.strategy, checkpoint_path)  # type: ignore[arg-type]
@@ -129,7 +129,7 @@ def scenario_warm_start_override_true() -> None:
     result2 = aq.run_warm_start(
         checkpoint_path=checkpoint_path,
         data=phase2,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         strategy_runtime_config={"error_mode": "continue"},
     )

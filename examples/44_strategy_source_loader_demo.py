@@ -57,7 +57,7 @@ def run_python_plain_scenario() -> None:
             strategy_source=str(strategy_path),
             strategy_loader="python_plain",
             strategy_loader_options={"strategy_attr": "DemoPlainStrategy"},
-            symbol="PLAIN_DEMO",
+            symbols="PLAIN_DEMO",
             show_progress=False,
         )
     strategy = result.strategy
@@ -88,7 +88,7 @@ def run_encrypted_external_scenario() -> None:
         strategy_source=b"encrypted_payload",
         strategy_loader="encrypted_external",
         strategy_loader_options={"decrypt_and_load": decrypt_and_load},
-        symbol="ENC_DEMO",
+        symbols="ENC_DEMO",
         show_progress=False,
     )
     strategy = result.strategy

@@ -52,7 +52,7 @@ def main() -> None:
     result = aq.run_backtest(
         data=make_bars(),
         strategy=alpha_on_bar,
-        symbol="FUNC_SLOT_DEMO",
+        symbols="FUNC_SLOT_DEMO",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,

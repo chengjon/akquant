@@ -45,7 +45,7 @@ result = aq.run_backtest(
     data=df,
     strategy=MyStrategy,
     initial_cash=100000.0,
-    symbol="sh600000",
+    symbols="sh600000",
     on_event=events.append,
 )
 

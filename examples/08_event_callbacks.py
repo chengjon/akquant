@@ -131,7 +131,7 @@ def main() -> None:
     results = aq.run_backtest(
         strategy=EventCallbacksStrategy,
         data=df,
-        symbol="MOCK_STOCK",
+        symbols="MOCK_STOCK",
         initial_cash=100_000,
         commission_rate=0.0003,  # 万三佣金
     )

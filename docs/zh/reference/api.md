@@ -13,6 +13,7 @@ def run_backtest(
     data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]]] = None,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
     symbol: Union[str, List[str]] = "BENCHMARK",
+    symbols: Optional[Union[str, List[str]]] = None,
     initial_cash: Optional[float] = None,
     commission_rate: Optional[float] = None,
     stamp_tax_rate: float = 0.0,
@@ -54,6 +55,7 @@ def run_warm_start(
     data: Optional[BacktestDataInput] = None,
     show_progress: bool = True,
     symbol: Union[str, List[str]] = "BENCHMARK",
+    symbols: Optional[Union[str, List[str]]] = None,
     strategy_runtime_config: Optional[Union[StrategyRuntimeConfig, Dict[str, Any]]] = None,
     runtime_config_override: bool = True,
     strategy_id: Optional[str] = None,
@@ -81,7 +83,8 @@ def run_warm_start(
 *   `data`: 回测数据。支持单个 DataFrame，`{symbol: DataFrame}` 字典，`List[Bar]`，或实现 `DataFeedAdapter.load(request)` 的对象。
 *   `strategy`: 策略类、策略实例，或 `on_bar` 函数（函数式编程风格）。
 *   `initialize` / `on_start` / `on_stop`: 函数式策略生命周期回调，分别对应初始化、启动、停止阶段。
-*   `symbol`: 标的代码或代码列表。
+*   `symbols`: 推荐参数。标的代码或代码列表。
+*   `symbol`: 兼容参数。仅在未传 `symbols` 时生效。
 *   `initial_cash`: 初始资金 (默认 1,000,000.0)。
 *   `execution_mode`: 执行模式。
     *   `ExecutionMode.NextOpen`: 下一 Bar 开盘价成交 (默认)。
@@ -120,7 +123,7 @@ feed_replay = base.replay(
 result = aq.run_backtest(
     data=feed_replay,
     strategy=MyStrategy,
-    symbol="000001",
+    symbols="000001",
     show_progress=False,
 )
 ```
@@ -128,6 +131,8 @@ result = aq.run_backtest(
 *   `align="session"`: 按交易日分区，可叠加 `session_windows`。
 *   `align="day"`: 按日分区，不接收 `session_windows`；`day_mode` 支持 `trading/calendar`。
 *   `align="global"`: 按全局时间轴聚合，不按交易日切段。
+*   参数建议：优先使用 `symbols`。若同时传入 `symbol` 和 `symbols`，仅当 `symbol="BENCHMARK"` 时视作兼容写法，其它情况会报错。
+*   弃用进度：当前版本中，仅传 `symbol` 会触发 `DeprecationWarning`；后续小版本将移除 `symbol` 参数，请提前迁移到 `symbols`。
 
 **兼容与迁移说明:**
 
@@ -143,6 +148,7 @@ result = aq.run_backtest(
 *   `run_backtest` 是否仍可不传 `on_event`？可以，不传时仍返回同样的结果对象语义。
 *   PyCharm 看不到进度条怎么办？先确认 `show_progress=True`，并在 Run 配置中开启 `Emulate terminal in output console`；若仍不可见，使用 `on_event` 消费 `progress` 事件打印文本进度。
 *   线上出现问题如何回退？使用版本级回滚，不再支持 `_engine_mode` 参数级回切。
+*   还可以继续用 `symbol` 吗？可以但已进入弃用阶段，会有 `DeprecationWarning`，建议尽快替换为 `symbols`。
 
 ### 流式参数与事件 (`run_backtest`)
 

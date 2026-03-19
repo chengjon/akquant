@@ -60,7 +60,7 @@ def run_single_strategy() -> Any:
     return aq.run_backtest(
         data=make_bars(),
         strategy=AlphaStrategy,
-        symbol="MULTI",
+        symbols="MULTI",
         config=config,
         execution_mode="current_close",
         lot_size=1,
@@ -87,7 +87,7 @@ def run_multi_strategy() -> Any:
     return aq.run_backtest(
         data=make_bars(),
         strategy=AlphaStrategy,
-        symbol="MULTI",
+        symbols="MULTI",
         config=config,
         execution_mode="current_close",
         lot_size=1,

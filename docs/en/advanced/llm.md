@@ -291,3 +291,7 @@ run_backtest(..., config=BacktestConfig(strategy_config=strategy_config))
 3.  **Order Rejected**:
     *   **Cause**: Insufficient funds, hitting risk limits, or outside trading hours.
     *   **Solution**: Check the `reject_reason` field in `result.orders_df`; adjust `initial_cash` or `risk_config`.
+
+4.  **Mixed `symbol` / `symbols` inputs**:
+    *   **Cause**: Both parameters are provided with conflicting values.
+    *   **Solution**: Prefer `symbols`; keep `symbol` only for compatibility code paths.

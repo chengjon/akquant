@@ -373,3 +373,7 @@ run_backtest(..., config=BacktestConfig(strategy_config=strategy_config))
 3.  **订单被拒绝 (Order Rejected)**:
     *   **原因**: 资金不足、触及风控限制、或者不在交易时段。
     *   **解决**: 检查 `result.orders_df` 中的 `reject_reason` 字段；调整 `initial_cash` 或 `risk_config`。
+
+4.  **`symbol` / `symbols` 混用**:
+    *   **原因**: 同时传入两个参数且存在冲突，导致参数校验失败。
+    *   **解决**: 优先使用 `symbols`；仅在兼容旧代码时使用 `symbol`。

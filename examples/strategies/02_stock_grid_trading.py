@@ -115,7 +115,7 @@ if __name__ == "__main__":
     result = aq.run_backtest(
         data=df,
         strategy=GridTradingStrategy,
-        symbol=symbol,
+        symbols=symbol,
         initial_cash=500_000.0,
         lot_size=100,  # 股票每手100股
         commission_rate=0.0003,  # 万三佣金

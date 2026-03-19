@@ -141,7 +141,7 @@ if __name__ == "__main__":
     result = run_backtest(
         data=minute_df,
         strategy=IntradayMAStrategy,
-        symbol=SYMBOL,
+        symbols=SYMBOL,
         initial_cash=1_000_000.0,
         show_progress=True,
     )

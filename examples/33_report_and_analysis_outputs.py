@@ -42,7 +42,7 @@ def main() -> None:
     result = aq.run_backtest(
         data=make_bars(),
         strategy=ReportDemoStrategy,
-        symbol="REPORT",
+        symbols="REPORT",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,

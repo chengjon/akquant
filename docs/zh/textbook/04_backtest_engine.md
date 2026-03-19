@@ -332,7 +332,7 @@ events = []
 result = aq.run_backtest(
     data=data_feed,
     strategy=MyStrategy,
-    symbol="AAPL",
+    symbols="AAPL",
     on_event=events.append,
     stream_progress_interval=1,
     stream_equity_interval=1,
@@ -385,7 +385,7 @@ config = aq.BacktestConfig(
 result = aq.run_backtest(
     strategy=MyStrategy,
     data=data_feed,
-    symbol="AAPL",
+    symbols="AAPL",
     config=config,
 )
 ```

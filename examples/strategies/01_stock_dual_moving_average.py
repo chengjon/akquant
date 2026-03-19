@@ -107,7 +107,7 @@ if __name__ == "__main__":
     result = aq.run_backtest(
         data=df,
         strategy=DualMovingAverageStrategy,
-        symbol=symbol,
+        symbols=symbol,
         initial_cash=100_000.0,
         commission_rate=0.0003,  # 万三佣金
         min_commission=5.0,  # 最低5元

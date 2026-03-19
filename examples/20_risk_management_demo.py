@@ -89,7 +89,7 @@ def main() -> None:
     result = akquant.run_backtest(
         strategy=AggressiveBuyerStrategy(),
         data=feed,
-        symbol=symbols,
+        symbols=symbols,
         instruments=instruments,
         initial_cash=initial_cash,
         risk_config={

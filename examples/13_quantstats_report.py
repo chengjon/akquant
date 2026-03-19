@@ -35,7 +35,7 @@ data = pd.DataFrame(
 # Run backtest
 print("Running backtest...")
 result = aq.run_backtest(
-    data=data, strategy=SimpleStrategy, symbol="TEST", initial_cash=10000.0
+    data=data, strategy=SimpleStrategy, symbols="TEST", initial_cash=10000.0
 )
 
 # Verify integration

@@ -1,6 +1,8 @@
 import datetime as dt_module
+import inspect
 import os
 import sys
+import warnings
 from dataclasses import fields
 from typing import (
     Any,
@@ -118,6 +120,92 @@ def _parse_stream_mode(value: Any) -> str:
 
 def _noop_stream_event_handler(_event: BacktestStreamEvent) -> None:
     return None
+
+
+def _normalize_symbols_argument(
+    symbol: Union[str, List[str]],
+    symbols: Optional[Union[str, List[str], Tuple[str, ...], set[str]]],
+    *,
+    api_name: str,
+) -> List[str]:
+    """Normalize symbol inputs and keep compatibility."""
+    if symbols is not None and symbol != "BENCHMARK":
+        raise ValueError(
+            f"{api_name} received both `symbol` and `symbols`; "
+            "please pass only `symbols`"
+        )
+
+    raw_input: Union[str, List[str], Tuple[str, ...], set[str]]
+    if symbols is not None:
+        raw_input = symbols
+    else:
+        raw_input = symbol
+
+    if isinstance(raw_input, str):
+        normalized = [raw_input]
+    elif isinstance(raw_input, (list, tuple, set)):
+        normalized = [str(item) for item in raw_input]
+    else:
+        raise TypeError("symbols must be str, list, tuple, or set")
+
+    cleaned: List[str] = []
+    seen: set[str] = set()
+    for item in normalized:
+        value = str(item).strip()
+        if not value:
+            raise ValueError("symbols cannot contain empty values")
+        if value in seen:
+            continue
+        seen.add(value)
+        cleaned.append(value)
+
+    if not cleaned:
+        raise ValueError("symbols cannot be empty")
+    return cleaned
+
+
+def _accepts_strategy_kwarg(
+    strategy_input: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None],
+    kwarg_name: str,
+) -> bool:
+    """Return whether strategy constructor supports a keyword argument."""
+    if not isinstance(strategy_input, type) or not issubclass(strategy_input, Strategy):
+        return False
+    try:
+        signature = inspect.signature(strategy_input.__init__)
+    except (TypeError, ValueError):
+        return False
+
+    if kwarg_name in signature.parameters:
+        return True
+
+    return any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
+def _maybe_warn_deprecated_symbol_argument(
+    *,
+    symbol: Union[str, List[str]],
+    symbols: Optional[Union[str, List[str], Tuple[str, ...], set[str]]],
+    api_name: str,
+) -> None:
+    if symbols is not None:
+        return
+
+    is_default_symbol = isinstance(symbol, str) and symbol == "BENCHMARK"
+    if is_default_symbol:
+        return
+
+    warnings.warn(
+        (
+            f"`{api_name}(symbol=...)` is deprecated and will be removed in a "
+            "future version; please use `symbols=...` instead"
+        ),
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 def _resolve_broker_profile(profile: Optional[str]) -> Dict[str, Any]:
@@ -504,6 +592,7 @@ def run_backtest(
     strategy_loader: Optional[str] = None,
     strategy_loader_options: Optional[Dict[str, Any]] = None,
     symbol: Union[str, List[str]] = "BENCHMARK",
+    symbols: Optional[Union[str, List[str], Tuple[str, ...], set[str]]] = None,
     initial_cash: Optional[float] = None,
     commission_rate: Optional[float] = None,
     stamp_tax_rate: float = 0.0,
@@ -577,7 +666,8 @@ def run_backtest(
     :param strategy_loader_options: 传给策略加载器的参数字典（可选），
                                     如 {"strategy_attr": "MyStrategy"} 或
                                     {"decrypt_and_load": callable}
-    :param symbol: 标的代码
+    :param symbol: 兼容参数。标的代码或代码列表（推荐改用 symbols）
+    :param symbols: 推荐参数。标的代码或代码列表
     :param initial_cash: 初始资金 (默认 1,000,000.0)
     :param commission_rate: 佣金率 (默认 0.0)
     :param stamp_tax_rate: 印花税率 (仅卖出, 默认 0.0)
@@ -1000,14 +1090,35 @@ def run_backtest(
             kwargs.update(s_params)
     if strategy_runtime_config is None and "strategy_runtime_config" in kwargs:
         strategy_runtime_config = kwargs.pop("strategy_runtime_config")
+    if symbols is None and "symbols" in kwargs:
+        symbols = kwargs.pop("symbols")
+    elif "symbols" in kwargs:
+        kwargs.pop("symbols")
+    _maybe_warn_deprecated_symbol_argument(
+        symbol=symbol,
+        symbols=symbols,
+        api_name="run_backtest",
+    )
 
-    strategy_kwargs = dict(kwargs)
+    effective_symbols = _normalize_symbols_argument(
+        symbol=symbol,
+        symbols=symbols,
+        api_name="run_backtest",
+    )
+
     strategy_input = resolve_strategy_input(
         strategy=strategy,
         strategy_source=strategy_source,
         strategy_loader=strategy_loader,
         strategy_loader_options=strategy_loader_options,
     )
+    strategy_kwargs = dict(kwargs)
+    if (
+        symbols is not None
+        and "symbols" not in strategy_kwargs
+        and _accepts_strategy_kwarg(strategy_input, "symbols")
+    ):
+        strategy_kwargs["symbols"] = symbols
     strategy_instance = _build_strategy_instance(
         strategy_input,
         strategy_kwargs,
@@ -1027,9 +1138,14 @@ def run_backtest(
             slot_key_str = str(slot_key).strip()
             if not slot_key_str:
                 raise ValueError("strategy slot id cannot be empty")
+            slot_strategy_kwargs = dict(kwargs)
+            if symbols is not None and _accepts_strategy_kwarg(
+                slot_strategy_input, "symbols"
+            ):
+                slot_strategy_kwargs["symbols"] = symbols
             slot_strategy_instances[slot_key_str] = _build_strategy_instance(
                 slot_strategy_input,
-                dict(strategy_kwargs),
+                slot_strategy_kwargs,
                 logger,
                 initialize,
                 on_start,
@@ -1116,12 +1232,7 @@ def run_backtest(
     symbols = []
     data_map_for_indicators = {}
 
-    if isinstance(symbol, str):
-        symbols = [symbol]
-    elif isinstance(symbol, (list, tuple)):
-        symbols = list(symbol)
-    else:
-        symbols = ["BENCHMARK"]
+    symbols = list(effective_symbols)
 
     # Merge with Config instruments
     if config and config.instruments:
@@ -2306,6 +2417,7 @@ def run_warm_start(
     data: Optional[BacktestDataInput] = None,
     show_progress: bool = True,
     symbol: Union[str, List[str]] = "BENCHMARK",
+    symbols: Optional[Union[str, List[str], Tuple[str, ...], set[str]]] = None,
     strategy_runtime_config: Optional[
         Union[StrategyRuntimeConfig, Dict[str, Any]]
     ] = None,
@@ -2512,6 +2624,20 @@ def run_warm_start(
     )
     stream_mode = _parse_stream_mode(kwargs.pop("stream_mode", "observability"))
     timezone_name = str(kwargs.get("timezone") or "Asia/Shanghai")
+    if symbols is None and "symbols" in kwargs:
+        symbols = kwargs.pop("symbols")
+    elif "symbols" in kwargs:
+        kwargs.pop("symbols")
+    _maybe_warn_deprecated_symbol_argument(
+        symbol=symbol,
+        symbols=symbols,
+        api_name="run_warm_start",
+    )
+    effective_symbols = _normalize_symbols_argument(
+        symbol=symbol,
+        symbols=symbols,
+        api_name="run_warm_start",
+    )
 
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
@@ -2524,10 +2650,9 @@ def run_warm_start(
         feed = data
     elif _is_data_feed_adapter(data):
         feed = DataFeed()
-        symbols = [symbol] if isinstance(symbol, str) else symbol
         adapter_data_map = _load_data_map_from_adapter(
             adapter=data,
-            symbols=list(symbols),
+            symbols=list(effective_symbols),
             start_time=kwargs.get("start_time"),
             end_time=kwargs.get("end_time"),
             timezone=timezone_name,
@@ -2545,7 +2670,7 @@ def run_warm_start(
     elif data is not None:
         # Convert DataFrame/List to DataFeed
         feed = DataFeed()
-        symbols = [symbol] if isinstance(symbol, str) else symbol
+        symbols = list(effective_symbols)
 
         data_map = {}
         # Copied logic from run_backtest for data loading

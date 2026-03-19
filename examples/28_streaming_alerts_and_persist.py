@@ -129,7 +129,7 @@ def run_stream_case() -> Path:
     result = aq.run_backtest(
         data=build_data(),
         strategy=MomentumSwitchStrategy,
-        symbol="STREAM_ALERT",
+        symbols="STREAM_ALERT",
         show_progress=False,
         initial_cash=500000.0,
         commission_rate=0.0,
