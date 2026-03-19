@@ -68,7 +68,12 @@ from .plot import plot_result
 from .sizer import AllInSizer, FixedSize, PercentSizer, Sizer
 from .strategy import Strategy, StrategyRuntimeConfig
 from .strategy_loader import register_strategy_loader, resolve_strategy_input
-from .utils import fetch_akshare_symbol, load_bar_from_df, prepare_dataframe
+from .utils import (
+    fetch_akshare_symbol,
+    format_metric_value,
+    load_bar_from_df,
+    prepare_dataframe,
+)
 
 __doc__ = _akquant.__doc__
 if hasattr(_akquant, "__all__"):  # noqa: F405
@@ -76,6 +81,7 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "load_bar_from_df",
         "prepare_dataframe",
         "fetch_akshare_symbol",
+        "format_metric_value",
         "Sizer",
         "FixedSize",
         "PercentSizer",
@@ -144,6 +150,7 @@ else:
         "load_bar_from_df",
         "prepare_dataframe",
         "fetch_akshare_symbol",
+        "format_metric_value",
         "Sizer",
         "FixedSize",
         "PercentSizer",

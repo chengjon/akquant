@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Dict, List, Literal, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -502,3 +502,83 @@ def prepare_dataframe(
         pass
 
     return df
+
+
+_RATIO_PERCENT_METRICS = frozenset(
+    {
+        "annualized_return",
+        "volatility",
+        "kelly_criterion",
+    }
+)
+
+_PERCENT_VALUE_METRICS = frozenset(
+    {
+        "total_return_pct",
+        "max_drawdown_pct",
+        "win_rate",
+        "loss_rate",
+        "exposure_time_pct",
+    }
+)
+
+
+def format_percentage(
+    value: float,
+    source: Literal["ratio", "pct_value"] = "ratio",
+    precision: int = 2,
+    width: Optional[int] = None,
+) -> str:
+    r"""
+    Format a value as percentage with explicit source unit.
+
+    :param value: Numeric value to format.
+    :param source: "ratio" 表示 0.1 -> 10%，"pct_value" 表示 10 -> 10%。
+    :param precision: Decimal places.
+    :param width: Optional width for right alignment.
+    :return: Formatted percentage text.
+    """
+    if source == "ratio":
+        text = f"{float(value):.{precision}%}"
+    else:
+        text = f"{float(value):.{precision}f}%"
+    if width is None:
+        return text
+    return f"{text:>{width}}"
+
+
+def format_metric_value(
+    metric_name: str,
+    value: float,
+    precision: int = 2,
+    width: Optional[int] = None,
+) -> str:
+    r"""
+    Format metric display text using AKQuant metric unit mapping.
+
+    :param metric_name: Metric field name.
+    :param value: Raw metric value.
+    :param precision: Decimal places.
+    :param width: Optional width for right alignment.
+    :return: Formatted metric text.
+    """
+    name = str(metric_name)
+    numeric = float(value)
+    if name in _RATIO_PERCENT_METRICS:
+        return format_percentage(
+            numeric,
+            source="ratio",
+            precision=precision,
+            width=width,
+        )
+    if name in _PERCENT_VALUE_METRICS:
+        return format_percentage(
+            numeric,
+            source="pct_value",
+            precision=precision,
+            width=width,
+        )
+    text = f"{numeric:.{precision}f}"
+    if width is None:
+        return text
+    return f"{text:>{width}}"

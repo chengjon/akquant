@@ -4,13 +4,14 @@ from akquant.plot.report import (
     _build_metrics_html,
     _build_summary_context,
 )
+from akquant.utils import format_metric_value
 
 
 class DummyMetrics:
     """Minimal metrics object for report helper tests."""
 
     total_return_pct = 10.0
-    annualized_return = 0.05
+    annualized_return = 0.021184
     sharpe_ratio = 1.2
     max_drawdown_pct = 3.0
     volatility = 0.2
@@ -194,5 +195,12 @@ def test_build_metrics_html_contains_key_labels() -> None:
     html = _build_metrics_html(DummyResult(with_data=True))
     assert "累计收益率 (Total Return)" in html
     assert "年化收益率 (CAGR)" in html
-    assert "5.00%" in html
+    assert "2.12%" in html
     assert "交易次数 (Trades)" in html
+
+
+def test_format_metric_value_uses_metric_unit_mapping() -> None:
+    """Metric formatter should distinguish ratio and pct-value metrics."""
+    assert format_metric_value("annualized_return", 0.021184) == "2.12%"
+    assert format_metric_value("max_drawdown_pct", 1.07) == "1.07%"
+    assert format_metric_value("calmar_ratio", 22.473305) == "22.47"

@@ -263,3 +263,30 @@ fn test_ulcer_index_logic() {
     let expected_ui = 0.004f64.sqrt();
     assert!((result.metrics.ulcer_index - expected_ui).abs() < 1e-9);
 }
+
+#[test]
+fn test_calmar_uses_raw_drawdown_ratio_not_pct() {
+    let empty_pnl = TradeTracker::new().calculate_pnl(None);
+    let equity_curve = vec![
+        (0, Decimal::from(100)),
+        (15_768_000_000_000_000, Decimal::from(110)),
+        (31_536_000_000_000_000, Decimal::from(105)),
+    ];
+
+    let result = BacktestResult::calculate(crate::analysis::CalculatorInput {
+        equity_curve_decimal: equity_curve,
+        cash_curve_decimal: vec![],
+        snapshots: vec![],
+        trade_pnl: empty_pnl,
+        trades: vec![],
+        initial_cash: Decimal::from(100),
+        orders: vec![],
+        executions: vec![],
+    });
+
+    let expected_raw_calmar = result.metrics.annualized_return / result.metrics.max_drawdown;
+    let wrong_pct_calmar = result.metrics.annualized_return / result.metrics.max_drawdown_pct;
+
+    assert!((result.metrics.calmar_ratio - expected_raw_calmar).abs() < 1e-12);
+    assert!((result.metrics.calmar_ratio - wrong_pct_calmar).abs() > 1e-3);
+}

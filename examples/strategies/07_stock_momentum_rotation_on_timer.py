@@ -1,4 +1,4 @@
-"""多股票轮动策略示例（on_daily_rebalance 版本）."""
+"""多股票轮动策略示例（on_timer 固定时点版本）."""
 
 from typing import Any
 
@@ -45,21 +45,13 @@ def make_data() -> dict[str, pd.DataFrame]:
         pd.date_range("2022-01-04 10:00:00", periods=240, freq="B", tz="Asia/Shanghai")
     )
     return {
-        "AAA": _build_symbol_df(
-            "AAA",
-            timestamps,
-            [aaa_close(i) for i in range(240)],
-        ),
-        "BBB": _build_symbol_df(
-            "BBB",
-            timestamps,
-            [bbb_close(i) for i in range(240)],
-        ),
+        "AAA": _build_symbol_df("AAA", timestamps, [aaa_close(i) for i in range(240)]),
+        "BBB": _build_symbol_df("BBB", timestamps, [bbb_close(i) for i in range(240)]),
     }
 
 
-class TimerMomentumRotationStrategy(Strategy):
-    """使用 on_daily_rebalance 执行横截面轮动."""
+class OnTimerMomentumRotationStrategy(Strategy):
+    """使用 on_timer 在固定时点执行横截面轮动."""
 
     def __init__(self, lookback_period: int = 5, **kwargs: Any) -> None:
         """初始化策略参数."""
@@ -70,15 +62,21 @@ class TimerMomentumRotationStrategy(Strategy):
         self.warmup_period = lookback_period + 1
 
     def on_start(self) -> None:
-        """策略启动时订阅轮动标的."""
+        """策略启动时注册固定时点调仓定时器."""
         for symbol in self.symbols:
             self.subscribe(symbol)
-        self.log(f"on_start subscribe={self.symbols} lookback={self.lookback_period}")
+        self.add_daily_timer("10:00:00", "rebalance")
+        self.log(
+            "on_start "
+            f"subscribe={self.symbols} "
+            "timer=10:00:00 "
+            f"lookback={self.lookback_period}"
+        )
 
-    def on_daily_rebalance(self, trading_date: Any, timestamp: int) -> None:
-        """交易日调仓回调."""
-        _ = timestamp
-        self.log(f"on_daily_rebalance date={trading_date}")
+    def on_timer(self, payload: str) -> None:
+        """固定时点触发调仓."""
+        if payload != "rebalance":
+            return
         history_map = self.get_history_map(
             count=self.lookback_period,
             symbols=self.symbols,
@@ -93,33 +91,24 @@ class TimerMomentumRotationStrategy(Strategy):
             if start <= 0:
                 continue
             scores[symbol] = (end - start) / start
-
         if not scores:
             return
-
-        ranking = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-        self.log(
-            "rebalance ranking="
-            + ", ".join(f"{symbol}:{score:.2%}" for symbol, score in ranking)
-        )
         selected = self.rebalance_to_topn(
             scores=scores,
-            top_n=2,
+            top_n=1,
             weight_mode="score",
             long_only=False,
             liquidate_unmentioned=True,
         )
-        self.log(f"action=rebalance selected={selected}")
+        self.log(f"on_timer action=rebalance selected={selected}")
 
 
 if __name__ == "__main__":
-    symbols = ["AAA", "BBB"]
     data_map = make_data()
-
     result = aq.run_backtest(
         data=data_map,
-        strategy=TimerMomentumRotationStrategy,
-        symbol=symbols,
+        strategy=OnTimerMomentumRotationStrategy,
+        symbol=["AAA", "BBB"],
         initial_cash=1_000_000.0,
         commission_rate=0.0003,
         stamp_tax_rate=0.001,

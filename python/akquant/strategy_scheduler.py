@@ -9,7 +9,12 @@ def schedule(
 ) -> None:
     """注册单次定时任务."""
     if strategy.ctx is None:
-        raise RuntimeError("Context not ready")
+        pending = getattr(strategy, "_pending_schedules", None)
+        if pending is None:
+            pending = []
+            strategy._pending_schedules = pending
+        pending.append((trigger_time, payload))
+        return
 
     ts_ns = 0
     if isinstance(trigger_time, str):
@@ -34,8 +39,34 @@ def schedule(
         strategy.ctx.schedule(ts_ns, payload)
 
 
+def flush_pending_schedules(strategy: Any) -> None:
+    """在上下文就绪后刷出缓存的定时任务."""
+    if strategy.ctx is None:
+        return
+    pending_daily = getattr(strategy, "_pending_daily_timers", None)
+    if pending_daily:
+        queued_daily = list(pending_daily)
+        pending_daily.clear()
+        for time_str, payload in queued_daily:
+            add_daily_timer(strategy, time_str, payload)
+    pending = getattr(strategy, "_pending_schedules", None)
+    if not pending:
+        return
+    queued = list(pending)
+    pending.clear()
+    for trigger_time, payload in queued:
+        schedule(strategy, trigger_time, payload)
+
+
 def add_daily_timer(strategy: Any, time_str: str, payload: str) -> None:
     """注册每日定时任务."""
+    if strategy.ctx is None:
+        pending_daily = getattr(strategy, "_pending_daily_timers", None)
+        if pending_daily is None:
+            pending_daily = []
+            strategy._pending_daily_timers = pending_daily
+        pending_daily.append((time_str, payload))
+        return
     wrapped_payload = f"__daily__|{time_str}|{payload}"
 
     if not strategy._trading_days:

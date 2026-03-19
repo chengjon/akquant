@@ -13,12 +13,14 @@ from .strategy_framework_hooks import (
     mark_portfolio_dirty,
     register_boundary_timers,
 )
+from .strategy_scheduler import flush_pending_schedules
 
 
 def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
     """引擎调用的 Bar 回调 (Internal)."""
     ensure_framework_state(strategy)
     strategy.ctx = ctx
+    flush_pending_schedules(strategy)
     register_boundary_timers(strategy)
     strategy._last_event_type = "bar"
 
@@ -87,6 +89,7 @@ def on_tick_event(strategy: Any, tick: Tick, ctx: StrategyContext) -> None:
     """引擎调用的 Tick 回调 (Internal)."""
     ensure_framework_state(strategy)
     strategy.ctx = ctx
+    flush_pending_schedules(strategy)
     register_boundary_timers(strategy)
     strategy._last_event_type = "tick"
     strategy._check_order_events()
@@ -106,6 +109,7 @@ def on_timer_event(strategy: Any, payload: str, ctx: StrategyContext) -> None:
     """引擎调用的 Timer 回调 (Internal)."""
     ensure_framework_state(strategy)
     strategy.ctx = ctx
+    flush_pending_schedules(strategy)
     register_boundary_timers(strategy)
     strategy._check_order_events()
     dispatch_time_hooks(strategy)

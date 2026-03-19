@@ -2,6 +2,8 @@ from typing import Any, Optional
 
 import pandas as pd
 
+from ..utils import format_metric_value
+
 
 def plot_result(
     result: Any,
@@ -125,13 +127,23 @@ def plot_result(
     # Add Metrics Text Box
     metrics = result.metrics
     trade_metrics = result.trade_metrics
+    total_return_display = format_metric_value(
+        "total_return_pct", metrics.total_return_pct, width=8
+    )
+    annualized_display = format_metric_value(
+        "annualized_return", metrics.annualized_return, width=8
+    )
+    max_drawdown_display = format_metric_value(
+        "max_drawdown_pct", metrics.max_drawdown_pct, width=8
+    )
+    win_rate_display = format_metric_value("win_rate", metrics.win_rate, width=8)
 
     metrics_text = [
-        f"Total Return: {metrics.total_return_pct:>8.2f}%",
-        f"Annualized:   {metrics.annualized_return:>8.2%}",
+        f"Total Return: {total_return_display}",
+        f"Annualized:   {annualized_display}",
         f"Sharpe Ratio: {metrics.sharpe_ratio:>8.2f}",
-        f"Max Drawdown: {metrics.max_drawdown_pct:>8.2f}%",
-        f"Win Rate:     {metrics.win_rate:>8.2%}",
+        f"Max Drawdown: {max_drawdown_display}",
+        f"Win Rate:     {win_rate_display}",
     ]
 
     if hasattr(trade_metrics, "total_closed_trades"):

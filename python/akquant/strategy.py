@@ -251,6 +251,8 @@ class Strategy:
     ]
     _pending_brackets: Dict[str, Dict[str, Any]]
     _order_group_seq: int
+    _pending_schedules: List[Tuple[Union[str, dt.datetime, pd.Timestamp], str]]
+    _pending_daily_timers: List[Tuple[str, str]]
 
     _trading_days: List[pd.Timestamp]
 
@@ -354,6 +356,8 @@ class Strategy:
         instance._pending_engine_bracket_plans = []
         instance._pending_brackets = {}
         instance._order_group_seq = 0
+        instance._pending_schedules = []
+        instance._pending_daily_timers = []
 
         return instance
 
@@ -445,6 +449,10 @@ class Strategy:
             self._pending_brackets = {}
         if not hasattr(self, "_order_group_seq"):
             self._order_group_seq = 0
+        if not hasattr(self, "_pending_schedules"):
+            self._pending_schedules = []
+        if not hasattr(self, "_pending_daily_timers"):
+            self._pending_daily_timers = []
         _ensure_framework_state_impl(self)
 
     @property
@@ -745,6 +753,125 @@ class Strategy:
         """
         return _get_history_impl(self, count, symbol, field)
 
+    def get_history_map(
+        self,
+        count: int,
+        symbols: Union[str, List[str], Tuple[str, ...], set[str]],
+        field: str = "close",
+    ) -> Dict[str, np.ndarray]:
+        """
+        批量获取多个标的的历史数据.
+
+        :param count: 获取的数据长度
+        :param symbols: 标的代码或标的列表
+        :param field: 字段名 (open, high, low, close, volume)
+        :return: {symbol: np.ndarray}
+        """
+        normalized = self._normalize_indicator_symbols(symbols)
+        if normalized is None:
+            raise ValueError("symbols cannot be None")
+        normalized_symbols = sorted(normalized)
+        history_map: Dict[str, np.ndarray] = {}
+        for symbol in normalized_symbols:
+            history_map[symbol] = self.get_history(
+                count=count,
+                symbol=symbol,
+                field=field,
+            )
+        return history_map
+
+    def rebalance_to_topn(
+        self,
+        scores: Dict[str, float],
+        top_n: int,
+        *,
+        weight_mode: Literal["equal", "score"] = "equal",
+        long_only: bool = True,
+        min_score: Optional[float] = None,
+        liquidate_unmentioned: bool = True,
+        allow_leverage: bool = False,
+        rebalance_tolerance: float = 0.0,
+        **kwargs: Any,
+    ) -> List[str]:
+        """
+        根据打分结果选取 TopN 并执行调仓.
+
+        :param scores: 打分字典 {symbol: score}
+        :param top_n: 选取数量
+        :param weight_mode: 权重模式，"equal" 为等权，"score" 为按分数归一化
+        :param long_only: 是否仅允许做多（默认仅保留正分）
+        :param min_score: 最低分数阈值（None 时 long_only=True 默认阈值为 0）
+        :param liquidate_unmentioned: 是否清仓未入选标的
+        :param allow_leverage: 是否允许总权重超过 1.0
+        :param rebalance_tolerance: 调仓容忍阈值（按组合市值比例）
+        :param kwargs: 透传到 order_target_weights 的下单参数
+        :return: 入选标的列表（按分数从高到低）
+        """
+        if top_n <= 0:
+            raise ValueError("top_n must be greater than 0")
+        if weight_mode not in {"equal", "score"}:
+            raise ValueError("weight_mode must be one of: equal, score")
+
+        if not scores:
+            if liquidate_unmentioned:
+                self.order_target_weights(
+                    target_weights={},
+                    liquidate_unmentioned=True,
+                    allow_leverage=allow_leverage,
+                    rebalance_tolerance=rebalance_tolerance,
+                    **kwargs,
+                )
+            return []
+
+        ranking = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        threshold = min_score
+        if threshold is None and long_only:
+            threshold = 0.0
+
+        selected: List[str] = []
+        for symbol, score in ranking:
+            if threshold is not None and score < threshold:
+                continue
+            selected.append(symbol)
+            if len(selected) >= top_n:
+                break
+
+        if not selected:
+            if liquidate_unmentioned:
+                self.order_target_weights(
+                    target_weights={},
+                    liquidate_unmentioned=True,
+                    allow_leverage=allow_leverage,
+                    rebalance_tolerance=rebalance_tolerance,
+                    **kwargs,
+                )
+            return []
+
+        target_weights: Dict[str, float]
+        if weight_mode == "equal":
+            target_weight = 1.0 / float(len(selected))
+            target_weights = {symbol: target_weight for symbol in selected}
+        else:
+            clipped_scores = {
+                symbol: max(float(scores[symbol]), 0.0) for symbol in selected
+            }
+            score_sum = float(sum(clipped_scores.values()))
+            if score_sum <= 0:
+                target_weight = 1.0 / float(len(selected))
+                target_weights = {symbol: target_weight for symbol in selected}
+            else:
+                target_weights = {
+                    symbol: clipped_scores[symbol] / score_sum for symbol in selected
+                }
+        self.order_target_weights(
+            target_weights=target_weights,
+            liquidate_unmentioned=liquidate_unmentioned,
+            allow_leverage=allow_leverage,
+            rebalance_tolerance=rebalance_tolerance,
+            **kwargs,
+        )
+        return selected
+
     def get_history_df(self, count: int, symbol: Optional[str] = None) -> pd.DataFrame:
         """
         获取历史数据 DataFrame (Open, High, Low, Close, Volume).
@@ -931,6 +1058,10 @@ class Strategy:
 
     def before_trading(self, trading_date: dt.date, timestamp: int) -> None:
         """交易日开始前回调."""
+        pass
+
+    def on_daily_rebalance(self, trading_date: dt.date, timestamp: int) -> None:
+        """交易日调仓回调（每天最多一次）."""
         pass
 
     def after_trading(self, trading_date: dt.date, timestamp: int) -> None:

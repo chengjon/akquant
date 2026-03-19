@@ -466,6 +466,7 @@ result = run_backtest(
 *   `on_session_start(session, timestamp)`: 会话切换开始时触发。
 *   `on_session_end(session, timestamp)`: 会话切换结束时触发。
 *   `before_trading(trading_date, timestamp)`: 每个本地交易日首次进入 Normal 会话时触发一次。
+*   `on_daily_rebalance(trading_date, timestamp)`: 交易日调仓钩子，每个交易日最多触发一次。
 *   `after_trading(trading_date, timestamp)`: 离开 Normal 会话时触发；若先跨日则在下一事件补发。
 *   `on_portfolio_update(snapshot)`: 账户快照变化时触发。
 *   `on_error(error, source, payload=None)`: 用户回调抛异常时触发，默认触发后继续抛出。
@@ -511,6 +512,8 @@ result = run_backtest(
 **数据与工具:**
 
 *   `get_history(count, symbol, field="close") -> np.ndarray`: 获取历史数据数组 (Zero-Copy)。
+*   `get_history_map(count, symbols, field="close") -> Dict[str, np.ndarray]`: 批量获取多个标的历史数据。
+*   `rebalance_to_topn(scores, top_n, weight_mode="equal", ...) -> List[str]`: 根据打分选取 TopN 并执行调仓，支持等权或按分数归一化。
 *   `get_history_df(count, symbol) -> pd.DataFrame`: 获取历史数据 DataFrame (OHLCV)。
 *   `get_position(symbol) -> float`: 获取当前持仓量。
 *   `get_available_position(symbol) -> float`: 获取可用持仓量。

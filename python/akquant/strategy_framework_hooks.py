@@ -51,6 +51,21 @@ def _should_reraise_on_error(strategy: Any) -> bool:
     return bool(_runtime_option(strategy, "re_raise_on_error"))
 
 
+def _dispatch_daily_rebalance_if_needed(
+    strategy: Any, trading_date: Any, timestamp: int
+) -> None:
+    if getattr(strategy, "_framework_daily_rebalance_done_date", None) == trading_date:
+        return
+    call_user_callback(
+        strategy,
+        "on_daily_rebalance",
+        trading_date,
+        timestamp,
+        payload={"trading_date": trading_date, "timestamp": timestamp},
+    )
+    strategy._framework_daily_rebalance_done_date = trading_date
+
+
 def call_user_callback(
     strategy: Any, callback_name: str, *args: Any, payload: Optional[Any] = None
 ) -> Any:
@@ -84,6 +99,9 @@ def dispatch_time_hooks(strategy: Any) -> None:
     ts = pd.to_datetime(current_time, unit="ns", utc=True).tz_convert(strategy.timezone)
     current_date = ts.date()
     current_session = getattr(strategy.ctx, "session", None)
+
+    if getattr(strategy, "_framework_daily_rebalance_done_date", None) != current_date:
+        _dispatch_daily_rebalance_if_needed(strategy, current_date, current_time)
 
     last_date = getattr(strategy, "_framework_last_local_date", None)
     before_done_date = getattr(strategy, "_framework_before_trading_done_date", None)
@@ -338,6 +356,8 @@ def ensure_framework_state(strategy: Any) -> None:
         strategy._framework_last_local_date = None
     if not hasattr(strategy, "_framework_before_trading_done_date"):
         strategy._framework_before_trading_done_date = None
+    if not hasattr(strategy, "_framework_daily_rebalance_done_date"):
+        strategy._framework_daily_rebalance_done_date = None
     if not hasattr(strategy, "_framework_after_trading_done_date"):
         strategy._framework_after_trading_done_date = None
     if not hasattr(strategy, "_framework_last_portfolio_state"):

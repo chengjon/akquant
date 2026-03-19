@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pytest
 from akquant import (
@@ -97,6 +98,140 @@ def test_strategy_properties() -> None:
     assert strategy.open == 0.0
     assert strategy.high == 0.0
     assert strategy.low == 0.0
+
+
+class HistoryMapStrategy(Strategy):
+    """Strategy for get_history_map tests."""
+
+    def __init__(self) -> None:
+        """Initialize captured calls."""
+        self.calls: list[tuple[int, str | None, str]] = []
+
+    def get_history(
+        self, count: int, symbol: str | None = None, field: str = "close"
+    ) -> np.ndarray:
+        """Return deterministic history and record invocation."""
+        self.calls.append((count, symbol, field))
+        return np.array([1.0, 2.0, 3.0], dtype=float)
+
+
+def test_get_history_map_normalizes_symbols_and_batches() -> None:
+    """get_history_map should normalize symbols and call get_history per symbol."""
+    strategy = HistoryMapStrategy()
+
+    history_map = strategy.get_history_map(
+        count=3,
+        symbols=["BBB", "AAA", "AAA"],
+        field="close",
+    )
+
+    assert set(history_map.keys()) == {"AAA", "BBB"}
+    assert strategy.calls == [(3, "AAA", "close"), (3, "BBB", "close")]
+
+
+def test_get_history_map_supports_single_symbol() -> None:
+    """get_history_map should support single symbol inputs."""
+    strategy = HistoryMapStrategy()
+
+    history_map = strategy.get_history_map(count=2, symbols="AAA", field="open")
+
+    assert list(history_map.keys()) == ["AAA"]
+    assert strategy.calls == [(2, "AAA", "open")]
+
+
+class TopNRebalanceStrategy(Strategy):
+    """Strategy for rebalance_to_topn tests."""
+
+    def __init__(self) -> None:
+        """Initialize call snapshots."""
+        self.calls: list[dict[str, Any]] = []
+
+    def order_target_weights(
+        self,
+        target_weights: dict[str, float],
+        price_map: dict[str, float] | None = None,
+        liquidate_unmentioned: bool = False,
+        allow_leverage: bool = False,
+        rebalance_tolerance: float = 0.0,
+        **kwargs: Any,
+    ) -> None:
+        """Capture target weights invocation."""
+        self.calls.append(
+            {
+                "target_weights": target_weights,
+                "price_map": price_map,
+                "liquidate_unmentioned": liquidate_unmentioned,
+                "allow_leverage": allow_leverage,
+                "rebalance_tolerance": rebalance_tolerance,
+                "kwargs": kwargs,
+            }
+        )
+
+
+def test_rebalance_to_topn_equal_weight_selection() -> None:
+    """rebalance_to_topn should select top symbols and place equal weights."""
+    strategy = TopNRebalanceStrategy()
+
+    selected = strategy.rebalance_to_topn(
+        scores={"AAA": 0.03, "BBB": 0.08, "CCC": 0.05},
+        top_n=2,
+    )
+
+    assert selected == ["BBB", "CCC"]
+    assert len(strategy.calls) == 1
+    assert strategy.calls[0]["target_weights"] == {"BBB": 0.5, "CCC": 0.5}
+    assert strategy.calls[0]["liquidate_unmentioned"] is True
+
+
+def test_rebalance_to_topn_filters_non_positive_when_long_only() -> None:
+    """rebalance_to_topn should clear positions when no positive scores remain."""
+    strategy = TopNRebalanceStrategy()
+
+    selected = strategy.rebalance_to_topn(
+        scores={"AAA": -0.02, "BBB": -0.01},
+        top_n=2,
+    )
+
+    assert selected == []
+    assert len(strategy.calls) == 1
+    assert strategy.calls[0]["target_weights"] == {}
+    assert strategy.calls[0]["liquidate_unmentioned"] is True
+
+
+def test_rebalance_to_topn_rejects_invalid_topn() -> None:
+    """rebalance_to_topn should validate top_n."""
+    strategy = TopNRebalanceStrategy()
+
+    with pytest.raises(ValueError, match="top_n must be greater than 0"):
+        strategy.rebalance_to_topn(scores={"AAA": 0.1}, top_n=0)
+
+
+def test_rebalance_to_topn_supports_score_weight_mode() -> None:
+    """rebalance_to_topn should support score-normalized weights."""
+    strategy = TopNRebalanceStrategy()
+
+    selected = strategy.rebalance_to_topn(
+        scores={"AAA": 0.1, "BBB": 0.3, "CCC": 0.05},
+        top_n=2,
+        weight_mode="score",
+    )
+
+    assert selected == ["BBB", "AAA"]
+    assert len(strategy.calls) == 1
+    assert strategy.calls[0]["target_weights"]["BBB"] == pytest.approx(0.75)
+    assert strategy.calls[0]["target_weights"]["AAA"] == pytest.approx(0.25)
+
+
+def test_rebalance_to_topn_rejects_invalid_weight_mode() -> None:
+    """rebalance_to_topn should validate weight_mode."""
+    strategy = TopNRebalanceStrategy()
+
+    with pytest.raises(ValueError, match="weight_mode must be one of: equal, score"):
+        strategy.rebalance_to_topn(
+            scores={"AAA": 0.1, "BBB": 0.2},
+            top_n=1,
+            weight_mode="invalid",  # type: ignore[arg-type]
+        )
 
 
 class StartCounterStrategy(Strategy):
@@ -1645,6 +1780,40 @@ def test_live_mode_timer_registration_not_duplicated() -> None:
     assert payloads.count("__daily__|14:55:00|daily_timer") == 1
 
 
+def test_on_start_timer_registration_is_deferred_until_context_ready() -> None:
+    """Allow on_start schedule calls before context is injected."""
+    strategy = TimerIdempotencyStrategy()
+
+    strategy._on_start_internal()
+
+    assert len(strategy._pending_schedules) == 1
+    assert len(strategy._pending_daily_timers) == 1
+
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+
+    ts = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+    bar = Bar(
+        timestamp=ts,
+        open=100.0,
+        high=100.0,
+        low=100.0,
+        close=100.0,
+        volume=1000.0,
+        symbol="AAPL",
+    )
+    strategy._on_bar_event(bar, ctx)
+
+    assert len(strategy._pending_schedules) == 0
+    assert len(strategy._pending_daily_timers) == 0
+    payloads = [call.args[1] for call in ctx.schedule.call_args_list]
+    assert "manual_timer" in payloads
+    assert "__daily__|14:55:00|daily_timer" in payloads
+
+
 def test_live_mode_daily_timer_reschedules_once_per_trigger() -> None:
     """Live mode daily timer should reschedule once per single trigger."""
     strategy = TimerIdempotencyStrategy()
@@ -1834,6 +2003,10 @@ class FrameworkHooksStrategy(Strategy):
         """Record before trading hook."""
         self.events.append(f"before:{trading_date}:{timestamp}")
 
+    def on_daily_rebalance(self, trading_date: Any, timestamp: int) -> None:
+        """Record daily rebalance hook."""
+        self.events.append(f"rebalance:{trading_date}:{timestamp}")
+
     def after_trading(self, trading_date: Any, timestamp: int) -> None:
         """Record after trading hook."""
         self.events.append(f"after:{trading_date}:{timestamp}")
@@ -1889,6 +2062,7 @@ def test_framework_hooks_session_day_reject_and_portfolio() -> None:
 
     assert any(e.startswith("session_start:") for e in strategy.events)
     assert any(e.startswith("before:") for e in strategy.events)
+    assert any(e.startswith("rebalance:") for e in strategy.events)
     assert "order:rej1" in strategy.events
     assert "reject:rej1" in strategy.events
     assert strategy.events.index("order:rej1") < strategy.events.index("reject:rej1")
@@ -1901,14 +2075,57 @@ def test_framework_hooks_session_day_reject_and_portfolio() -> None:
     strategy._on_tick_event(tick2, ctx)
     assert any(e.startswith("session_end:") for e in strategy.events)
     assert any(e.startswith("after:") for e in strategy.events)
+    same_day_rebalance_count = len(
+        [e for e in strategy.events if e.startswith("rebalance:2023-01-01")]
+    )
+    assert same_day_rebalance_count == 1
 
     before_count = len([e for e in strategy.events if e.startswith("before:")])
+    rebalance_count = len([e for e in strategy.events if e.startswith("rebalance:")])
     ctx.current_time = pd.Timestamp("2023-01-02 09:31:00", tz="Asia/Shanghai").value
     ctx.session = "normal"
     tick3 = Tick(timestamp=ctx.current_time, price=102.0, volume=1.0, symbol="AAPL")
     strategy._on_tick_event(tick3, ctx)
     after_count = len([e for e in strategy.events if e.startswith("before:")])
+    rebalance_after_count = len(
+        [e for e in strategy.events if e.startswith("rebalance:")]
+    )
     assert after_count == before_count + 1
+    assert rebalance_after_count == rebalance_count + 1
+
+
+def test_daily_rebalance_fallback_when_session_missing() -> None:
+    """When session is missing, daily rebalance still runs once per day."""
+    strategy = FrameworkHooksStrategy()
+    ctx = MagicMock(spec=StrategyContext)
+    ctx.get_position.return_value = 0.0
+    ctx.canceled_order_ids = []
+    ctx.active_orders = []
+    ctx.recent_trades = []
+    ctx.positions = {}
+    ctx.available_positions = {}
+    ctx.cash = 1000.0
+    ctx.session = None
+
+    ts1 = pd.Timestamp("2023-01-01 09:30:00", tz="Asia/Shanghai").value
+    ts2 = pd.Timestamp("2023-01-01 10:30:00", tz="Asia/Shanghai").value
+    ts3 = pd.Timestamp("2023-01-02 09:30:00", tz="Asia/Shanghai").value
+
+    tick1 = Tick(timestamp=ts1, price=100.0, volume=1.0, symbol="AAPL")
+    tick2 = Tick(timestamp=ts2, price=100.0, volume=1.0, symbol="AAPL")
+    tick3 = Tick(timestamp=ts3, price=100.0, volume=1.0, symbol="AAPL")
+
+    ctx.current_time = ts1
+    strategy._on_tick_event(tick1, ctx)
+    ctx.current_time = ts2
+    strategy._on_tick_event(tick2, ctx)
+    ctx.current_time = ts3
+    strategy._on_tick_event(tick3, ctx)
+
+    day1 = len([e for e in strategy.events if e.startswith("rebalance:2023-01-01")])
+    day2 = len([e for e in strategy.events if e.startswith("rebalance:2023-01-02")])
+    assert day1 == 1
+    assert day2 == 1
 
 
 def test_portfolio_update_skips_clean_tick_without_changes() -> None:
@@ -2409,6 +2626,7 @@ def test_boundary_timers_register_and_drive_day_hooks() -> None:
 
     strategy._on_timer_event("__framework_boundary__|before|2023-01-03", ctx)
     assert any(e.startswith("before:2023-01-03") for e in strategy.events)
+    assert any(e.startswith("rebalance:2023-01-03") for e in strategy.events)
 
     ctx.current_time = end_ts + 1
     strategy._on_timer_event("__framework_boundary__|after|2023-01-03", ctx)

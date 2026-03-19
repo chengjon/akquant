@@ -31,6 +31,7 @@
 * `on_reject`: 订单进入 `Rejected` 状态时触发。
 * `on_session_start` / `on_session_end`: 会话切换时触发。
 * `before_trading` / `after_trading`: 交易日级钩子。
+* `on_daily_rebalance`: 交易日调仓钩子（每天最多一次，适合横截面轮动）。
 * `on_portfolio_update`: 账户快照变化时触发。
 * `on_error`: 用户回调抛异常时触发，默认触发后继续抛出异常。
 * `on_timer`: 定时器触发时调用 (需手动注册)。
@@ -49,6 +50,7 @@
 
 * `on_reject` 对同一订单 id 只触发一次。
 * `before_trading` 在本地交易日首次进入 Normal 会话时触发一次。
+* `on_daily_rebalance` 与 `before_trading` 同一阶段触发，每个交易日最多触发一次。
 * `after_trading` 在离开 Normal 会话时触发；若先跨日再收到事件，会在下一事件补发上一交易日的 `after_trading`。
 * 若需要更精确的交易日边界触发，可在策略中设置 `self.enable_precise_day_boundary_hooks = True`。
 * `on_portfolio_update` 采用增量触发：初始化时触发一次，后续仅在订单/成交或持仓相关价格变化时触发。
@@ -199,13 +201,13 @@ def on_timer(self, payload):
 
 ### 3.4 横截面策略推荐范式 (Cross-Section Pattern)
 
-AKQuant 的 `on_bar` 按“单事件流”逐条触发。若你要做多标的横截面比较（轮动、排序、打分），推荐把决策统一放在 `on_timer`。
+AKQuant 的 `on_bar` 按“单事件流”逐条触发。若你要做多标的横截面比较（轮动、排序、打分），推荐优先使用 `on_daily_rebalance`，由框架保证“每天最多一次”的触发语义。
 
 推荐步骤：
 
-1. 在 `on_start` 中定义 `universe` 并注册每日定时器。
-2. 在 `on_timer` 中遍历 `universe` 计算分数。
-3. 在 `on_timer` 中统一选股与调仓，确保每个时点只执行一次。
+1. 在 `on_start` 中定义 `universe` 并订阅标的。
+2. 在 `on_daily_rebalance` 中遍历 `universe` 计算分数。
+3. 在 `on_daily_rebalance` 中统一选股与调仓。
 
 ```python
 class CrossSectionStrategy(Strategy):
@@ -215,22 +217,31 @@ class CrossSectionStrategy(Strategy):
         self.warmup_period = lookback + 1
 
     def on_start(self):
-        self.add_daily_timer("14:55:00", "rebalance")
-
-    def on_timer(self, payload):
-        if payload != "rebalance":
-            return
-        scores = {}
         for symbol in self.universe:
-            closes = self.get_history(count=self.lookback, symbol=symbol, field="close")
+            self.subscribe(symbol)
+
+    def on_daily_rebalance(self, trading_date, timestamp):
+        history_map = self.get_history_map(
+            count=self.lookback,
+            symbols=self.universe,
+            field="close",
+        )
+        scores = {}
+        for symbol, closes in history_map.items():
             if len(closes) < self.lookback:
-                return
+                continue
             scores[symbol] = (closes[-1] - closes[0]) / closes[0]
-        best = max(scores, key=scores.get)
-        self.order_target_percent(target_percent=0.95, symbol=best)
+        if not scores:
+            return
+        self.rebalance_to_topn(
+            scores=scores,
+            top_n=2,
+            weight_mode="score",
+            long_only=False,
+        )
 ```
 
-完整示例见：`examples/strategies/05_stock_momentum_rotation_timer.py`。
+完整示例见：`examples/strategies/05_stock_momentum_rotation_timer.py`（on_daily_rebalance）与 `examples/strategies/07_stock_momentum_rotation_on_timer.py`（on_timer 固定时点）。
 
 ### 3.5 横截面方案 B：收齐同 timestamp 后执行
 

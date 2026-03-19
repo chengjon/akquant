@@ -17,6 +17,7 @@ from akquant import (
     Strategy,
     run_backtest,
 )
+from akquant.utils import format_metric_value
 
 
 # --------------------------------------------------------------------------------
@@ -144,15 +145,25 @@ if __name__ == "__main__":
         initial_cash=1_000_000.0,
         show_progress=True,
     )
-
+    print(result)
     # 3. Print Metrics
     print("\nPerformance Metrics:")
     metrics = result.metrics
-    print(f"  Total Return:      {metrics.total_return_pct:>6.2f}%")
-    print(f"  Annualized Return: {metrics.annualized_return:>6.2f}%")
+    total_return_display = format_metric_value(
+        "total_return_pct", metrics.total_return_pct, width=6
+    )
+    annualized_return_display = format_metric_value(
+        "annualized_return", metrics.annualized_return, width=6
+    )
+    max_drawdown_display = format_metric_value(
+        "max_drawdown_pct", metrics.max_drawdown_pct, width=6
+    )
+    win_rate_display = format_metric_value("win_rate", metrics.win_rate, width=6)
+    print(f"  Total Return:      {total_return_display}")
+    print(f"  Annualized Return: {annualized_return_display}")
     print(f"  Sharpe Ratio:      {metrics.sharpe_ratio:>6.2f}")
-    print(f"  Max Drawdown:      {metrics.max_drawdown_pct:>6.2f}%")
-    print(f"  Win Rate:          {metrics.win_rate:>6.2f}%")
+    print(f"  Max Drawdown:      {max_drawdown_display}")
+    print(f"  Win Rate:          {win_rate_display}")
     print(f"  Total Trades:      {len(result.trades_df)}")
 
     # 4. Visualization

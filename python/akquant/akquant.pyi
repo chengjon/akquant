@@ -928,7 +928,7 @@ class PerformanceMetrics:
 
     :ivar total_return: 总收益 (数值)
     :ivar annualized_return: 年化收益率
-    :ivar max_drawdown: 最大回撤 (百分比, 如 0.15 表示 15%)
+    :ivar max_drawdown: 最大回撤比率 (小数, 如 0.15 表示 15%)
     :ivar max_drawdown_value: 最大回撤金额
     :ivar max_drawdown_pct: 最大回撤百分比 (如 15.0 表示 15%)
     :ivar sharpe_ratio: 夏普比率
@@ -939,7 +939,7 @@ class PerformanceMetrics:
     :ivar upi: 溃疡绩效指数 (UPI)
     :ivar equity_r2: 权益曲线 R^2 (拟合度)
     :ivar std_error: 标准误差
-    :ivar win_rate: 胜率 (0.0-1.0)
+    :ivar win_rate: 胜率 (%)
     :ivar initial_market_value: 初始市值
     :ivar end_market_value: 结束市值
     :ivar total_return_pct: 总收益率 (%)
@@ -2606,8 +2606,8 @@ class TradePnL:
     :ivar lost_count: 亏损次数
     :ivar won_pnl: 盈利总额
     :ivar lost_pnl: 亏损总额
-    :ivar win_rate: 胜率 (0.0-1.0)
-    :ivar loss_rate: 亏损率 (0.0-1.0)
+    :ivar win_rate: 胜率 (%)
+    :ivar loss_rate: 亏损率 (%)
     :ivar unrealized_pnl: 未实现盈亏
     :ivar avg_pnl: 平均单笔盈亏
     :ivar avg_return_pct: 平均单笔收益率 (%)

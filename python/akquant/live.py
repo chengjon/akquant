@@ -8,6 +8,7 @@ from .gateway.factory import create_gateway_bundle
 from .gateway.models import UnifiedOrderRequest
 from .strategy import Strategy
 from .strategy_loader import resolve_strategy_input
+from .utils import format_metric_value
 
 
 class _StrategyCallbackFanout:
@@ -1045,11 +1046,21 @@ class LiveRunner:
             print("\n" + "=" * 50)
             print("TRADING SUMMARY (Manual Stop)")
             print("=" * 50)
-            print(f"Total Return: {results.metrics.total_return_pct:.2%}")
-            print(f"Annualized Return: {results.metrics.annualized_return:.2%}")
-            print(f"Max Drawdown: {results.metrics.max_drawdown_pct:.2%}")
+            total_return_display = format_metric_value(
+                "total_return_pct", results.metrics.total_return_pct
+            )
+            annualized_return_display = format_metric_value(
+                "annualized_return", results.metrics.annualized_return
+            )
+            max_drawdown_display = format_metric_value(
+                "max_drawdown_pct", results.metrics.max_drawdown_pct
+            )
+            win_rate_display = format_metric_value("win_rate", results.metrics.win_rate)
+            print(f"Total Return: {total_return_display}")
+            print(f"Annualized Return: {annualized_return_display}")
+            print(f"Max Drawdown: {max_drawdown_display}")
             print(f"Sharpe Ratio: {results.metrics.sharpe_ratio:.4f}")
-            print(f"Win Rate: {results.metrics.win_rate:.2%}")
+            print(f"Win Rate: {win_rate_display}")
             print(f"Total Trades: {len(results.trades)}")
             print("=" * 50)
 

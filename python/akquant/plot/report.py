@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 import pandas as pd
 
+from ..utils import format_metric_value
 from .analysis import (
     plot_pnl_vs_duration,
     plot_returns_distribution,
@@ -605,13 +606,13 @@ def _build_metrics_html(result: Any) -> str:
         (
             "累计收益率 (Total Return)",
             metrics.total_return_pct,
-            f"{metrics.total_return_pct:.2f}%",
+            format_metric_value("total_return_pct", metrics.total_return_pct),
             get_color_class(metrics.total_return_pct),
         ),
         (
             "年化收益率 (CAGR)",
             metrics.annualized_return,
-            f"{metrics.annualized_return:.2%}",
+            format_metric_value("annualized_return", metrics.annualized_return),
             get_color_class(metrics.annualized_return),
         ),
         (
@@ -641,19 +642,19 @@ def _build_metrics_html(result: Any) -> str:
         (
             "最大回撤 (Max DD)",
             metrics.max_drawdown_pct,
-            f"{metrics.max_drawdown_pct:.2f}%",
+            format_metric_value("max_drawdown_pct", metrics.max_drawdown_pct),
             "negative",
         ),
         (
             "波动率 (Volatility)",
             metrics.volatility,
-            f"{metrics.volatility:.2%}",
+            format_metric_value("volatility", metrics.volatility),
             "",
         ),
         (
             "胜率 (Win Rate)",
             metrics.win_rate,
-            f"{metrics.win_rate:.2f}%",
+            format_metric_value("win_rate", metrics.win_rate),
             "",
         ),
         (
@@ -665,7 +666,10 @@ def _build_metrics_html(result: Any) -> str:
         (
             "凯利公式 (Kelly)",
             _get_metric_value(result, metrics, "kelly_criterion"),
-            f"{_get_metric_value(result, metrics, 'kelly_criterion'):.2%}",
+            format_metric_value(
+                "kelly_criterion",
+                _get_metric_value(result, metrics, "kelly_criterion"),
+            ),
             "",
         ),
         ("交易次数 (Trades)", len(result.trades_df), f"{len(result.trades_df)}", ""),
