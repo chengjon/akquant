@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "akquant"
-version = "0.1.78"
+version = "0.1.79"
 description = "High-performance quantitative trading framework based on Rust and Python"
 readme = "README.md"
 license = {text = "MIT License"}
@@ -25,8 +25,8 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "pandas>=3.0.0",
-    "numpy>=2.4.1",
+    "pandas>=2.2.0",
+    "numpy>=2.2.2",
     "pyarrow>=14.0.0",
     "tqdm>=4.0.0",
     "plotly>=5.0.0",

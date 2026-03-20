@@ -547,6 +547,7 @@ impl Engine {
                         session: self.clock.session,
                         current_time: self.clock.timestamp().unwrap_or(0),
                         active_orders,
+                        closed_trades: self.state.order_manager.trade_tracker.closed_trades.clone(),
                         recent_trades: step_trades,
                     });
                 }

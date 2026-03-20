@@ -55,6 +55,7 @@ pub struct ContextUpdate {
     pub session: TradingSession,
     pub current_time: i64,
     pub active_orders: Arc<Vec<Order>>,
+    pub closed_trades: Arc<Vec<ClosedTrade>>,
     pub recent_trades: Vec<Trade>,
 }
 
@@ -66,6 +67,7 @@ impl StrategyContext {
         self.session = update.session;
         self.current_time = update.current_time;
         self.active_orders_arc = update.active_orders.clone();
+        self.closed_trades = update.closed_trades;
 
         // Lazy update: clear the vector but don't fill it yet.
         // We will rely on a getter to populate it if accessed, or just update it here if needed.

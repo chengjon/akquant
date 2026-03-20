@@ -6,10 +6,12 @@ __pycache__/
 *.dylib
 *.dSYM/
 *.pyd
+*.pdb
 .env
 .venv
 venv/
 .DS_Store
+uv.lock
 
 # IDEs
 .idea/
