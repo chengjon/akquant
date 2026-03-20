@@ -24,6 +24,7 @@ class ExecutionMode:
     NextOpen: typing.ClassVar["ExecutionMode"]
     CurrentClose: typing.ClassVar["ExecutionMode"]
     NextAverage: typing.ClassVar["ExecutionMode"]
+    NextHighLowMid: typing.ClassVar["ExecutionMode"]
 
 class OrderStatus:
     New: typing.ClassVar["OrderStatus"]

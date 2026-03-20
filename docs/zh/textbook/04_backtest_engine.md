@@ -471,7 +471,26 @@ stateDiagram-v2
 | **NextOpen** (默认) | 当前 Bar 的信号，在**下一根 Bar 的开盘价**成交。 | 日线/分钟线策略 | **最推荐**。完全避免未来函数。 |
 | **CurrentClose** | 当前 Bar 的信号，在**当前 Bar 的收盘价**成交。 | 收盘竞价策略 | 需小心使用，容易引入前视偏差。 |
 
-### 4.10.3 滑点与冲击成本 (Slippage & Impact)
+### 4.10.3 成交时序策略 (Temporal Policy)
+
+在 `execution_mode` 之外，AKQuant 还支持通过 `timer_execution_policy`（或统一写法 `fill_policy.temporal`）控制 `on_timer` 下单的撮合时点：
+
+| 时序策略 | 描述 | 典型场景 |
+| :--- | :--- | :--- |
+| `same_cycle` (默认) | 在当前 timer 事件周期内撮合 | 定时调仓后立即成交的仿真 |
+| `next_event` | 延后到下一条行情事件撮合 | 更保守的“信号与成交分离”建模 |
+
+推荐统一使用：
+
+```python
+result = akquant.run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    fill_policy={"price_basis": "current_close", "temporal": "next_event"},
+)
+```
+
+### 4.10.4 滑点与冲击成本 (Slippage & Impact)
 
 回测中最容易高估收益的因素是忽略了交易成本。`akquant` 支持配置滑点模型：
 

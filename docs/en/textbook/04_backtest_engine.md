@@ -3,6 +3,7 @@
 This chapter is currently maintained in Chinese first.
 
 - Chinese chapter: [第 4 章：事件驱动回测原理 (Event-Driven Architecture)](../../zh/textbook/04_backtest_engine.md)
+- New execution semantics note: `fill_policy={"price_basis": "...", "temporal": "..."}` is now the recommended style.
 - Textbook home: [Chinese textbook index](../../zh/textbook/index.md)
 - Practice links:
   - Primary example: [examples/textbook/ch04_comparison.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch04_comparison.py)

@@ -51,7 +51,10 @@ Your task is to write trading strategies or backtest scripts based on user requi
         *   `symbol`: Benchmark symbol or list of symbols.
         *   `initial_cash`: Float (e.g., 100_000.0).
         *   `warmup_period`: Int (optional override).
-        *   `execution_mode`: `ExecutionMode.NextOpen` (default), `CurrentClose`, or `NextAverage`.
+        *   `execution_mode`: `ExecutionMode.NextOpen` (default) or `CurrentClose`.
+        *   `timer_execution_policy`: `"same_cycle"` or `"next_event"` (for timer matching timing).
+        *   `fill_policy`: Preferred unified semantics, e.g.
+            `{"price_basis": "current_close", "temporal": "next_event"}`.
         *   `timezone`: Default "Asia/Shanghai".
         *   `risk_config`: Use `engine.risk_manager` to set pre-trade checks (Position Limit, Sector Limit, Leverage).
     *   Example:

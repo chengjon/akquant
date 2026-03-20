@@ -467,6 +467,169 @@ def test_current_close_mixed_bar_timer_next_event_policy() -> None:
         assert ts != strategy.timer_timestamp
 
 
+def test_fill_policy_same_cycle_matches_legacy_parameters() -> None:
+    """Fill policy should align with legacy current_close+same_cycle behavior."""
+    symbol = "TIMER_BUG"
+    bars = [
+        akquant.Bar(
+            pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai").value,
+            10.0,
+            10.0,
+            10.0,
+            10.0,
+            1000.0,
+            symbol,
+        ),
+        akquant.Bar(
+            pd.Timestamp("2023-01-02 10:01:00", tz="Asia/Shanghai").value,
+            11.0,
+            11.0,
+            11.0,
+            11.0,
+            1000.0,
+            symbol,
+        ),
+    ]
+    strategy = TimerCurrentCloseStrategy()
+    strategy.symbol_ref = symbol
+
+    _ = akquant.run_backtest(
+        data=bars,
+        strategy=strategy,
+        symbol=symbol,
+        fill_policy={"price_basis": "current_close", "temporal": "same_cycle"},
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert strategy.timer_timestamp is not None
+    assert strategy.trade_timestamp is not None
+    assert strategy.trade_timestamp == strategy.timer_timestamp
+    assert strategy.trade_price == pytest.approx(10.0)
+
+
+def test_fill_policy_next_event_matches_legacy_parameters() -> None:
+    """Fill policy next_event should match legacy next_event timer behavior."""
+    symbol = "TIMER_BUG"
+    first_ts = pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai").value
+    second_ts = pd.Timestamp("2023-01-02 10:01:00", tz="Asia/Shanghai").value
+    third_ts = pd.Timestamp("2023-01-02 10:02:00", tz="Asia/Shanghai").value
+    bars = [
+        akquant.Bar(first_ts, 10.0, 10.0, 10.0, 10.0, 1000.0, symbol),
+        akquant.Bar(second_ts, 11.0, 11.0, 11.0, 11.0, 1000.0, symbol),
+        akquant.Bar(third_ts, 12.0, 12.0, 12.0, 12.0, 1000.0, symbol),
+    ]
+    strategy = TimerCurrentCloseStrategy()
+    strategy.symbol_ref = symbol
+    strategy.timer_trigger = pd.Timestamp("2023-01-02 10:01:30", tz="Asia/Shanghai")
+
+    _ = akquant.run_backtest(
+        data=bars,
+        strategy=strategy,
+        symbol=symbol,
+        fill_policy={"price_basis": "current_close", "temporal": "next_event"},
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert strategy.timer_timestamp is not None
+    assert strategy.trade_timestamp != strategy.timer_timestamp
+
+
+def test_fill_policy_ohlc4_maps_to_next_average() -> None:
+    """fill_policy price_basis=ohlc4 should map to NextAverage pricing."""
+    symbol = "TIMER_BUG"
+    first_ts = pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai").value
+    second_ts = pd.Timestamp("2023-01-02 10:01:00", tz="Asia/Shanghai").value
+    bars = [
+        akquant.Bar(first_ts, 9.0, 9.5, 8.5, 9.2, 1000.0, symbol),
+        akquant.Bar(second_ts, 10.0, 15.0, 9.0, 12.0, 1000.0, symbol),
+    ]
+    strategy = BarOnlyCaptureStrategy()
+
+    _ = akquant.run_backtest(
+        data=bars,
+        strategy=strategy,
+        symbol=symbol,
+        fill_policy={"price_basis": "ohlc4", "temporal": "same_cycle"},
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert strategy.trade_timestamp == second_ts
+    assert strategy.trade_price == pytest.approx(11.5)
+
+
+def test_fill_policy_hl2_maps_to_next_high_low_mid() -> None:
+    """fill_policy price_basis=hl2 should map to NextHighLowMid pricing."""
+    symbol = "TIMER_BUG"
+    first_ts = pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai").value
+    second_ts = pd.Timestamp("2023-01-02 10:01:00", tz="Asia/Shanghai").value
+    bars = [
+        akquant.Bar(first_ts, 9.0, 9.5, 8.5, 9.2, 1000.0, symbol),
+        akquant.Bar(second_ts, 10.0, 15.0, 9.0, 12.0, 1000.0, symbol),
+    ]
+    strategy = BarOnlyCaptureStrategy()
+
+    _ = akquant.run_backtest(
+        data=bars,
+        strategy=strategy,
+        symbol=symbol,
+        fill_policy={"price_basis": "hl2", "temporal": "same_cycle"},
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert strategy.trade_timestamp == second_ts
+    assert strategy.trade_price == pytest.approx(12.0)
+
+
+def test_fill_policy_reserved_mid_quote_raises_not_implemented() -> None:
+    """Reserved price_basis mid_quote should raise NotImplementedError."""
+    bars = _build_benchmark_data(3, "RESERVED_BASIS")
+    with pytest.raises(NotImplementedError, match="mid_quote"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=SingleBuyStrategy,
+            symbols="RESERVED_BASIS",
+            fill_policy={"price_basis": "mid_quote", "temporal": "same_cycle"},
+            show_progress=False,
+        )
+
+
+def test_fill_policy_reserved_vwap_window_raises_not_implemented() -> None:
+    """Reserved price_basis vwap_window should raise NotImplementedError."""
+    bars = _build_benchmark_data(3, "RESERVED_BASIS")
+    with pytest.raises(NotImplementedError, match="vwap_window"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=SingleBuyStrategy,
+            symbols="RESERVED_BASIS",
+            fill_policy={"price_basis": "vwap_window", "temporal": "same_cycle"},
+            show_progress=False,
+        )
+
+
 def test_run_backtest_accepts_data_feed_adapter() -> None:
     """run_backtest should accept objects implementing DataFeedAdapter.load."""
 

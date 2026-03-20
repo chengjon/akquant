@@ -203,7 +203,7 @@ Recommendation: use Plan A by default; use Plan B only when a stable rebalance t
 
 *   **Suspensions / missing bars**: Plan B may not trigger if some symbols have no bar at a timestamp; add timeout fallback or minimum-valid-sample execution.
 *   **Universe drift**: If constituents change but your universe list is stale, weights and ranks diverge from target; refresh periodically and track effective date.
-*   **Rebalance time vs execution mode mismatch**: With `execution_mode="next_open"`, close-time signals are filled on next bar; document this in result interpretation.
+*   **Rebalance time vs execution mode mismatch**: With `execution_mode="next_open"`, close-time signals are filled on the next bar; under `current_close`, also define `timer_execution_policy` (or `fill_policy.temporal`) to make timer fill timing explicit.
 *   **Insufficient history windows**: Newly listed or recently resumed symbols may fail window requirements; check `len(closes)` and skip invalid samples.
 *   **Position convergence lag**: Multi-asset sell-then-buy cycles can leave partial allocations in one event; use target-position APIs and converge again on next cycle.
 

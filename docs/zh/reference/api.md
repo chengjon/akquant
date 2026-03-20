@@ -41,6 +41,8 @@ def run_backtest(
     strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     broker_profile: Optional[str] = None,
+    timer_execution_policy: Literal["same_cycle", "next_event"] = "same_cycle",
+    fill_policy: Optional[Dict[str, str]] = None,
     **kwargs: Any,
 ) -> BacktestResult
 ```
@@ -89,6 +91,13 @@ def run_warm_start(
 *   `execution_mode`: 执行模式。
     *   `ExecutionMode.NextOpen`: 下一 Bar 开盘价成交 (默认)。
     *   `ExecutionMode.CurrentClose`: 当前 Bar 收盘价成交。
+*   `timer_execution_policy`: 定时器事件成交时序策略（主要用于 `CurrentClose`）。
+    *   `"same_cycle"`: 在当前 `timer` 事件周期内撮合。
+    *   `"next_event"`: 延后到下一条行情事件再撮合。
+*   `fill_policy`: 统一成交语义配置（优先级高于 `execution_mode` 与 `timer_execution_policy`）。
+    *   `price_basis`: `next_open`、`current_close`、`ohlc4`（OHLC 平均价）或 `hl2`（高低中价）。
+    *   预留（暂未实现）: `mid_quote`、`vwap_window`、`twap_window`（当前会抛出 `NotImplementedError`）。
+    *   `temporal`: `same_cycle` 或 `next_event`。
 *   `t_plus_one`: 是否启用 T+1 交易规则 (默认 False)。如果启用，将强制使用中国市场模型。
 *   `slippage`: 全局滑点 (默认 0.0)。例如 0.0001 代表 1bp (0.01%) 的滑点，采用百分比模型。
 *   `volume_limit_pct`: 成交量限制比例 (默认 0.25)。限制单笔成交不超过该 Bar 总成交量的百分比。
@@ -103,6 +112,16 @@ def run_warm_start(
 *   `analyzer_plugins`: 可选 Analyzer 插件列表。插件接收 `on_start/on_bar/on_trade/on_finish` 生命周期回调，结果汇总到 `result.analyzer_outputs`。
 *   `on_event`: 可选事件回调。不传时内部使用 no-op 回调并保持阻塞返回语义；传入时可实时消费事件。
 *   `broker_profile`: 可选 broker 参数模板，用于快速注入费率/滑点/最小手数等默认值。内置模板：`cn_stock_miniqmt`、`cn_stock_t1_low_fee`、`cn_stock_sim_high_slippage`。
+
+**执行语义迁移映射：**
+
+| 旧参数组合 | 新参数写法 |
+| :--- | :--- |
+| `execution_mode="next_open"` | `fill_policy={"price_basis":"next_open","temporal":"same_cycle"}` |
+| `execution_mode="current_close", timer_execution_policy="same_cycle"` | `fill_policy={"price_basis":"current_close","temporal":"same_cycle"}` |
+| `execution_mode="current_close", timer_execution_policy="next_event"` | `fill_policy={"price_basis":"current_close","temporal":"next_event"}` |
+| `execution_mode="next_average"` | `fill_policy={"price_basis":"ohlc4","temporal":"same_cycle"}` |
+| `execution_mode="next_high_low_mid"` | `fill_policy={"price_basis":"hl2","temporal":"same_cycle"}` |
 
 **DataFeedAdapter 用法（多时间框）:**
 

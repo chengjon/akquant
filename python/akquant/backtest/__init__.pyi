@@ -36,6 +36,18 @@ class BacktestStreamEvent(TypedDict):
     level: str
     payload: Dict[str, str]
 
+class FillPolicy(TypedDict, total=False):
+    price_basis: Literal[
+        "next_open",
+        "current_close",
+        "ohlc4",
+        "hl2",
+        "mid_quote",
+        "vwap_window",
+        "twap_window",
+    ]
+    temporal: Literal["same_cycle", "next_event"]
+
 def run_backtest(
     data: Optional[BacktestDataInput] = ...,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = ...,
@@ -94,6 +106,7 @@ def run_backtest(
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = ...,
     broker_profile: Optional[str] = ...,
     timer_execution_policy: Literal["same_cycle", "next_event"] = ...,
+    fill_policy: Optional[FillPolicy] = ...,
     stream_mode: Literal["observability", "audit"] = ...,
     **kwargs: Any,
 ) -> BacktestResult: ...

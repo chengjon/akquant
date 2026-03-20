@@ -54,6 +54,8 @@ def run_backtest(
     risk_budget_reset_daily: bool = False,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     broker_profile: Optional[str] = None,
+    timer_execution_policy: Literal["same_cycle", "next_event"] = "same_cycle",
+    fill_policy: Optional[Dict[str, str]] = None,
     **kwargs: Any,
 ) -> BacktestResult
 ```
@@ -69,6 +71,13 @@ def run_backtest(
 *   `execution_mode`: Execution mode.
     *   `ExecutionMode.NextOpen`: Match at next Bar Open (Default).
     *   `ExecutionMode.CurrentClose`: Match at current Bar Close.
+*   `timer_execution_policy`: Temporal matching policy for timer-triggered orders (mainly under `CurrentClose`).
+    *   `"same_cycle"`: Match within the current timer event cycle.
+    *   `"next_event"`: Defer matching to the next market event.
+*   `fill_policy`: Unified fill semantics (higher priority than `execution_mode` and `timer_execution_policy`).
+    *   `price_basis`: `next_open`, `current_close`, `ohlc4` (OHLC average), or `hl2` (high-low midpoint).
+    *   Reserved (not implemented yet): `mid_quote`, `vwap_window`, `twap_window` (currently raises `NotImplementedError`).
+    *   `temporal`: `same_cycle` or `next_event`.
 *   `t_plus_one`: Enable T+1 trading rule (Default False). If enabled, it forces usage of China Market Model.
 *   `slippage`: Global slippage (Default 0.0). E.g., 0.0001 means 1bp (0.01%) slippage, using percent model.
 *   `volume_limit_pct`: Volume limit percentage (Default 0.25). Limits single trade to not exceed this percentage of the bar's total volume.
@@ -88,6 +97,16 @@ def run_backtest(
 *   `analyzer_plugins`: Optional analyzer plugin list. Plugins receive `on_start/on_bar/on_trade/on_finish` callbacks and final outputs are stored in `result.analyzer_outputs`.
 *   `on_event`: Optional stream callback. When omitted, an internal no-op callback keeps legacy blocking return semantics; when provided, runtime events are emitted.
 *   `broker_profile`: Optional broker template preset for quick defaults (fees/slippage/lot size). Built-ins: `cn_stock_miniqmt`, `cn_stock_t1_low_fee`, `cn_stock_sim_high_slippage`.
+
+**Execution semantics migration map:**
+
+| Legacy parameters | New style |
+| :--- | :--- |
+| `execution_mode="next_open"` | `fill_policy={"price_basis":"next_open","temporal":"same_cycle"}` |
+| `execution_mode="current_close", timer_execution_policy="same_cycle"` | `fill_policy={"price_basis":"current_close","temporal":"same_cycle"}` |
+| `execution_mode="current_close", timer_execution_policy="next_event"` | `fill_policy={"price_basis":"current_close","temporal":"next_event"}` |
+| `execution_mode="next_average"` | `fill_policy={"price_basis":"ohlc4","temporal":"same_cycle"}` |
+| `execution_mode="next_high_low_mid"` | `fill_policy={"price_basis":"hl2","temporal":"same_cycle"}` |
 
 ### `akquant.run_warm_start`
 

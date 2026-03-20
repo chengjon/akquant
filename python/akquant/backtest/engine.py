@@ -62,6 +62,23 @@ class BacktestStreamEvent(TypedDict):
     payload: Dict[str, str]
 
 
+class FillPolicy(TypedDict, total=False):
+    """Unified fill semantics for price basis and temporal policy."""
+
+    price_basis: str
+    temporal: str
+
+
+_SUPPORTED_FILL_PRICE_BASIS_TO_MODE: Dict[str, ExecutionMode] = {
+    "next_open": ExecutionMode.NextOpen,
+    "current_close": ExecutionMode.CurrentClose,
+    "ohlc4": ExecutionMode.NextAverage,
+    "hl2": ExecutionMode.NextHighLowMid,
+}
+_RESERVED_FILL_PRICE_BASIS: set[str] = {"mid_quote", "vwap_window", "twap_window"}
+_SUPPORTED_FILL_TEMPORAL: set[str] = {"same_cycle", "next_event"}
+
+
 BacktestDataInput = Union[
     pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed, DataFeedAdapter
 ]
@@ -644,6 +661,7 @@ def run_backtest(
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     broker_profile: Optional[str] = None,
     timer_execution_policy: str = "same_cycle",
+    fill_policy: Optional[FillPolicy] = None,
     **kwargs: Any,
 ) -> BacktestResult:
     """
@@ -680,6 +698,11 @@ def run_backtest(
     :param timer_execution_policy: 定时器下单撮合策略:
         "same_cycle" 表示在当前 timer 事件撮合（CurrentClose 模式）；
         "next_event" 表示延后到下一条行情事件撮合。
+    :param fill_policy: 统一成交语义配置（可选），格式:
+        {"price_basis": "next_open|current_close|ohlc4|hl2",
+         "temporal": "same_cycle|next_event"}。
+        预留未实现 price_basis: mid_quote、vwap_window、twap_window。
+        若提供该参数，则其语义优先于 execution_mode 与 timer_execution_policy。
     :param timezone: 时区名称 (默认 "Asia/Shanghai")
     :param t_plus_one: 是否启用 T+1 交易规则 (默认 False)
     :param initialize: 初始化回调函数 (仅当 strategy 为函数时使用)
@@ -1802,25 +1825,75 @@ def run_backtest(
                     e,
                 )
 
-    # ... (ExecutionMode logic)
-    if isinstance(execution_mode, str):
+    resolved_execution_mode = execution_mode
+    resolved_timer_policy = str(timer_execution_policy).strip().lower()
+    if fill_policy is not None:
+        if not isinstance(fill_policy, dict):
+            raise TypeError("fill_policy must be a dict")
+        raw_basis = str(fill_policy.get("price_basis", "next_open")).strip().lower()
+        raw_temporal = str(fill_policy.get("temporal", "same_cycle")).strip().lower()
+        basis_mode = _SUPPORTED_FILL_PRICE_BASIS_TO_MODE.get(raw_basis)
+        if basis_mode is None:
+            if raw_basis in _RESERVED_FILL_PRICE_BASIS:
+                raise NotImplementedError(
+                    "fill_policy.price_basis='%s' is reserved but not implemented yet"
+                    % raw_basis
+                )
+            raise ValueError(
+                "fill_policy.price_basis must be one of: "
+                "next_open, current_close, ohlc4, hl2; "
+                "reserved: mid_quote, vwap_window, twap_window"
+            )
+        if raw_temporal not in _SUPPORTED_FILL_TEMPORAL:
+            raise ValueError(
+                "fill_policy.temporal must be one of: same_cycle, next_event"
+            )
+        if execution_mode != ExecutionMode.NextOpen:
+            logger.warning(
+                "fill_policy overrides execution_mode=%s",
+                execution_mode,
+            )
+        if str(timer_execution_policy).strip().lower() != "same_cycle":
+            logger.warning(
+                "fill_policy overrides timer_execution_policy=%s",
+                timer_execution_policy,
+            )
+        resolved_execution_mode = basis_mode
+        resolved_timer_policy = raw_temporal
+
+    if isinstance(resolved_execution_mode, str):
         mode_map = {
             "next_open": ExecutionMode.NextOpen,
             "current_close": ExecutionMode.CurrentClose,
+            "next_average": ExecutionMode.NextAverage,
+            "next_high_low_mid": ExecutionMode.NextHighLowMid,
+            "ohlc4": ExecutionMode.NextAverage,
+            "hl2": ExecutionMode.NextHighLowMid,
         }
-        mode = mode_map.get(execution_mode.lower())
+        mode = mode_map.get(resolved_execution_mode.lower())
         if not mode:
             logger.warning(
-                f"Unknown execution mode '{execution_mode}', defaulting to NextOpen"
+                "Unknown execution mode '%s', defaulting to NextOpen",
+                resolved_execution_mode,
             )
             mode = ExecutionMode.NextOpen
-        engine.set_execution_mode(mode)
+        resolved_mode_enum = mode
     else:
-        engine.set_execution_mode(execution_mode)
-    timer_policy = str(timer_execution_policy).strip().lower()
-    if timer_policy not in {"same_cycle", "next_event"}:
+        resolved_mode_enum = resolved_execution_mode
+    engine.set_execution_mode(resolved_mode_enum)
+    timer_policy = resolved_timer_policy
+    if timer_policy not in _SUPPORTED_FILL_TEMPORAL:
         raise ValueError(
             "timer_execution_policy must be one of: same_cycle, next_event"
+        )
+    if (
+        resolved_mode_enum != ExecutionMode.CurrentClose
+        and timer_policy == "same_cycle"
+    ):
+        logger.info(
+            "timer_execution_policy=%s has no effect when execution_mode=%s",
+            timer_policy,
+            resolved_mode_enum,
         )
     if hasattr(engine, "set_timer_execution_policy"):
         cast(Any, engine).set_timer_execution_policy(timer_policy)
