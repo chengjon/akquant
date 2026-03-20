@@ -19,8 +19,21 @@ env:
 
 jobs:
   # Release jobs - Run on Tags AND Push/PR (accelerated via Env vars)
+  linux-smoke:
+    runs-on: ubuntu-latest
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-smoke-${{ hashFiles('**/Cargo.lock') }}
+      - name: Smoke check
+        run: cargo check --release --locked
+
   linux:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
         target: [x86_64, aarch64]
@@ -66,6 +79,7 @@ jobs:
 
   linux-musl:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -111,20 +125,32 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           python-version: '3.13'
           architecture: ${{ matrix.target }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          key: windows-${{ matrix.target }}
+          key: windows-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions/cache@v5
+        with:
+          path: ~\AppData\Local\Mozilla\sccache
+          key: sccache-windows-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            sccache-windows-${{ matrix.target }}-
+      - name: Smoke check
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: cargo check --release --locked
       - name: Build wheels
+        if: startsWith(github.ref, 'refs/tags/')
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --interpreter python
           sccache: 'true'
       - name: Upload wheels
+        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v6
         with:
           name: wheels-windows-${{ matrix.target }}
@@ -138,19 +164,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           python-version: '3.13'
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           key: macos-${{ matrix.target }}
+      - name: Smoke check
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: cargo check --release --locked
       - name: Build wheels
+        if: startsWith(github.ref, 'refs/tags/')
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
           sccache: 'true'
       - name: Upload wheels
+        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v6
         with:
           name: wheels-macos-${{ matrix.target }}
