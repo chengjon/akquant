@@ -563,6 +563,27 @@ def on_bar(self, bar: Bar):
 *   **`self.get_trades()`**: 获取历史所有已平仓交易记录（Closed Trades）。
 *   **`self.get_open_orders()`**: 获取当前未成交订单。
 
+`on_trade` 与 `get_trades()` 的语义不同：
+
+*   `on_trade(self, trade)` 接收的是当前事件步内的增量成交回报（适合做实时响应）。
+*   `self.get_trades()` 返回的是累计“已平仓”交易（Closed Trades），未平仓时不会出现在这个列表里。
+
+推荐模式：
+
+```python
+class MyStrategy(Strategy):
+    def __init__(self):
+        self.recent_exec_count = 0
+
+    def on_trade(self, trade):
+        self.recent_exec_count += 1
+        print("incremental trade:", trade.order_id, trade.symbol, trade.quantity)
+
+    def on_stop(self):
+        closed = self.get_trades()
+        print("closed trades:", len(closed))
+```
+
 ## 7. 进阶功能
 
 ### 7.1 事件回调

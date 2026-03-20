@@ -426,6 +426,52 @@ def test_trade_dedupe_cache_limit_eviction_allows_replay() -> None:
     assert strategy.trade_count == 4
 
 
+class ClosedTradesSnapshotStrategy(Strategy):
+    """Strategy for validating get_trades snapshot refresh."""
+
+    def __init__(self) -> None:
+        """Initialize observation state."""
+        self.entered = False
+        self.exited = False
+
+    def on_bar(self, bar: Bar) -> None:
+        """Run one round-trip order flow."""
+        position = self.get_position(bar.symbol)
+        if position == 0 and not self.entered:
+            self.buy(bar.symbol, 100)
+            self.entered = True
+            return
+        if position > 0 and not self.exited:
+            self.close_position(bar.symbol)
+            self.exited = True
+
+
+def test_get_trades_refreshes_during_backtest() -> None:
+    """get_trades should reflect latest closed trades snapshot in strategy context."""
+    bars = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2023-01-01", periods=6, freq="D", tz="UTC"),
+            "open": [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+            "high": [10.5, 11.5, 12.5, 13.5, 14.5, 15.5],
+            "low": [9.5, 10.5, 11.5, 12.5, 13.5, 14.5],
+            "close": [10.2, 11.2, 12.2, 13.2, 14.2, 15.2],
+            "volume": [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0],
+            "symbol": ["AAPL", "AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
+        }
+    )
+    result = run_backtest(
+        data=bars,
+        strategy=ClosedTradesSnapshotStrategy,
+        symbol="AAPL",
+        initial_cash=100000.0,
+        show_progress=False,
+    )
+    strategy = cast(ClosedTradesSnapshotStrategy, result.strategy)
+    assert strategy is not None
+    assert len(result.trades) >= 1
+    assert len(strategy.get_trades()) >= 1
+
+
 class SequenceStrategy(Strategy):
     """Strategy for callback sequence assertions."""
 
