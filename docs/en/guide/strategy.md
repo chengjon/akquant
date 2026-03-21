@@ -358,6 +358,8 @@ AKQuant provides a callback mechanism similar to Backtrader for tracking order s
 
 Triggered when order status changes (e.g., from `New` to `Submitted`, or to `Filled`).
 
+In `broker_live` with CTP, the default execution semantics is strict: terminal states are confirmed by `OnRtnOrder`. For example, a cancel request does not imply `Cancelled` until `OnRtnOrder(Cancelled)` arrives.
+
 ```python
 from akquant import OrderStatus
 

@@ -91,6 +91,21 @@ DEFAULT_STATUS_MAP = {
     "cancelled": UnifiedOrderStatus.CANCELLED,
     "canceled": UnifiedOrderStatus.CANCELLED,
     "rejected": UnifiedOrderStatus.REJECTED,
+    "alltraded": UnifiedOrderStatus.FILLED,
+    "parttradedqueueing": UnifiedOrderStatus.PARTIALLY_FILLED,
+    "parttradednotqueueing": UnifiedOrderStatus.PARTIALLY_FILLED,
+    "notradequeueing": UnifiedOrderStatus.SUBMITTED,
+    "notradenotqueueing": UnifiedOrderStatus.SUBMITTED,
+    "unknown": UnifiedOrderStatus.SUBMITTED,
+    "0": UnifiedOrderStatus.FILLED,
+    "1": UnifiedOrderStatus.PARTIALLY_FILLED,
+    "2": UnifiedOrderStatus.PARTIALLY_FILLED,
+    "3": UnifiedOrderStatus.SUBMITTED,
+    "4": UnifiedOrderStatus.SUBMITTED,
+    "5": UnifiedOrderStatus.CANCELLED,
+    "a": UnifiedOrderStatus.SUBMITTED,
+    "b": UnifiedOrderStatus.SUBMITTED,
+    "c": UnifiedOrderStatus.SUBMITTED,
 }
 
 

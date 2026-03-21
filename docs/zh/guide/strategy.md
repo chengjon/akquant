@@ -328,6 +328,7 @@ AKQuant 提供了两种风格的策略开发接口：
 *   LiveRunner 支持函数式入口与多 slot 编排：`LiveRunner(strategy_cls=on_bar, strategy_id="alpha", strategies_by_slot={"beta": OtherStrategy}, initialize=..., on_tick=..., on_order=..., on_trade=..., on_timer=...)`
 *   回测多 slot 与策略级风控映射建议使用集中式 `BacktestConfig(strategy_config=StrategyConfig(...))`：`docs/zh/advanced/multi_strategy_guide.md`
 *   broker_live 函数式下单示例：`examples/39_live_broker_submit_order_demo.py`
+*   broker_live 默认执行语义为 `strict`，可通过 `gateway_options={"execution_semantics_mode": "strict"}` 显式声明
 *   函数式多策略 slot + 风控示例：`examples/40_functional_multi_slot_risk_demo.py`
 *   LiveRunner 多策略 slot 编排示例：`examples/41_live_multi_slot_orchestration_demo.py`
 *   运行后可分别观察输出标记：
@@ -406,6 +407,8 @@ class MyStrategy(Strategy):
     *   **PartiallyFilled**: 订单部分成交（`filled_quantity < quantity`）。
 5.  **Cancelled**: 订单已取消。
 6.  **Rejected**: 订单被风控或交易所拒绝 (如资金不足、超出涨跌停)。
+
+`broker_live` + CTP 默认使用严格执行语义：终态以 `OnRtnOrder` 为准。也就是说，发送撤单请求后，只有收到 `OnRtnOrder(Cancelled)` 才会进入 `Cancelled`；收到错误回报后，也需要后续订单回报来最终确认 `Rejected`。
 
 ### 7.2 常用交易指令
 
