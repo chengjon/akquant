@@ -79,6 +79,15 @@ _RESERVED_FILL_PRICE_BASIS: set[str] = {"mid_quote", "vwap_window", "twap_window
 _SUPPORTED_FILL_TEMPORAL: set[str] = {"same_cycle", "next_event"}
 
 
+def _index_to_local_trading_days(
+    index: pd.DatetimeIndex, timezone: str
+) -> pd.DatetimeIndex:
+    local_index = index
+    if local_index.tz is None:
+        local_index = local_index.tz_localize("UTC")
+    return cast(pd.DatetimeIndex, local_index.tz_convert(timezone))
+
+
 BacktestDataInput = Union[
     pd.DataFrame, Dict[str, pd.DataFrame], List[Bar], DataFeed, DataFeedAdapter
 ]
@@ -1511,7 +1520,10 @@ def run_backtest(
         day_bounds: Dict[str, Tuple[int, int]] = {}
         for df in data_map_for_indicators.values():
             if not df.empty and isinstance(df.index, pd.DatetimeIndex):
-                normalized_index = cast(pd.DatetimeIndex, df.index.normalize())
+                local_index = _index_to_local_trading_days(
+                    cast(pd.DatetimeIndex, df.index), timezone
+                )
+                normalized_index = cast(pd.DatetimeIndex, local_index.normalize())
                 dates = normalized_index.unique()
                 all_dates.update(dates)
                 for raw_day_ts in dates:
@@ -3146,9 +3158,12 @@ def run_warm_start(
         day_bounds: Dict[str, Tuple[int, int]] = {}
         for df in data_map_for_indicators.values():
             if not df.empty and isinstance(df.index, pd.DatetimeIndex):
-                dates = df.index.normalize().unique()
+                local_index = _index_to_local_trading_days(
+                    cast(pd.DatetimeIndex, df.index), timezone_name
+                )
+                dates = local_index.normalize().unique()
                 all_dates.update(dates)
-                grouped = df.groupby(df.index.normalize())
+                grouped = df.groupby(local_index.normalize())
                 for day_ts, day_df in grouped:
                     day_key = pd.Timestamp(day_ts).date().isoformat()
                     start_ns = int(day_df.index.min().value)
