@@ -2,6 +2,10 @@
 
 This API documentation covers the core classes and methods of AKQuant.
 
+Quick links:
+
+*   [LiveRunner broker-live semantics](#live-broker-semantics)
+
 ## 1. High-Level API
 
 ### `akquant.run_backtest`
@@ -541,6 +545,32 @@ Bar data object.
 *   `timestamp`: Unix timestamp (nanoseconds).
 *   `open`, `high`, `low`, `close`, `volume`: OHLCV data.
 *   `symbol`: Instrument symbol.
+
+### `akquant.live.LiveRunner` (broker live semantics) {: #live-broker-semantics }
+
+For live broker routing, `LiveRunner` accepts broker-specific options through `gateway_options`.
+
+```python
+runner = LiveRunner(
+    strategy_cls=on_bar,
+    instruments=instruments,
+    broker="ctp",
+    trading_mode="broker_live",
+    gateway_options={"execution_semantics_mode": "strict"},
+)
+```
+
+`gateway_options.execution_semantics_mode`:
+
+| Value | Default | Behavior | Recommended |
+| :--- | :--- | :--- | :--- |
+| `strict` | Yes | Terminal states (`Cancelled` / `Rejected` / `Filled`) are finalized by broker order callbacks (`OnRtnOrder`). Error callbacks cache reject reasons and merge them into subsequent order callbacks. | Production live trading |
+| `compatible` | No | Allows immediate local terminal-state transitions for selected error/cancel paths to keep legacy behavior. | Migration / temporary compatibility |
+
+Strict-mode notes:
+
+*   Cancel request sent does not imply `Cancelled`; wait for `OnRtnOrder(Cancelled)`.
+*   Error callback received does not imply `Rejected`; final status is confirmed by order callback.
 
 ## 3. Core Engine
 

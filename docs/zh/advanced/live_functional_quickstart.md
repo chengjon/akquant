@@ -30,7 +30,13 @@
   - `trading_mode="broker_live"`
   - `on_bar` 中调用 `ctx.submit_order(...)`
   - 显式传入 `client_order_id` 便于幂等追踪
+  - 默认执行语义 `execution_semantics_mode="strict"`（终态仅由柜台订单回报推进）
   - 可选 `on_broker_event` 统一落盘 `event_type/owner_strategy_id/payload`
+
+`execution_semantics_mode` 可通过 `gateway_options` 传入：
+
+- `strict`（默认，推荐生产）：`Cancelled/Rejected/Filled` 等终态仅由 `OnRtnOrder` 推进；错误回报会缓存拒单原因并在后续订单回报补齐。
+- `compatible`（兼容模式）：允许在部分错误/撤单场景下立即本地推进终态，便于旧策略平滑迁移。
 
 ## 3. 函数式入口模板
 
@@ -59,6 +65,7 @@ runner = LiveRunner(
     instruments=instruments,
     broker="ctp",
     trading_mode="broker_live",
+    gateway_options={"execution_semantics_mode": "strict"},
 )
 runner.run(duration="30s", show_progress=False)
 ```
@@ -74,6 +81,9 @@ runner.run(duration="30s", show_progress=False)
 - 有行情但无成交回调
   - 原因：交易网关未连通、风控拒单、最小变动价位/手数不合规。
   - 处理：优先检查 `on_order` 状态与拒单原因。
+- 撤单请求发出后状态仍是 `Submitted`
+  - 原因：当前为严格语义，状态需等待 `OnRtnOrder(Cancelled)`。
+  - 处理：检查交易侧回报链路与订单回报日志，不要用本地请求发送成功替代终态。
 
 ## 5. 建议上线流程
 

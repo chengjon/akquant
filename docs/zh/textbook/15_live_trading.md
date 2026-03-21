@@ -42,6 +42,11 @@ python examples/textbook/ch15_strategy_loader.py
 
 在实盘模式下，`DataFeed` 切换为实时行情源，交易执行由对应 broker gateway 负责。
 
+CTP 交易链路支持 `execution_semantics_mode`：
+
+*   `strict`（默认，推荐生产）：终态仅由柜台订单回报确认。
+*   `compatible`：兼容旧行为，允许部分场景在本地提前推进终态。
+
 当内置网关不满足需求时，可以通过注册机制扩展自定义 broker，且注册 broker 会被工厂优先解析，再回退到内置 `ctp/miniqmt/ptrade`。
 
 ```python
@@ -83,6 +88,12 @@ OMS 是实盘交易的核心，负责维护订单的全生命周期状态。
 
 *   **定时同步**：每隔 N 秒查询柜台持仓，强制覆盖本地状态。
 *   **事件驱动**：通过 `on_order`、`on_trade`（以及可选 `on_broker_event`）实时更新状态并做审计落盘。
+
+在 CTP 严格模式下，建议遵循以下判定：
+
+1.  发送撤单请求成功 ≠ `Cancelled`，必须等待 `OnRtnOrder(Cancelled)`。
+2.  收到报单错误 ≠ `Rejected`，应以最终 `OnRtnOrder` 状态为准。
+3.  `Filled` 以订单回报终态确认，成交回报用于补充成交明细与审计。
 
 ## 15.3 风险管理系统 (Risk Management System, RMS)
 

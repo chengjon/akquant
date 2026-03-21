@@ -81,8 +81,15 @@ class CTPTraderAdapter:
         password: str = "",
         auth_code: str = "0000000000000000",
         app_id: str = "simnow_client_test",
+        execution_semantics_mode: str = "strict",
     ) -> None:
         """Initialize CTP trader adapter."""
+        normalized_mode = str(execution_semantics_mode).strip().lower()
+        if normalized_mode not in {"strict", "compatible"}:
+            raise ValueError(
+                "execution_semantics_mode must be 'strict' or 'compatible'"
+            )
+        self.execution_semantics_mode = normalized_mode
         self.mapper: BrokerEventMapper = create_default_mapper()
         self.order_callback: Callable[[UnifiedOrderSnapshot], None] | None = None
         self.trade_callback: Callable[[UnifiedTrade], None] | None = None
@@ -91,6 +98,8 @@ class CTPTraderAdapter:
         self.trades: list[UnifiedTrade] = []
         self.client_to_broker_order_ids: dict[str, str] = {}
         self.broker_to_client_order_ids: dict[str, str] = {}
+        self.order_ref_to_client_order_ids: dict[str, str] = {}
+        self.pending_reject_reasons: dict[str, str] = {}
         self._order_seq = 0
         self.gateway = CTPTraderGateway(
             front_url=front_url,
@@ -100,6 +109,12 @@ class CTPTraderAdapter:
             auth_code=auth_code,
             app_id=app_id,
         )
+        if hasattr(self.gateway, "set_order_handler"):
+            self.gateway.set_order_handler(self._handle_native_order_event)
+        if hasattr(self.gateway, "set_trade_handler"):
+            self.gateway.set_trade_handler(self._handle_native_trade_event)
+        if hasattr(self.gateway, "set_error_handler"):
+            self.gateway.set_error_handler(self._handle_native_error_event)
 
     def connect(self) -> None:
         """Connect and start trader stream."""
@@ -130,9 +145,25 @@ class CTPTraderAdapter:
                 )
         if not self.heartbeat():
             raise RuntimeError("CTP trader is not connected")
+        native_result = self.gateway.insert_order(
+            client_order_id=req.client_order_id,
+            symbol=req.symbol,
+            side=req.side,
+            quantity=req.quantity,
+            price=req.price,
+            order_type=req.order_type,
+            time_in_force=req.time_in_force,
+        )
         self._order_seq += 1
-        now_ns = time.time_ns()
-        broker_order_id = f"ctp-{req.client_order_id}-{self._order_seq}"
+        now_ns = int(native_result.get("timestamp_ns", time.time_ns()))
+        broker_order_id = str(
+            native_result.get(
+                "broker_order_id", f"ctp-{req.client_order_id}-{self._order_seq}"
+            )
+        )
+        order_ref = str(native_result.get("order_ref", "")).strip()
+        if order_ref:
+            self.order_ref_to_client_order_ids[order_ref] = req.client_order_id
         snapshot = UnifiedOrderSnapshot(
             client_order_id=req.client_order_id,
             broker_order_id=broker_order_id,
@@ -155,6 +186,9 @@ class CTPTraderAdapter:
 
     def cancel_order(self, broker_order_id: str) -> None:
         """Cancel order through CTP trader channel."""
+        self.gateway.cancel_order(broker_order_id)
+        if self.execution_semantics_mode != "compatible":
+            return
         order = self.orders.get(broker_order_id)
         if order is None:
             return
@@ -223,6 +257,9 @@ class CTPTraderAdapter:
 
     def heartbeat(self) -> bool:
         """Return whether trader connection is alive."""
+        can_trade = getattr(self.gateway, "can_trade", None)
+        if callable(can_trade):
+            return bool(can_trade())
         return bool(getattr(self.gateway, "connected", False))
 
     def start(self) -> None:
@@ -289,3 +326,57 @@ class CTPTraderAdapter:
             UnifiedOrderStatus.CANCELLED,
             UnifiedOrderStatus.REJECTED,
         )
+
+    def _handle_native_order_event(self, payload: dict[str, Any]) -> None:
+        data = dict(payload)
+        order_ref = str(data.get("order_ref", "")).strip()
+        client_order_id = str(data.get("client_order_id", "")).strip()
+        if not client_order_id and order_ref:
+            client_order_id = self.order_ref_to_client_order_ids.get(order_ref, "")
+            if client_order_id:
+                data["client_order_id"] = client_order_id
+        broker_order_id = str(data.get("broker_order_id", "")).strip()
+        if not broker_order_id:
+            return
+        pending_reject_reason = self.pending_reject_reasons.pop(
+            broker_order_id, ""
+        ).strip()
+        if pending_reject_reason and not str(data.get("reject_reason", "")).strip():
+            data["reject_reason"] = pending_reject_reason
+        self.ingest_order_event(data)
+
+    def _handle_native_trade_event(self, payload: dict[str, Any]) -> None:
+        data = dict(payload)
+        order_ref = str(data.get("order_ref", "")).strip()
+        client_order_id = str(data.get("client_order_id", "")).strip()
+        if not client_order_id and order_ref:
+            client_order_id = self.order_ref_to_client_order_ids.get(order_ref, "")
+            if client_order_id:
+                data["client_order_id"] = client_order_id
+        broker_order_id = str(data.get("broker_order_id", "")).strip()
+        if not broker_order_id:
+            return
+        self.ingest_trade_event(data)
+
+    def _handle_native_error_event(self, payload: dict[str, Any]) -> None:
+        data = dict(payload)
+        broker_order_id = str(data.get("broker_order_id", "")).strip()
+        if not broker_order_id:
+            return
+        if self.execution_semantics_mode == "compatible":
+            self.ingest_order_event(
+                {
+                    "client_order_id": str(data.get("client_order_id", "")).strip(),
+                    "broker_order_id": broker_order_id,
+                    "symbol": str(data.get("symbol", "")).strip(),
+                    "status": "rejected",
+                    "filled_quantity": 0.0,
+                    "avg_fill_price": 0.0,
+                    "reject_reason": str(data.get("error_message", "")).strip(),
+                    "timestamp_ns": int(data.get("timestamp_ns", time.time_ns())),
+                }
+            )
+            return
+        reject_reason = str(data.get("error_message", "")).strip()
+        if reject_reason:
+            self.pending_reject_reasons[broker_order_id] = reject_reason

@@ -2,6 +2,10 @@
 
 本 API 文档涵盖了 AKQuant 的核心类和方法。
 
+快速跳转：
+
+*   [LiveRunner broker_live 执行语义](#live-broker-semantics)
+
 ## 1. 高级入口 (High-Level API)
 
 ### `akquant.run_backtest`
@@ -580,6 +584,32 @@ Tick 数据对象。
 *   `price`: 最新价。
 *   `volume`: 成交量。
 *   `symbol`: 标的代码。
+
+### `akquant.live.LiveRunner`（broker_live 执行语义） {: #live-broker-semantics }
+
+实盘 broker 路由可通过 `gateway_options` 传入网关特定参数：
+
+```python
+runner = LiveRunner(
+    strategy_cls=on_bar,
+    instruments=instruments,
+    broker="ctp",
+    trading_mode="broker_live",
+    gateway_options={"execution_semantics_mode": "strict"},
+)
+```
+
+`gateway_options.execution_semantics_mode`：
+
+| 取值 | 默认值 | 行为 | 推荐场景 |
+| :--- | :--- | :--- | :--- |
+| `strict` | 是 | `Cancelled` / `Rejected` / `Filled` 等终态由订单回报 (`OnRtnOrder`) 最终确认。错误回报会先缓存拒单原因，再在后续订单回报中补齐。 | 生产实盘 |
+| `compatible` | 否 | 在部分错误/撤单路径允许本地立即推进终态，以兼容历史行为。 | 迁移过渡 |
+
+严格模式注意事项：
+
+*   撤单请求发送成功不等于 `Cancelled`，需等待 `OnRtnOrder(Cancelled)`。
+*   收到错误回报不等于 `Rejected`，最终状态以订单回报为准。
 
 ## 3. 核心引擎 (Core)
 

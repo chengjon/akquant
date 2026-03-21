@@ -50,6 +50,9 @@ def create_gateway_bundle(
                 password=kwargs.get("password", ""),
                 auth_code=kwargs.get("auth_code", "0000000000000000"),
                 app_id=kwargs.get("app_id", "simnow_client_test"),
+                execution_semantics_mode=kwargs.get(
+                    "execution_semantics_mode", "strict"
+                ),
             )
         return GatewayBundle(
             market_gateway=market_gateway,

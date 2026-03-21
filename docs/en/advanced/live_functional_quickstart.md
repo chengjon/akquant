@@ -30,7 +30,13 @@ Switch to broker_live after gateway connectivity is verified:
   - `trading_mode="broker_live"`
   - call `ctx.submit_order(...)` inside `on_bar`
   - pass explicit `client_order_id` for idempotency tracking
+  - default execution semantics is `execution_semantics_mode="strict"` (terminal states are driven by broker order callbacks)
   - optional `on_broker_event` for unified `event_type/owner_strategy_id/payload` persistence
+
+You can pass `execution_semantics_mode` via `gateway_options`:
+
+- `strict` (default, recommended for production): terminal states such as `Cancelled/Rejected/Filled` are confirmed by `OnRtnOrder`; error callbacks cache rejection reasons and merge them into subsequent order callbacks.
+- `compatible` (migration mode): allows immediate local terminal-state updates for selected error/cancel paths to preserve legacy behavior.
 
 ## 3. Function-style template
 
@@ -59,6 +65,7 @@ runner = LiveRunner(
     instruments=instruments,
     broker="ctp",
     trading_mode="broker_live",
+    gateway_options={"execution_semantics_mode": "strict"},
 )
 runner.run(duration="30s", show_progress=False)
 ```
@@ -74,6 +81,9 @@ runner.run(duration="30s", show_progress=False)
 - Market data arrives but no trades
   - Cause: trader gateway not connected, risk rejection, or invalid lot/tick constraints.
   - Fix: inspect `on_order` status and rejection reason first.
+- Cancel request sent but status remains `Submitted`
+  - Cause: strict semantics requires `OnRtnOrder(Cancelled)` to finalize terminal state.
+  - Fix: verify trader callback path and broker order-return logs, not only request send success.
 
 ## 5. Suggested rollout
 
