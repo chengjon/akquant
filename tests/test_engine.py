@@ -231,6 +231,37 @@ class MixedBarTimerCaptureStrategy(akquant.Strategy):
         self.trade_prices.append(float(trade.price))
 
 
+class DailyTimerBuyStrategy(akquant.Strategy):
+    """Submit one order from daily timer for trading-day alignment checks."""
+
+    def __init__(self, symbol: str) -> None:
+        """Initialize symbol and one-shot state."""
+        super().__init__()
+        self.symbol_ref = symbol
+        self.submitted = False
+        self.exited = False
+
+    def on_start(self) -> None:
+        """Register a daily timer at session close."""
+        self.add_daily_timer("15:00:00", "daily_buy")
+
+    def on_bar(self, bar: akquant.Bar) -> None:
+        """Close the position on the first bar after timer entry."""
+        if self.exited or not self.submitted:
+            return
+        if self.position.size <= 0:
+            return
+        self.sell(symbol=bar.symbol, quantity=1)
+        self.exited = True
+
+    def on_timer(self, payload: str) -> None:
+        """Submit one buy on the first matching daily timer."""
+        if payload != "daily_buy" or self.submitted:
+            return
+        self.buy(symbol=self.symbol_ref, quantity=1)
+        self.submitted = True
+
+
 def _ns(dt: datetime) -> int:
     """
     Convert a datetime to nanoseconds since epoch.
@@ -353,6 +384,56 @@ def test_current_close_timer_order_should_fill_at_timer_timestamp() -> None:
     assert strategy.trade_timestamp is not None
     assert strategy.trade_timestamp == strategy.timer_timestamp
     assert strategy.trade_price == pytest.approx(10.0)
+
+
+def test_daily_timer_trading_day_alignment_uses_local_calendar_day() -> None:
+    """Daily timer should align with local trading days for date-only input."""
+    symbol = "DAILY_TIMER_ALIGN"
+    data = pd.DataFrame(
+        {
+            "open": [10.0, 11.0],
+            "high": [10.0, 11.0],
+            "low": [10.0, 11.0],
+            "close": [10.0, 11.0],
+            "volume": [1000.0, 1000.0],
+            "symbol": [symbol, symbol],
+        },
+        index=pd.to_datetime(["2025-01-24", "2025-01-27"]),
+    )
+    strategy = DailyTimerBuyStrategy(symbol=symbol)
+
+    result = akquant.run_backtest(
+        data=data,
+        strategy=strategy,
+        symbol=symbol,
+        execution_mode="current_close",
+        timer_execution_policy="same_cycle",
+        t_plus_one=True,
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    executions_df = result.executions_df
+    assert not executions_df.empty
+
+    first_trade_time = pd.Timestamp(executions_df.iloc[0]["timestamp"]).tz_convert(
+        "Asia/Shanghai"
+    )
+    assert first_trade_time == pd.Timestamp("2025-01-24 15:00:00", tz="Asia/Shanghai")
+    assert first_trade_time.weekday() < 5
+
+    trades_df = result.trades_df
+    assert not trades_df.empty
+    first_entry_time = pd.Timestamp(trades_df.iloc[0]["entry_time"]).tz_convert(
+        "Asia/Shanghai"
+    )
+    assert first_entry_time == pd.Timestamp("2025-01-24 15:00:00", tz="Asia/Shanghai")
+    assert first_entry_time.weekday() < 5
 
 
 def test_current_close_timer_order_next_event_policy_fills_on_next_bar() -> None:
