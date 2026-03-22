@@ -490,6 +490,7 @@ impl Engine {
             settlement_manager: SettlementManager::new(),
             current_event: None,
             bar_count: 0,
+            progress_total_steps: 0,
             progress_bar: None,
             strategy_contexts: vec![None],
             strategy_slot_strategies: vec![None],
@@ -982,10 +983,10 @@ impl Engine {
         }
 
         // Progress Bar Initialization
-        let total_events = self.state.feed.len_hint().unwrap_or(0);
+        let total_progress_steps = self.state.feed.progress_len_hint().unwrap_or(0);
         let pb = if show_progress {
-            let pb = if total_events > 0 {
-                let pb = ProgressBar::new(total_events as u64);
+            let pb = if total_progress_steps > 0 {
+                let pb = ProgressBar::new(total_progress_steps as u64);
                 pb.set_style(
                     ProgressStyle::default_bar()
                         .template(
@@ -1009,7 +1010,8 @@ impl Engine {
             None
         };
         self.progress_bar = pb;
-        self.start_stream_run(py, Some(total_events));
+        self.progress_total_steps = total_progress_steps;
+        self.start_stream_run(py, Some(total_progress_steps));
 
         // Record initial equity
         if self.state.feed.peek_timestamp().is_some() {

@@ -173,6 +173,11 @@ impl DataFeed {
         provider.len_hint()
     }
 
+    pub fn progress_len_hint(&self) -> Option<usize> {
+        let provider = self.provider.lock().unwrap();
+        provider.progress_len_hint()
+    }
+
     pub fn wait_peek(&self, timeout: Duration) -> Option<i64> {
         let mut provider = self.provider.lock().unwrap();
         provider.wait_peek(timeout)

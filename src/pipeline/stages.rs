@@ -396,10 +396,10 @@ impl Processor for DataProcessor {
                     if let Some(pb) = &engine.progress_bar {
                         pb.inc(1);
                     }
-                    let total_events = engine.state.feed.len_hint().unwrap_or(0);
                     let mut progress_payload = HashMap::new();
                     progress_payload.insert("processed", engine.bar_count.to_string());
-                    progress_payload.insert("total", total_events.to_string());
+                    progress_payload
+                        .insert("total", engine.progress_total_steps.to_string());
                     engine.emit_stream_event(py, "progress", None, "info", progress_payload);
                 }
                 self.last_timestamp = timestamp;

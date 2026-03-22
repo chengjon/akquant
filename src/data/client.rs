@@ -4,7 +4,7 @@ use crate::model::Bar;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rust_decimal::prelude::*;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -34,6 +34,9 @@ pub trait DataClient: Send {
     fn add(&mut self, event: Event) -> Result<(), AkQuantError>;
     fn sort(&mut self);
     fn len_hint(&self) -> Option<usize>;
+    fn progress_len_hint(&self) -> Option<usize> {
+        self.len_hint()
+    }
 
     /// 是否为实时数据源
     fn is_live(&self) -> bool {
@@ -89,6 +92,22 @@ impl DataClient for SimulatedDataClient {
 
     fn len_hint(&self) -> Option<usize> {
         Some(self.events.len())
+    }
+
+    fn progress_len_hint(&self) -> Option<usize> {
+        let mut timestamps = HashSet::new();
+        for event in &self.events {
+            let ts = match event {
+                Event::Bar(bar) => bar.timestamp,
+                Event::Tick(tick) => tick.timestamp,
+                Event::ExecutionReport(_, Some(trade)) => trade.timestamp,
+                _ => 0,
+            };
+            if ts > 0 {
+                timestamps.insert(ts);
+            }
+        }
+        Some(timestamps.len())
     }
 }
 
