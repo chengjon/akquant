@@ -69,6 +69,7 @@ pub struct Engine {
     // Pipeline state
     pub(crate) current_event: Option<Event>,
     pub(crate) bar_count: usize,
+    pub(crate) progress_total_steps: usize,
     pub(crate) progress_bar: Option<ProgressBar>,
     pub(crate) strategy_contexts: Vec<Option<Py<StrategyContext>>>,
     pub(crate) strategy_slot_strategies: Vec<Option<Py<PyAny>>>,

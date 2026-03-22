@@ -340,6 +340,42 @@ def _build_benchmark_data(n: int, symbol: str) -> pd.DataFrame:
     )
 
 
+def _build_multisymbol_benchmark_data(
+    n_timestamps: int, symbols: list[str]
+) -> pd.DataFrame:
+    """
+    Build synthetic minute-level data for multiple symbols sharing timestamps.
+
+    :param n_timestamps: Number of distinct timestamps.
+    :param symbols: Symbol list.
+    :return: DataFrame sorted by timestamp then symbol.
+    """
+    rng = np.random.default_rng(17)
+    dates = pd.date_range("2020-01-01", periods=n_timestamps, freq="min", tz="UTC")
+    all_frames: list[pd.DataFrame] = []
+    for index, symbol in enumerate(symbols):
+        returns = rng.normal(0, 0.001, n_timestamps)
+        price = (100 + index) * np.exp(np.cumsum(returns))
+        all_frames.append(
+            pd.DataFrame(
+                {
+                    "timestamp": dates,
+                    "open": price,
+                    "high": price,
+                    "low": price,
+                    "close": price,
+                    "volume": np.full(n_timestamps, 1000.0),
+                    "symbol": symbol,
+                }
+            )
+        )
+    data = pd.concat(all_frames, ignore_index=True)
+    return cast(
+        pd.DataFrame,
+        data.sort_values(["timestamp", "symbol"]).reset_index(drop=True),
+    )
+
+
 def test_current_close_timer_order_should_fill_at_timer_timestamp() -> None:
     """CurrentClose should fill timer order at timer timestamp, not next bar."""
     symbol = "TIMER_BUG"
@@ -1237,6 +1273,44 @@ def test_run_backtest_on_event_emits_ordered_events() -> None:
     assert 0 < progress_count < 10
     assert 0 < equity_count < 10
     assert result.metrics.initial_market_value == pytest.approx(100000.0, rel=1e-9)
+
+
+def test_run_backtest_progress_total_uses_unique_timestamps_for_multisymbol() -> None:
+    """Progress events should report total as unique timestamps in multi-symbol runs."""
+    symbols = ["STREAM_A", "STREAM_B", "STREAM_C"]
+    data = _build_multisymbol_benchmark_data(n_timestamps=30, symbols=symbols)
+    events: list[akquant.BacktestStreamEvent] = []
+
+    _ = akquant.run_backtest(
+        data=data,
+        strategy=NoopStrategy,
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        on_event=events.append,
+        stream_progress_interval=3,
+        stream_equity_interval=7,
+        stream_batch_size=16,
+        stream_max_buffer=128,
+    )
+
+    progress_events = [
+        event for event in events if event.get("event_type") == "progress"
+    ]
+    assert progress_events
+    expected_total = int(data["timestamp"].nunique())
+    expected_rows = int(len(data))
+    assert expected_total < expected_rows
+    totals = {
+        int(cast(dict[str, Any], event.get("payload", {})).get("total", "0"))
+        for event in progress_events
+    }
+    assert totals == {expected_total}
 
 
 @pytest.mark.parametrize(
