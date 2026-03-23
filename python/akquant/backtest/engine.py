@@ -1874,15 +1874,23 @@ def run_backtest(
         resolved_timer_policy = raw_temporal
 
     if isinstance(resolved_execution_mode, str):
+        mode_text = str(resolved_execution_mode).strip()
+        mode_raw = mode_text.split(".", 1)[-1] if "." in mode_text else mode_text
+        mode_compact = mode_raw.replace(" ", "").replace("-", "_")
+        mode_key = mode_compact.lower()
         mode_map = {
             "next_open": ExecutionMode.NextOpen,
+            "nextopen": ExecutionMode.NextOpen,
             "current_close": ExecutionMode.CurrentClose,
+            "currentclose": ExecutionMode.CurrentClose,
             "next_average": ExecutionMode.NextAverage,
+            "nextaverage": ExecutionMode.NextAverage,
             "next_high_low_mid": ExecutionMode.NextHighLowMid,
+            "nexthighlowmid": ExecutionMode.NextHighLowMid,
             "ohlc4": ExecutionMode.NextAverage,
             "hl2": ExecutionMode.NextHighLowMid,
         }
-        mode = mode_map.get(resolved_execution_mode.lower())
+        mode = mode_map.get(mode_key)
         if not mode:
             logger.warning(
                 "Unknown execution mode '%s', defaulting to NextOpen",

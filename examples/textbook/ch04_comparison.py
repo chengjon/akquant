@@ -45,6 +45,8 @@ def run_pandas_backtest(df: pd.DataFrame) -> None:
     """运行 Pandas 向量化回测."""
     print("\n[Pandas] 开始向量化回测...")
     start_time = time.time()
+    initial_cash = 100000.0
+    target_weight = 0.95
 
     # 1. 计算指标 (全量计算)
     df["ma5"] = df["close"].rolling(5).mean()
@@ -52,15 +54,24 @@ def run_pandas_backtest(df: pd.DataFrame) -> None:
 
     # 2. 生成信号 (1: 持仓, 0: 空仓)
     # shift(1) 是为了避免未来函数：今天的信号只能基于昨天的收盘价计算，用于今天的交易
-    df["signal"] = np.where(df["ma5"] > df["ma20"], 1, 0)
-    df["position"] = df["signal"].shift(1)
+    df["signal"] = np.where(df["ma5"] > df["ma20"], 1.0, 0.0)
+    df["position"] = df["signal"].shift(1).fillna(0.0)
 
-    # 3. 计算收益
-    df["pct_change"] = df["close"].pct_change()
-    df["strategy_return"] = df["position"] * df["pct_change"]
+    # 3. 逐笔订单复利（使用 open 成交，最后未平仓按 close 估值）
+    pos_diff = df["position"].diff().fillna(df["position"])
+    entry_prices = df.loc[pos_diff > 0, "open"].to_numpy(dtype=float)
+    exit_prices = df.loc[pos_diff < 0, "open"].to_numpy(dtype=float)
+    if entry_prices.size > exit_prices.size:
+        exit_prices = np.append(exit_prices, float(df["close"].iloc[-1]))
 
-    # 4. 统计结果
-    cumulative_return = (1 + df["strategy_return"]).cumprod().iloc[-1] - 1
+    final_equity = initial_cash
+    if entry_prices.size > 0 and exit_prices.size > 0:
+        trades_count = min(entry_prices.size, exit_prices.size)
+        entry_used = entry_prices[:trades_count]
+        exit_used = exit_prices[:trades_count]
+        factors = (1.0 - target_weight) + target_weight * (exit_used / entry_used)
+        final_equity = initial_cash * float(np.prod(factors))
+    cumulative_return = final_equity / initial_cash - 1.0
 
     print(f"[Pandas] 耗时: {time.time() - start_time:.4f}s")
     print(f"[Pandas] 累计收益: {cumulative_return:.2%}")
@@ -107,13 +118,16 @@ def run_backtrader_backtest(df: pd.DataFrame) -> None:
     cerebro.adddata(data)
     cerebro.addstrategy(SmaCross)
     cerebro.broker.setcash(100000.0)
+    cerebro.addsizer(bt.sizers.PercentSizer, percents=95)
 
     start_time = time.time()
     cerebro.run()
     end_val = cerebro.broker.getvalue()
+    cumulative_return = end_val / 100000.0 - 1.0
 
     print(f"[Backtrader] 耗时: {time.time() - start_time:.4f}s")
     print(f"[Backtrader] 最终资金: {end_val:.2f}")
+    print(f"[Backtrader] 累计收益: {cumulative_return:.2%}")
 
 
 # ==============================================================================
@@ -176,6 +190,7 @@ def run_akquant_backtest(df: pd.DataFrame) -> None:
 
     print(f"[AKQuant] 耗时: {time.time() - start_time:.4f}s")
     print(f"[AKQuant] 最终资金: {end_value:.2f}")
+    print(f"[AKQuant] 累计收益: {end_value / 100000.0 - 1.0:.2%}")
 
 
 if __name__ == "__main__":

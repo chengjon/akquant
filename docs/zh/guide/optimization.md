@@ -158,6 +158,35 @@ results = run_grid_search(
 *   `timeout`: 单个回测任务的超时时间（秒）。如果任务在指定时间内未完成，将被标记为失败并跳过。这对于防止某些参数导致的死循环非常有用。
 *   `max_tasks_per_child`: Worker 进程重启频率。设置为 `1` 可以强制每次任务都使用新的进程，有效防止内存泄漏（OOM）或清理超时残留的线程资源。
 
+### Windows 并行执行注意事项（`max_workers > 1`）
+
+在 Windows 上，`run_grid_search` / `run_walk_forward` 的多进程并行使用 `spawn` 启动方式。此时：
+
+*   策略类必须定义在**可导入模块**中，不能定义在 `__main__`（例如脚本内临时类）。
+*   脚本入口需要使用 `if __name__ == "__main__":` 保护。
+*   这属于 Python 多进程机制限制，**不是成交模式（`execution_mode`）本身的问题**。
+
+推荐写法：
+
+```python
+from my_strategy_module import TailTradingStrategy
+from akquant import run_grid_search
+
+
+def main() -> None:
+    results = run_grid_search(
+        strategy=TailTradingStrategy,
+        param_grid=param_grid,
+        data=all_data,
+        max_workers=4,
+    )
+    print(results.head())
+
+
+if __name__ == "__main__":
+    main()
+```
+
 ### 持久化与断点续传 (Persistence & Resume)
 
 对于参数组合极多（如 > 10,000 组）的场景，单机运行可能需要数小时甚至数天。如果中途断电或程序崩溃，重新运行将非常耗时。AKQuant 支持将优化结果实时写入 SQLite 数据库，并支持断点续传。

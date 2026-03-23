@@ -3620,3 +3620,74 @@ def test_run_grid_search_parallel_fail_fast_for_unpickleable_callback() -> None:
             show_progress=False,
             on_event=lambda _event: None,
         )
+
+
+def test_run_backtest_accepts_camelcase_execution_mode_string() -> None:
+    """run_backtest should accept CamelCase execution mode aliases."""
+    symbol = "EXEC_CAMELCASE"
+    bars = [
+        akquant.Bar(
+            pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai").value,
+            10.0,
+            10.0,
+            10.0,
+            10.0,
+            1000.0,
+            symbol,
+        ),
+        akquant.Bar(
+            pd.Timestamp("2023-01-02 10:01:00", tz="Asia/Shanghai").value,
+            20.0,
+            20.0,
+            20.0,
+            20.0,
+            1000.0,
+            symbol,
+        ),
+    ]
+    strategy = BarOnlyCaptureStrategy()
+
+    _ = akquant.run_backtest(
+        data=bars,
+        strategy=strategy,
+        symbols=[symbol],
+        execution_mode="CurrentClose",
+        initial_cash=100000.0,
+        show_progress=False,
+    )
+
+    assert strategy.trade_price == pytest.approx(10.0)
+
+
+def test_run_grid_search_single_worker_accepts_camelcase_execution_mode() -> None:
+    """Single-worker grid search should honor CamelCase execution mode aliases."""
+    symbol = "OPT_EXEC_CAMELCASE"
+    data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01", periods=2, freq="min", tz="UTC"),
+            "open": [10.0, 20.0],
+            "high": [10.0, 20.0],
+            "low": [10.0, 20.0],
+            "close": [10.0, 20.0],
+            "volume": [1000.0, 1000.0],
+            "symbol": [symbol, symbol],
+        }
+    )
+
+    results = akquant.run_grid_search(
+        strategy=SingleBuyStrategy,
+        param_grid={},
+        data=data,
+        symbols=[symbol],
+        execution_mode="CurrentClose",
+        initial_cash=15.0,
+        max_workers=1,
+        return_df=True,
+        show_progress=False,
+    )
+
+    assert isinstance(results, pd.DataFrame)
+    assert len(results) == 1
+    assert float(results.iloc[0]["end_market_value"]) > float(
+        results.iloc[0]["initial_market_value"]
+    )
