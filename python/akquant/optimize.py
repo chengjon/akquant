@@ -179,24 +179,31 @@ def _normalize_execution_mode_for_parallel(value: Any) -> Any:
     :return: 归一化后的 execution_mode
     """
     if isinstance(value, str):
-        return value
-
-    mode_name = getattr(value, "name", None)
-    if isinstance(mode_name, str):
-        mode_key = mode_name
+        mode_text = value.strip()
+        mode_raw = mode_text.split(".", 1)[-1] if "." in mode_text else mode_text
+        mode_key = mode_raw.replace(" ", "").replace("-", "_")
     else:
-        mode_text = str(value).strip()
-        mode_key = mode_text.split(".", 1)[-1] if "." in mode_text else mode_text
+        mode_name = getattr(value, "name", None)
+        if isinstance(mode_name, str):
+            mode_key = mode_name
+        else:
+            mode_text = str(value).strip()
+            mode_raw = mode_text.split(".", 1)[-1] if "." in mode_text else mode_text
+            mode_key = mode_raw.replace(" ", "").replace("-", "_")
+
+    mode_key = mode_key.lower()
 
     mode_map = {
-        "NextOpen": "next_open",
-        "CurrentClose": "current_close",
-        "NextAverage": "next_average",
-        "NextHighLowMid": "next_high_low_mid",
         "next_open": "next_open",
+        "nextopen": "next_open",
         "current_close": "current_close",
+        "currentclose": "current_close",
         "next_average": "next_average",
+        "nextaverage": "next_average",
         "next_high_low_mid": "next_high_low_mid",
+        "nexthighlowmid": "next_high_low_mid",
+        "ohlc4": "next_average",
+        "hl2": "next_high_low_mid",
     }
     return mode_map.get(mode_key, value)
 

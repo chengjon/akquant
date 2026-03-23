@@ -158,6 +158,35 @@ results = run_grid_search(
 *   `timeout`: Timeout for a single backtest task (seconds). If a task exceeds this time, it will be marked as failed and skipped. Useful for preventing infinite loops.
 *   `max_tasks_per_child`: Worker process restart frequency. Setting to `1` forces a new process for each task, effectively preventing memory leaks (OOM) and cleaning up timeout threads.
 
+### Windows Parallel Execution Notes (`max_workers > 1`)
+
+On Windows, parallel optimization in `run_grid_search` / `run_walk_forward` uses multiprocessing `spawn`. This means:
+
+*   Strategy classes must be defined in an **importable module**, not directly in `__main__`.
+*   Script entry must be guarded by `if __name__ == "__main__":`.
+*   This is a Python multiprocessing limitation, **not** an `execution_mode` fill-semantics issue.
+
+Recommended pattern:
+
+```python
+from my_strategy_module import TailTradingStrategy
+from akquant import run_grid_search
+
+
+def main() -> None:
+    results = run_grid_search(
+        strategy=TailTradingStrategy,
+        param_grid=param_grid,
+        data=all_data,
+        max_workers=4,
+    )
+    print(results.head())
+
+
+if __name__ == "__main__":
+    main()
+```
+
 ### Persistence & Resume
 
 For scenarios with extremely large parameter sets (e.g., > 10,000 combinations), running on a single machine might take days. AKQuant supports real-time result persistence to SQLite, enabling breakpoint resume.

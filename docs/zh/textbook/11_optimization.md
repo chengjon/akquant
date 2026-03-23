@@ -96,6 +96,35 @@ $$ P(\text{至少一次伪显著}) = 1 - (1 - 0.05)^{100} \approx 99.4\% $$
 
 `akquant` 提供了 `run_grid_search` 函数，支持并行计算。
 
+### 11.4.0 Windows 并行运行前置条件
+
+当 `max_workers > 1` 时，Windows 使用多进程 `spawn` 模式，需满足以下条件：
+
+*   策略类必须位于可导入模块中，不能直接定义在 `__main__`。
+*   脚本入口必须加 `if __name__ == "__main__":`。
+*   这类报错属于多进程序列化限制，不是 `execution_mode` 成交语义错误。
+
+示例：
+
+```python
+from akquant import run_grid_search
+from my_strategy_module import TailTradingStrategy
+
+
+def main() -> None:
+    results = run_grid_search(
+        strategy=TailTradingStrategy,
+        param_grid=param_grid,
+        data=all_data,
+        max_workers=4,
+    )
+    print(results.head())
+
+
+if __name__ == "__main__":
+    main()
+```
+
 ### 11.4.1 参数模型驱动（适合页面化）
 
 在面向页面配置、策略市场、研究平台等场景中，推荐采用以下分层：
