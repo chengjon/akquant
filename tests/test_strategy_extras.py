@@ -10,6 +10,7 @@ import pytest
 from akquant import (
     BacktestConfig,
     StrategyConfig,
+    register_logger,
     register_strategy_loader,
     run_backtest,
     run_warm_start,
@@ -918,6 +919,86 @@ def test_run_backtest_accepts_strategy_source_python_plain(tmp_path: Path) -> No
     strategy = result.strategy
     assert strategy is not None
     assert getattr(strategy, "calls", 0) == 3
+
+
+def test_run_backtest_rebuilds_console_handler_for_imported_strategy(
+    tmp_path: Path,
+) -> None:
+    """run_backtest should restore visible logger handler after NullHandler fallback."""
+    strategy_file = tmp_path / "strategy_plain_logging.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Strategy(Strategy):",
+                "    def on_bar(self, bar):",
+                "        self.log('import_loader_log_visible')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    logger = logging.getLogger("akquant")
+    original_handlers = list(logger.handlers)
+    original_level = logger.level
+    register_logger(console=True, level="INFO")
+    logger.handlers = [logging.NullHandler()]
+    try:
+        bars = _make_bars("2023-01-01", 1, symbol="PLAIN_LOG")
+        run_backtest(
+            data=bars,
+            strategy_source=str(strategy_file),
+            strategy_loader="python_plain",
+            symbol="PLAIN_LOG",
+            show_progress=False,
+        )
+        has_console = any(
+            isinstance(handler, logging.StreamHandler)
+            and not isinstance(handler, logging.NullHandler)
+            for handler in logger.handlers
+        )
+        assert has_console
+    finally:
+        logger.handlers = original_handlers
+        logger.setLevel(original_level)
+
+
+def test_run_backtest_imported_strategy_log_visible_in_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Imported strategy self.log output should be visible in captured stdout."""
+    strategy_file = tmp_path / "strategy_plain_logging_stdout.py"
+    strategy_file.write_text(
+        "\n".join(
+            [
+                "from akquant.strategy import Strategy",
+                "",
+                "class Strategy(Strategy):",
+                "    def on_bar(self, bar):",
+                "        self.log('import_loader_stdout_visible')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    logger = logging.getLogger("akquant")
+    original_handlers = list(logger.handlers)
+    original_level = logger.level
+    register_logger(console=True, level="INFO")
+    logger.handlers = [logging.NullHandler()]
+    try:
+        bars = _make_bars("2023-01-01", 1, symbol="PLAIN_STDOUT")
+        run_backtest(
+            data=bars,
+            strategy_source=str(strategy_file),
+            strategy_loader="python_plain",
+            symbol="PLAIN_STDOUT",
+            show_progress=False,
+        )
+        captured = capsys.readouterr()
+        assert "import_loader_stdout_visible" in captured.out
+    finally:
+        logger.handlers = original_handlers
+        logger.setLevel(original_level)
 
 
 def test_run_backtest_accepts_strategy_source_encrypted_external(

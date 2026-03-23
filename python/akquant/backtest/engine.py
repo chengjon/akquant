@@ -1,5 +1,6 @@
 import datetime as dt_module
 import inspect
+import logging
 import os
 import sys
 import warnings
@@ -1080,7 +1081,10 @@ def run_backtest(
 
     # 1. 确保日志已初始化
     logger = get_logger()
-    if not logger.handlers:
+    has_effective_handler = any(
+        not isinstance(handler, logging.NullHandler) for handler in logger.handlers
+    )
+    if not has_effective_handler:
         register_logger(console=True, level="INFO")
         logger = get_logger()
     normalized_analyzers = _coerce_analyzer_plugins(analyzer_plugins)
@@ -2564,6 +2568,12 @@ def run_warm_start(
     from ..checkpoint import warm_start
 
     logger = get_logger()
+    has_effective_handler = any(
+        not isinstance(handler, logging.NullHandler) for handler in logger.handlers
+    )
+    if not has_effective_handler:
+        register_logger(console=True, level="INFO")
+        logger = get_logger()
     strategy_config = config.strategy_config if config is not None else None
     if strategy_config is not None:
         if strategy_id is None:

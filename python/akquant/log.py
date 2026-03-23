@@ -42,6 +42,17 @@ class Logger:
         """
         self._logger.setLevel(level)
 
+    def _sync_handlers(self) -> None:
+        """同步内部 handler 索引，移除已脱离 logger 的引用."""
+        active_handlers = set(self._logger.handlers)
+        stale_keys = [
+            key
+            for key, handler in self._handlers.items()
+            if handler not in active_handlers
+        ]
+        for key in stale_keys:
+            del self._handlers[key]
+
     def enable_console(self, format_str: str = DEFAULT_FORMAT) -> None:
         r"""
         启用控制台日志.
@@ -49,6 +60,7 @@ class Logger:
         :param format_str: 日志格式字符串
         :type format_str: str
         """
+        self._sync_handlers()
         if "console" in self._handlers:
             return
 
@@ -59,6 +71,7 @@ class Logger:
 
     def disable_console(self) -> None:
         r"""禁用控制台日志."""
+        self._sync_handlers()
         if "console" in self._handlers:
             self._logger.removeHandler(self._handlers["console"])
             del self._handlers["console"]
@@ -76,6 +89,7 @@ class Logger:
         :param mode: 文件打开模式 ('a' 追加 或 'w' 覆写)
         :type mode: str
         """
+        self._sync_handlers()
         # Remove existing file handler if path matches (simple check)
         key = f"file_{filename}"
         if key in self._handlers:
