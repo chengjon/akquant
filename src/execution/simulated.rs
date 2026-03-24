@@ -374,6 +374,7 @@ mod tests {
                 symbol: "AAPL".to_string(),
                 lot_size: Decimal::from(100),
                 tick_size: Decimal::new(1, 2),
+                expiry_date: None,
             }),
         };
         map.insert("AAPL".to_string(), aapl);

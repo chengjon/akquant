@@ -32,7 +32,10 @@ from .config import (
     ChinaOptionsConfig,
     ChinaOptionsFeeConfig,
     ChinaOptionsSessionConfig,
+    InstrumentAssetTypeEnum,
     InstrumentConfig,
+    InstrumentOptionTypeEnum,
+    InstrumentSettlementTypeEnum,
     StrategyConfig,
     strategy_config,
 )
@@ -66,7 +69,7 @@ from .params_adapter import (
 )
 from .plot import plot_result
 from .sizer import AllInSizer, FixedSize, PercentSizer, Sizer
-from .strategy import Strategy, StrategyRuntimeConfig
+from .strategy import InstrumentSnapshot, Strategy, StrategyRuntimeConfig
 from .strategy_loader import register_strategy_loader, resolve_strategy_input
 from .utils import (
     fetch_akshare_symbol,
@@ -88,6 +91,7 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "AllInSizer",
         "Strategy",
         "StrategyRuntimeConfig",
+        "InstrumentSnapshot",
         "register_strategy_loader",
         "resolve_strategy_input",
         "DataLoader",
@@ -121,6 +125,9 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "BacktestConfig",
         "StrategyConfig",
         "InstrumentConfig",
+        "InstrumentAssetTypeEnum",
+        "InstrumentOptionTypeEnum",
+        "InstrumentSettlementTypeEnum",
         "save_snapshot",
         "warm_start",
         "SMA",
@@ -157,6 +164,7 @@ else:
         "AllInSizer",
         "Strategy",
         "StrategyRuntimeConfig",
+        "InstrumentSnapshot",
         "register_strategy_loader",
         "resolve_strategy_input",
         "DataLoader",
@@ -185,6 +193,9 @@ else:
         "BacktestConfig",
         "StrategyConfig",
         "InstrumentConfig",
+        "InstrumentAssetTypeEnum",
+        "InstrumentOptionTypeEnum",
+        "InstrumentSettlementTypeEnum",
         "save_snapshot",
         "warm_start",
         "SMA",

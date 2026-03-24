@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Sequence,
     Tuple,
@@ -28,6 +29,7 @@ from ..akquant import (
     Engine,
     ExecutionMode,
     Instrument,
+    SettlementType,
     TradingSession,
 )
 from ..analyzer_plugin import AnalyzerManager, AnalyzerPlugin
@@ -42,7 +44,14 @@ from ..data import ParquetDataCatalog
 from ..feed_adapter import DataFeedAdapter, FeedSlice
 from ..log import get_logger, register_logger
 from ..risk import apply_risk_config
-from ..strategy import Strategy, StrategyRuntimeConfig
+from ..strategy import (
+    InstrumentAssetTypeName,
+    InstrumentOptionTypeName,
+    InstrumentSettlementMode,
+    InstrumentSnapshot,
+    Strategy,
+    StrategyRuntimeConfig,
+)
 from ..strategy_loader import resolve_strategy_input
 from ..utils import df_to_arrays, prepare_dataframe
 from ..utils.inspector import infer_warmup_period
@@ -249,7 +258,7 @@ def _resolve_broker_profile(profile: Optional[str]) -> Dict[str, Any]:
     return dict(_BROKER_PROFILE_TEMPLATES[key])
 
 
-def _parse_asset_type_name(value: Any) -> str:
+def _parse_asset_type_name(value: Any) -> Literal["futures", "stock", "fund", "option"]:
     if isinstance(value, AssetType):
         if value == AssetType.Futures:
             return "futures"
@@ -259,18 +268,89 @@ def _parse_asset_type_name(value: Any) -> str:
             return "fund"
         if value == AssetType.Option:
             return "option"
-        return "other"
+        raise ValueError(f"Unsupported asset_type: {value}")
     if isinstance(value, str):
         v_lower = value.lower()
-        if "future" in v_lower:
+        if v_lower in {"future", "futures"}:
             return "futures"
-        if "stock" in v_lower:
+        if v_lower == "stock":
             return "stock"
-        if "fund" in v_lower:
+        if v_lower == "fund":
             return "fund"
-        if "option" in v_lower:
+        if v_lower == "option":
             return "option"
-    return "stock"
+    raise ValueError(f"Unsupported asset_type: {value}")
+
+
+def _normalize_expiry_date_yyyymmdd(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise TypeError("expiry_date does not support bool")
+    if isinstance(value, int):
+        yyyymmdd = value
+    elif isinstance(value, pd.Timestamp):
+        if pd.isna(value):
+            raise ValueError("expiry_date timestamp is NaT")
+        yyyymmdd = int(value.strftime("%Y%m%d"))
+    elif isinstance(value, dt_module.datetime):
+        yyyymmdd = int(value.date().strftime("%Y%m%d"))
+    elif isinstance(value, dt_module.date):
+        yyyymmdd = int(value.strftime("%Y%m%d"))
+    elif isinstance(value, str):
+        raise TypeError(
+            "expiry_date no longer supports str, please use date/datetime/"
+            "Timestamp/int(YYYYMMDD)"
+        )
+    else:
+        raise TypeError(
+            "expiry_date must be date/datetime/pandas.Timestamp/int(YYYYMMDD)"
+        )
+    text = str(yyyymmdd)
+    if len(text) != 8 or not text.isdigit():
+        raise ValueError(f"expiry_date must be YYYYMMDD, got: {value}")
+    year = int(text[0:4])
+    month = int(text[4:6])
+    day = int(text[6:8])
+    dt_module.date(year, month, day)
+    return yyyymmdd
+
+
+def _asset_type_to_upper_name(
+    value: Union[str, AssetType],
+) -> InstrumentAssetTypeName:
+    parsed = _parse_asset_type_name(value)
+    if parsed == "futures":
+        return "FUTURES"
+    if parsed == "fund":
+        return "FUND"
+    if parsed == "option":
+        return "OPTION"
+    return "STOCK"
+
+
+def _option_type_to_upper_name(value: Any) -> Optional[InstrumentOptionTypeName]:
+    if value is None:
+        return None
+    text = str(value).upper()
+    if "CALL" in text:
+        return "CALL"
+    if "PUT" in text:
+        return "PUT"
+    raise ValueError(f"Unsupported option_type: {value}")
+
+
+def _settlement_type_to_upper_name(value: Any) -> Optional[InstrumentSettlementMode]:
+    if value is None:
+        return None
+    text = str(value).upper()
+    if "FORCE" in text and "CLOSE" in text:
+        return "FORCE_CLOSE"
+    if "SETTLEMENT_PRICE" in text:
+        return "SETTLEMENT_PRICE"
+    if "CASH" in text:
+        return "CASH"
+    raise ValueError(f"Unsupported settlement_type: {value}")
 
 
 def _parse_trading_session(value: Any) -> Any:
@@ -1254,6 +1334,135 @@ def run_backtest(
         for current_strategy in all_strategy_instances:
             if hasattr(current_strategy, "lot_size"):
                 current_strategy.lot_size = lot_size
+
+    preliminary_symbols: List[str] = list(effective_symbols)
+    if config and config.instruments:
+        for s in config.instruments:
+            if s not in preliminary_symbols:
+                preliminary_symbols.append(s)
+    preliminary_inst_conf_map: Dict[str, Any] = {}
+    if config and config.instruments_config:
+        if isinstance(config.instruments_config, list):
+            for conf_item in config.instruments_config:
+                if conf_item.symbol not in preliminary_inst_conf_map:
+                    preliminary_inst_conf_map[conf_item.symbol] = conf_item
+        elif isinstance(config.instruments_config, dict):
+            for k, v in config.instruments_config.items():
+                if k not in preliminary_inst_conf_map:
+                    preliminary_inst_conf_map[k] = v
+    preliminary_prebuilt_instruments: Dict[str, Any] = {}
+    if "instruments" in kwargs:
+        raw_instruments = kwargs["instruments"]
+        if isinstance(raw_instruments, list):
+            for item in raw_instruments:
+                preliminary_prebuilt_instruments[item.symbol] = item
+        elif isinstance(raw_instruments, dict):
+            preliminary_prebuilt_instruments.update(raw_instruments)
+    preliminary_default_expiry = _normalize_expiry_date_yyyymmdd(
+        kwargs.get("expiry_date", None)
+    )
+    preliminary_default_option_type = kwargs.get("option_type", None)
+    preliminary_default_strike_price = kwargs.get("strike_price", None)
+    preliminary_default_asset_type = kwargs.get("asset_type", AssetType.Stock)
+    preliminary_default_multiplier = kwargs.get("multiplier", 1.0)
+    preliminary_default_margin_ratio = kwargs.get("margin_ratio", 1.0)
+    preliminary_default_tick_size = kwargs.get("tick_size", 0.01)
+    preliminary_lot_size = kwargs.get("lot_size", 1)
+    preliminary_default_settlement_type = _settlement_type_to_upper_name(
+        kwargs.get("settlement_type", None)
+    )
+    preliminary_default_settlement_price = kwargs.get("settlement_price", None)
+    preliminary_snapshots: Dict[str, InstrumentSnapshot] = {}
+    for sym in preliminary_symbols:
+        if sym in preliminary_prebuilt_instruments:
+            prebuilt = preliminary_prebuilt_instruments[sym]
+            preliminary_snapshots[sym] = InstrumentSnapshot(
+                symbol=sym,
+                asset_type=_asset_type_to_upper_name(
+                    getattr(prebuilt, "asset_type", "")
+                ),
+                multiplier=float(getattr(prebuilt, "multiplier", 1.0)),
+                margin_ratio=float(getattr(prebuilt, "margin_ratio", 1.0)),
+                tick_size=float(getattr(prebuilt, "tick_size", 0.01)),
+                lot_size=float(getattr(prebuilt, "lot_size", 1.0)),
+                settlement_type=_settlement_type_to_upper_name(
+                    getattr(prebuilt, "settlement_type", None)
+                ),
+                settlement_price=(
+                    float(getattr(prebuilt, "settlement_price"))
+                    if getattr(prebuilt, "settlement_price", None) is not None
+                    else None
+                ),
+            )
+            continue
+        conf = preliminary_inst_conf_map.get(sym)
+        symbol_lot_size: Optional[float] = None
+        if isinstance(preliminary_lot_size, int):
+            symbol_lot_size = float(preliminary_lot_size)
+        elif isinstance(preliminary_lot_size, dict):
+            raw_lot = preliminary_lot_size.get(sym)
+            if raw_lot is not None:
+                symbol_lot_size = float(raw_lot)
+        if conf is None:
+            preliminary_snapshots[sym] = InstrumentSnapshot(
+                symbol=sym,
+                asset_type=_asset_type_to_upper_name(preliminary_default_asset_type),
+                multiplier=float(preliminary_default_multiplier),
+                margin_ratio=float(preliminary_default_margin_ratio),
+                tick_size=float(preliminary_default_tick_size),
+                lot_size=float(symbol_lot_size or 1.0),
+                option_type=_option_type_to_upper_name(preliminary_default_option_type),
+                strike_price=(
+                    float(preliminary_default_strike_price)
+                    if preliminary_default_strike_price is not None
+                    else None
+                ),
+                expiry_date=preliminary_default_expiry,
+                settlement_type=preliminary_default_settlement_type,
+                settlement_price=(
+                    float(preliminary_default_settlement_price)
+                    if preliminary_default_settlement_price is not None
+                    else None
+                ),
+            )
+            continue
+        conf_static_attrs = getattr(conf, "static_attrs", {})
+        if conf_static_attrs is None:
+            conf_static_attrs = {}
+        if not isinstance(conf_static_attrs, dict):
+            raise TypeError("InstrumentConfig.static_attrs must be Dict[str, scalar]")
+        conf_lot = (
+            float(conf.lot_size)
+            if conf.lot_size != 1
+            else float(symbol_lot_size or 1.0)
+        )
+        preliminary_snapshots[sym] = InstrumentSnapshot(
+            symbol=sym,
+            asset_type=_asset_type_to_upper_name(conf.asset_type),
+            multiplier=float(conf.multiplier),
+            margin_ratio=float(conf.margin_ratio),
+            tick_size=float(conf.tick_size),
+            lot_size=conf_lot,
+            option_type=_option_type_to_upper_name(conf.option_type),
+            strike_price=(
+                float(conf.strike_price) if conf.strike_price is not None else None
+            ),
+            expiry_date=_normalize_expiry_date_yyyymmdd(conf.expiry_date),
+            underlying_symbol=(
+                str(conf.underlying_symbol)
+                if conf.underlying_symbol is not None
+                else None
+            ),
+            settlement_type=_settlement_type_to_upper_name(conf.settlement_type),
+            settlement_price=(
+                float(conf.settlement_price)
+                if conf.settlement_price is not None
+                else None
+            ),
+            static_attrs=dict(conf_static_attrs),
+        )
+    for current_strategy in all_strategy_instances:
+        current_strategy._set_instrument_snapshots(preliminary_snapshots)
 
     # 调用 on_start 获取订阅
     # 注意：现在调用 _on_start_internal 来触发自动发现
@@ -2239,24 +2448,30 @@ def run_backtest(
     # Option specific fields
     default_option_type = kwargs.get("option_type", None)
     default_strike_price = kwargs.get("strike_price", None)
-    default_expiry_date = kwargs.get("expiry_date", None)
+    default_expiry_date = _normalize_expiry_date_yyyymmdd(
+        kwargs.get("expiry_date", None)
+    )
+    default_settlement_type = kwargs.get("settlement_type", None)
+    default_settlement_price = kwargs.get("settlement_price", None)
 
     def _parse_asset_type(val: Union[str, AssetType]) -> AssetType:
         if isinstance(val, AssetType):
             return val
         if isinstance(val, str):
-            v_lower = val.lower()
-            if "stock" in v_lower:
+            v_lower = val.strip().lower()
+            if v_lower == "stock":
                 return AssetType.Stock
-            if "future" in v_lower:
+            if v_lower in {"future", "futures"}:
                 return AssetType.Futures
-            if "fund" in v_lower:
+            if v_lower == "fund":
                 return AssetType.Fund
-            if "option" in v_lower:
+            if v_lower == "option":
                 return AssetType.Option
-        return AssetType.Stock
+        raise ValueError(f"Unsupported asset_type: {val}")
 
     def _parse_option_type(val: Any) -> Any:
+        if val is None:
+            return None
         # OptionType might not be available in current binary
         try:
             from ..akquant import OptionType  # type: ignore
@@ -2266,34 +2481,39 @@ def run_backtest(
                     return OptionType.Call
                 if val.lower() == "put":
                     return OptionType.Put
+                raise ValueError(f"Unsupported option_type: {val}")
+            if str(val).endswith(".Call"):
+                return OptionType.Call
+            if str(val).endswith(".Put"):
+                return OptionType.Put
         except ImportError:
             pass
+        if isinstance(val, str):
+            v = val.strip().upper()
+            if v in {"CALL", "PUT"}:
+                return v
+            raise ValueError(f"Unsupported option_type: {val}")
         return val
 
-    def _parse_expiry(val: Any) -> Optional[int]:
+    def _parse_settlement_type(
+        val: Any,
+    ) -> Tuple[Any, Optional[InstrumentSettlementMode]]:
         if val is None:
-            return None
-        if isinstance(val, (int, float)):
-            # If value is too large for i64 (nanoseconds since epoch),
-            # return None or clamp?
-            # Rust i64 max is 9223372036854775807
-            # Let's just cast to int, Python handles large ints but PyO3 conversion
-            # might fail if it exceeds Rust's i64 range.
-            i_val = int(val)
-            if abs(i_val) > 9223372036854775000:
-                return None
-            return i_val
+            return None, None
+        if isinstance(val, SettlementType):
+            if val == SettlementType.Physical:
+                raise ValueError("Unsupported settlement_type: Physical")
+            return val, _settlement_type_to_upper_name(val)
         if isinstance(val, str):
-            try:
-                # Convert string date to nanosecond timestamp
-                ts_val = int(pd.Timestamp(val).value)
-                # Check for Rust i64 range roughly (year 2262)
-                if abs(ts_val) > 9223372036854775000:
-                    return None
-                return ts_val
-            except Exception:
-                pass
-        return None
+            key = val.strip().lower()
+            if key in {"cash", "cash_last_price"}:
+                return SettlementType.Cash, "CASH"
+            if key in {"settlement_price", "cash_settlement_price"}:
+                return SettlementType.Cash, "SETTLEMENT_PRICE"
+            if key in {"force_close", "forceclose"}:
+                return SettlementType.ForceClose, "FORCE_CLOSE"
+            raise ValueError(f"Unsupported settlement_type: {val}")
+        raise TypeError("settlement_type must be SettlementType or str")
 
     def _match_futures_template(
         symbol: str,
@@ -2315,10 +2535,31 @@ def run_backtest(
                 best_len = len(prefix)
         return best_template
 
+    instrument_snapshots: Dict[str, InstrumentSnapshot] = {}
+
     for sym in symbols:
         # Priority: Pre-built Instrument > Config > Default
         if sym in prebuilt_instruments:
-            engine.add_instrument(prebuilt_instruments[sym])
+            prebuilt = prebuilt_instruments[sym]
+            engine.add_instrument(prebuilt)
+            instrument_snapshots[sym] = InstrumentSnapshot(
+                symbol=sym,
+                asset_type=_asset_type_to_upper_name(
+                    getattr(prebuilt, "asset_type", "")
+                ),
+                multiplier=float(getattr(prebuilt, "multiplier", 1.0)),
+                margin_ratio=float(getattr(prebuilt, "margin_ratio", 1.0)),
+                tick_size=float(getattr(prebuilt, "tick_size", 0.01)),
+                lot_size=float(getattr(prebuilt, "lot_size", 1.0)),
+                settlement_type=_settlement_type_to_upper_name(
+                    getattr(prebuilt, "settlement_type", None)
+                ),
+                settlement_price=(
+                    float(getattr(prebuilt, "settlement_price"))
+                    if getattr(prebuilt, "settlement_price", None) is not None
+                    else None
+                ),
+            )
             continue
 
         # Determine lot_size for this symbol
@@ -2358,8 +2599,19 @@ def run_backtest(
 
             p_opt_type = _parse_option_type(i_conf.option_type)
             p_strike = i_conf.strike_price
-            p_expiry = _parse_expiry(i_conf.expiry_date)
+            p_expiry = _normalize_expiry_date_yyyymmdd(i_conf.expiry_date)
             p_underlying = i_conf.underlying_symbol
+            p_settlement_type, p_settlement_mode = _parse_settlement_type(
+                i_conf.settlement_type
+            )
+            p_settlement_price = i_conf.settlement_price
+            static_attrs = getattr(i_conf, "static_attrs", {})
+            if static_attrs is None:
+                static_attrs = {}
+            if not isinstance(static_attrs, dict):
+                raise TypeError(
+                    "InstrumentConfig.static_attrs must be Dict[str, scalar]"
+                )
         else:
             if futures_template:
                 p_asset_type = AssetType.Futures
@@ -2392,8 +2644,27 @@ def run_backtest(
 
             p_opt_type = default_option_type
             p_strike = default_strike_price
-            p_expiry = _parse_expiry(default_expiry_date)
+            p_expiry = default_expiry_date
             p_underlying = None
+            p_settlement_type, p_settlement_mode = _parse_settlement_type(
+                default_settlement_type
+            )
+            p_settlement_price = default_settlement_price
+            static_attrs = {}
+
+        if p_asset_type != AssetType.Futures:
+            p_settlement_type = None
+            p_settlement_mode = None
+            p_settlement_price = None
+        if (
+            p_settlement_mode == "SETTLEMENT_PRICE"
+            and p_settlement_price is None
+            and p_asset_type == AssetType.Futures
+        ):
+            raise ValueError(
+                "settlement_price is required for "
+                f"settlement_type=settlement_price ({sym})"
+            )
 
         # Validate types before passing to Rust
         if p_lot is not None and not isinstance(p_lot, (int, float)):
@@ -2413,8 +2684,30 @@ def run_backtest(
             p_expiry,
             p_lot_f,
             p_underlying,
+            p_settlement_type,
+            p_settlement_price,
         )
         engine.add_instrument(instr)
+        instrument_snapshots[sym] = InstrumentSnapshot(
+            symbol=sym,
+            asset_type=_asset_type_to_upper_name(p_asset_type),
+            multiplier=float(p_multiplier),
+            margin_ratio=float(p_margin),
+            tick_size=float(p_tick),
+            lot_size=float(p_lot_f),
+            option_type=_option_type_to_upper_name(p_opt_type),
+            strike_price=float(p_strike) if p_strike is not None else None,
+            expiry_date=p_expiry,
+            underlying_symbol=str(p_underlying) if p_underlying is not None else None,
+            settlement_type=p_settlement_mode,
+            settlement_price=(
+                float(p_settlement_price) if p_settlement_price is not None else None
+            ),
+            static_attrs=dict(static_attrs),
+        )
+
+    for current_strategy in all_strategy_instances:
+        current_strategy._set_instrument_snapshots(instrument_snapshots)
 
     # 6. 添加数据
     engine.add_data(feed)
@@ -3233,6 +3526,7 @@ def run_warm_start(
         # symbol property might raise error if no current bar/tick
         pass
 
+    warm_start_instrument_snapshots: Dict[str, InstrumentSnapshot] = {}
     for sym in symbols_to_add:
         # 添加默认股票标的
         # ... (略)
@@ -3245,7 +3539,18 @@ def run_warm_start(
             lot_size=1.0,  # 默认为 1，允许任意整数倍交易
         )
         engine.add_instrument(instr)
+        warm_start_instrument_snapshots[sym] = InstrumentSnapshot(
+            symbol=sym,
+            asset_type="STOCK",
+            multiplier=1.0,
+            margin_ratio=1.0,
+            tick_size=0.01,
+            lot_size=1.0,
+        )
         logger.info(f"Re-registered default instrument for warm start: {sym}")
+
+    for current_strategy in all_strategy_instances:
+        current_strategy._set_instrument_snapshots(warm_start_instrument_snapshots)
 
     # 2.6 Re-configure Market Model
     # Engine restoration might lose market model config if not in State.

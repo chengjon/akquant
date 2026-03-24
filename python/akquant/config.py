@@ -1,5 +1,7 @@
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional, Union, cast
 
 """
 AKQuant Configuration System.
@@ -60,6 +62,42 @@ config = BacktestConfig(
 """
 
 
+InstrumentSettlementType = Literal["cash", "settlement_price", "force_close"]
+InstrumentAssetType = Literal["STOCK", "FUTURES", "FUND", "OPTION"]
+InstrumentOptionType = Literal["CALL", "PUT"]
+
+
+class InstrumentAssetTypeEnum(str, Enum):
+    """Instrument asset type enum."""
+
+    STOCK = "STOCK"
+    FUTURES = "FUTURES"
+    FUND = "FUND"
+    OPTION = "OPTION"
+
+
+class InstrumentOptionTypeEnum(str, Enum):
+    """Instrument option type enum."""
+
+    CALL = "CALL"
+    PUT = "PUT"
+
+
+class InstrumentSettlementTypeEnum(str, Enum):
+    """Instrument settlement type enum."""
+
+    CASH = "cash"
+    SETTLEMENT_PRICE = "settlement_price"
+    FORCE_CLOSE = "force_close"
+
+
+InstrumentAssetTypeInput = Union[InstrumentAssetType, InstrumentAssetTypeEnum]
+InstrumentOptionTypeInput = Union[InstrumentOptionType, InstrumentOptionTypeEnum]
+InstrumentSettlementTypeInput = Union[
+    InstrumentSettlementType, InstrumentSettlementTypeEnum
+]
+
+
 @dataclass
 class InstrumentConfig:
     """
@@ -93,12 +131,14 @@ class InstrumentConfig:
     **Option Specific:**
     :param option_type: "CALL" or "PUT".
     :param strike_price: Strike price.
-    :param expiry_date: Expiry date string (YYYY-MM-DD).
+    :param expiry_date: Expiry date. Supports int (YYYYMMDD), date/datetime.
     :param underlying_symbol: Underlying asset symbol.
+    :param settlement_type: Settlement mode for expiry handling.
+    :param settlement_price: Settlement price for expiry settlement mode.
     """
 
     symbol: str
-    asset_type: str = "STOCK"  # STOCK, FUND, FUTURES, OPTION
+    asset_type: InstrumentAssetTypeInput = InstrumentAssetTypeEnum.STOCK
     multiplier: float = 1.0
     margin_ratio: float = 1.0
     tick_size: float = 0.01
@@ -112,10 +152,46 @@ class InstrumentConfig:
     slippage: Optional[float] = None
 
     # Option specific
-    option_type: Optional[str] = None  # CALL, PUT
+    option_type: Optional[InstrumentOptionTypeInput] = None
     strike_price: Optional[float] = None
-    expiry_date: Optional[str] = None
+    expiry_date: Optional[Union[int, date, datetime]] = None
     underlying_symbol: Optional[str] = None
+    settlement_type: Optional[InstrumentSettlementTypeInput] = None
+    settlement_price: Optional[float] = None
+    static_attrs: Dict[str, Union[str, int, float, bool]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate and normalize instrument config."""
+        asset_raw = (
+            self.asset_type.value
+            if isinstance(self.asset_type, Enum)
+            else self.asset_type
+        )
+        self.asset_type = cast(InstrumentAssetType, str(asset_raw).strip().upper())
+        if self.asset_type not in {"STOCK", "FUTURES", "FUND", "OPTION"}:
+            raise ValueError(f"Unsupported asset_type: {self.asset_type}")
+        if self.option_type is not None:
+            option_raw = (
+                self.option_type.value
+                if isinstance(self.option_type, Enum)
+                else self.option_type
+            )
+            self.option_type = cast(
+                InstrumentOptionType, str(option_raw).strip().upper()
+            )
+            if self.option_type not in {"CALL", "PUT"}:
+                raise ValueError(f"Unsupported option_type: {self.option_type}")
+        if self.settlement_type is not None:
+            settlement_raw = (
+                self.settlement_type.value
+                if isinstance(self.settlement_type, Enum)
+                else self.settlement_type
+            )
+            self.settlement_type = cast(
+                InstrumentSettlementType, str(settlement_raw).strip().lower()
+            )
+            if self.settlement_type not in {"cash", "settlement_price", "force_close"}:
+                raise ValueError(f"Unsupported settlement_type: {self.settlement_type}")
 
 
 @dataclass

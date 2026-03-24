@@ -588,6 +588,39 @@ class MyStrategy(Strategy):
         print("closed trades:", len(closed))
 ```
 
+### 6.5 标的静态属性查询（推荐）
+
+当你需要在策略中读取行权价、到期日、合约乘数、期权类型、标的代码等静态属性时，优先使用策略 API，而不是依赖 `bar.extra`。
+
+可用接口：
+
+*   `self.get_instrument(symbol)`: 返回 `InstrumentSnapshot`。
+*   `self.get_instrument_field(symbol, field)`: 返回单字段值。
+*   `self.get_instrument_config(symbol, fields=None)`: 兼容接口；支持单字段或多字段批量读取。
+*   `self.get_instruments(symbols=None)`: 返回多个标的的快照字典。
+
+这些接口在 `on_start` 即可使用（回测启动阶段已注入快照）。
+
+```python
+import akquant
+from akquant import Bar, Strategy
+
+
+class MetaAwareStrategy(Strategy):
+    def on_start(self):
+        self.subscribe("OPTION_A")
+        expiry = self.get_instrument_field("OPTION_A", "expiry_date")
+        strike = self.get_instrument_field("OPTION_A", "strike_price")
+        print("meta:", expiry, strike)
+
+    def on_bar(self, bar: Bar):
+        meta = self.get_instrument_config(
+            bar.symbol, fields=["asset_type", "option_type", "multiplier"]
+        )
+        if meta["asset_type"] == "OPTION" and meta["option_type"] == "CALL":
+            pass
+```
+
 ## 7. 进阶功能
 
 ### 7.1 事件回调

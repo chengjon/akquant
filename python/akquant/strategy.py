@@ -1,7 +1,7 @@
 import datetime as dt
 import logging
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -190,6 +190,31 @@ class StrategyRuntimeConfig:
         self.re_raise_on_error = bool(self.re_raise_on_error)
 
 
+InstrumentStaticValue = Union[str, int, float, bool]
+InstrumentAssetTypeName = Literal["STOCK", "FUTURES", "FUND", "OPTION"]
+InstrumentOptionTypeName = Literal["CALL", "PUT"]
+InstrumentSettlementMode = Literal["CASH", "SETTLEMENT_PRICE", "FORCE_CLOSE"]
+
+
+@dataclass(frozen=True)
+class InstrumentSnapshot:
+    """策略侧可访问的标的静态属性快照."""
+
+    symbol: str
+    asset_type: InstrumentAssetTypeName
+    multiplier: float
+    margin_ratio: float
+    tick_size: float
+    lot_size: float
+    option_type: Optional[InstrumentOptionTypeName] = None
+    strike_price: Optional[float] = None
+    expiry_date: Optional[int] = None
+    underlying_symbol: Optional[str] = None
+    settlement_type: Optional[InstrumentSettlementMode] = None
+    settlement_price: Optional[float] = None
+    static_attrs: Dict[str, InstrumentStaticValue] = field(default_factory=dict)
+
+
 class Strategy:
     """
     策略基类 (Base Strategy Class).
@@ -253,6 +278,7 @@ class Strategy:
     _order_group_seq: int
     _pending_schedules: List[Tuple[Union[str, dt.datetime, pd.Timestamp], str]]
     _pending_daily_timers: List[Tuple[str, str]]
+    _instrument_snapshots: Dict[str, InstrumentSnapshot]
 
     _trading_days: List[pd.Timestamp]
 
@@ -358,6 +384,7 @@ class Strategy:
         instance._order_group_seq = 0
         instance._pending_schedules = []
         instance._pending_daily_timers = []
+        instance._instrument_snapshots = {}
 
         return instance
 
@@ -453,6 +480,8 @@ class Strategy:
             self._pending_schedules = []
         if not hasattr(self, "_pending_daily_timers"):
             self._pending_daily_timers = []
+        if not hasattr(self, "_instrument_snapshots"):
+            self._instrument_snapshots = {}
         _ensure_framework_state_impl(self)
 
     @property
@@ -1190,6 +1219,48 @@ class Strategy:
             Dict[str, float]: 持仓字典 {symbol: quantity}
         """
         return _get_positions_impl(self)
+
+    def _set_instrument_snapshots(
+        self, snapshots: Dict[str, InstrumentSnapshot]
+    ) -> None:
+        """设置策略可访问的标的属性快照."""
+        self._instrument_snapshots = dict(snapshots)
+
+    def get_instrument(self, symbol: str) -> InstrumentSnapshot:
+        """返回单个标的属性快照."""
+        if symbol not in self._instrument_snapshots:
+            raise KeyError(f"Instrument config not found for symbol: {symbol}")
+        return self._instrument_snapshots[symbol]
+
+    def get_instruments(
+        self, symbols: Optional[List[str]] = None
+    ) -> Dict[str, InstrumentSnapshot]:
+        """返回标的属性快照字典."""
+        if symbols is None:
+            return dict(self._instrument_snapshots)
+        return {s: self.get_instrument(s) for s in symbols}
+
+    def get_instrument_field(self, symbol: str, field: str) -> Any:
+        """返回标的单个字段值."""
+        snapshot = self.get_instrument(symbol)
+        if hasattr(snapshot, field):
+            return getattr(snapshot, field)
+        if field in snapshot.static_attrs:
+            return snapshot.static_attrs[field]
+        raise KeyError(f"Field '{field}' not found for instrument: {symbol}")
+
+    def get_instrument_config(
+        self, symbol: str, fields: Union[str, List[str], None] = None
+    ) -> Union[Any, Dict[str, Any], InstrumentSnapshot]:
+        """返回标的配置数据."""
+        snapshot = self.get_instrument(symbol)
+        if fields is None:
+            return snapshot
+        if isinstance(fields, str):
+            return self.get_instrument_field(symbol, fields)
+        if isinstance(fields, list):
+            return {field: self.get_instrument_field(symbol, field) for field in fields}
+        raise TypeError("fields must be str, List[str], or None")
 
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Any]:
         """

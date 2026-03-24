@@ -161,6 +161,31 @@ Every AKQuant strategy is a Python class inheriting from `Strategy`. You need to
 *   `self.buy(symbol, quantity)`: Send a buy order. Defaults to a market order (executes at current price).
 *   `self.sell(symbol, quantity)`: Send a sell order.
 
+### 3.4 Reading Instrument Static Metadata (New API)
+
+If strategy logic needs contract metadata (such as strike, expiry, multiplier, option type), prefer Strategy APIs instead of `bar.extra`:
+
+*   `self.get_instrument(symbol)`
+*   `self.get_instrument_field(symbol, field)`
+*   `self.get_instrument_config(symbol, fields=None)`
+
+Example:
+
+```python
+class MetaAwareStrategy(Strategy):
+    def on_start(self):
+        self.subscribe("OPTION_A")
+        expiry = self.get_instrument_field("OPTION_A", "expiry_date")
+        print("expiry:", expiry)
+
+    def on_bar(self, bar):
+        meta = self.get_instrument_config(
+            bar.symbol, fields=["asset_type", "option_type", "multiplier"]
+        )
+        if meta["asset_type"] == "OPTION":
+            pass
+```
+
 ## 4. Frequently Asked Questions (FAQ)
 
 **Q: Why does the program error with `RuntimeError: History tracking is not enabled`?**

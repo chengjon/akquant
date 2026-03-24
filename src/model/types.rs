@@ -61,6 +61,7 @@ impl pyo3_stub_gen::PyStubType for TradingSession {
 pub enum SettlementType {
     Physical, // 实物交割
     Cash,     // 现金交割
+    ForceClose,
 }
 
 #[pymethods]

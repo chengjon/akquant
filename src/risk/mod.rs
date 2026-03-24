@@ -57,6 +57,7 @@ mod tests {
                 symbol: symbol.to_string(),
                 lot_size: Decimal::from(100),
                 tick_size: Decimal::from_str("0.01").unwrap(),
+                expiry_date: None,
             }),
             AssetType::Futures => InstrumentEnum::Futures(FuturesInstrument {
                 symbol: symbol.to_string(),
@@ -65,6 +66,7 @@ mod tests {
                 tick_size: Decimal::from_str("0.2").unwrap(),
                 expiry_date: None,
                 settlement_type: None,
+                settlement_price: None,
             }),
             _ => panic!("Unsupported asset type for test"),
         };

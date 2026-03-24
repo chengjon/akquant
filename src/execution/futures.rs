@@ -188,6 +188,7 @@ mod tests {
                 tick_size: dec!(0.2),
                 expiry_date: None,
                 settlement_type: None,
+                settlement_price: None,
             }),
         }
     }

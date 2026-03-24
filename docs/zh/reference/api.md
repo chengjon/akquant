@@ -310,7 +310,10 @@ class StrategyConfig:
 @dataclass
 class InstrumentConfig:
     symbol: str
-    asset_type: str = "STOCK"  # "STOCK", "FUTURES", "FUND", "OPTION"
+    asset_type: Union[
+        Literal["STOCK", "FUTURES", "FUND", "OPTION"],
+        InstrumentAssetTypeEnum
+    ] = InstrumentAssetTypeEnum.STOCK
     multiplier: float = 1.0    # 合约乘数
     margin_ratio: float = 1.0  # 保证金率 (0.1 表示 10% 保证金)
     tick_size: float = 0.01    # 最小变动价位
@@ -324,11 +327,64 @@ class InstrumentConfig:
     slippage: Optional[float] = None
 
     # 期权相关
-    option_type: Optional[str] = None  # "CALL" 或 "PUT"
+    option_type: Optional[
+        Union[Literal["CALL", "PUT"], InstrumentOptionTypeEnum]
+    ] = None
     strike_price: Optional[float] = None
-    expiry_date: Optional[str] = None  # YYYY-MM-DD
+    expiry_date: Optional[Union[int, date, datetime]] = None
     underlying_symbol: Optional[str] = None
+    settlement_type: Optional[
+        Union[
+            Literal["cash", "settlement_price", "force_close"],
+            InstrumentSettlementTypeEnum
+        ]
+    ] = None
+    settlement_price: Optional[float] = None
 ```
+
+常用枚举（均可在 `akquant` 顶层直接访问）：
+
+- `InstrumentAssetTypeEnum`: `STOCK` / `FUTURES` / `FUND` / `OPTION`
+- `InstrumentOptionTypeEnum`: `CALL` / `PUT`
+- `InstrumentSettlementTypeEnum`: `CASH` / `SETTLEMENT_PRICE` / `FORCE_CLOSE`
+
+示例：
+
+```python
+conf = akquant.InstrumentConfig(
+    symbol="IF2506",
+    asset_type=akquant.InstrumentAssetTypeEnum.FUTURES,
+    settlement_type=akquant.InstrumentSettlementTypeEnum.CASH,
+)
+```
+
+### `akquant.InstrumentSnapshot`
+
+策略侧可访问的标的静态属性快照对象（由引擎注入，通常通过 `Strategy.get_instrument*` 读取）。
+
+```python
+@dataclass(frozen=True)
+class InstrumentSnapshot:
+    symbol: str
+    asset_type: Literal["STOCK", "FUTURES", "FUND", "OPTION"]
+    multiplier: float
+    margin_ratio: float
+    tick_size: float
+    lot_size: float
+    option_type: Optional[Literal["CALL", "PUT"]] = None
+    strike_price: Optional[float] = None
+    expiry_date: Optional[int] = None  # YYYYMMDD
+    underlying_symbol: Optional[str] = None
+    settlement_type: Optional[Literal["CASH", "SETTLEMENT_PRICE", "FORCE_CLOSE"]] = None
+    settlement_price: Optional[float] = None
+    static_attrs: Dict[str, Union[str, int, float, bool]] = field(default_factory=dict)
+```
+
+要点：
+
+*   `expiry_date` 使用 `int(YYYYMMDD)` 语义。
+*   快照在 `on_start` 即可访问。
+*   建议在策略中通过 `get_instrument` / `get_instrument_config` / `get_instrument_field` 访问。
 
 ### 配置系统详解 (Configuration System)
 
@@ -559,6 +615,18 @@ result = run_backtest(
 *   `add_daily_timer(time_str, payload)`: 注册每日定时任务。
 *   `to_local_time(timestamp) -> pd.Timestamp`: 将 UTC 时间戳转换为本地时间。
 *   `format_time(timestamp, fmt) -> str`: 格式化时间戳。
+
+**标的静态属性 API（推荐）:**
+
+*   `get_instrument(symbol) -> InstrumentSnapshot`: 获取单个标的静态属性快照。
+*   `get_instruments(symbols=None) -> Dict[str, InstrumentSnapshot]`: 获取多个标的静态属性快照字典；`symbols=None` 时返回全部。
+*   `get_instrument_field(symbol, field) -> Any`: 获取单个标的字段值。
+*   `get_instrument_config(symbol, fields=None) -> Union[Any, Dict[str, Any], InstrumentSnapshot]`: 兼容接口；支持整对象、单字段或多字段读取。
+
+说明：
+
+*   这些接口在 `on_start` 即可使用（启动阶段已注入快照）。
+*   推荐优先使用这些接口读取静态属性，而不是依赖 `bar.extra`。
 
 **机器学习支持:**
 

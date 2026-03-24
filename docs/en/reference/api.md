@@ -330,7 +330,10 @@ A data class used to configure the properties of a single instrument.
 @dataclass
 class InstrumentConfig:
     symbol: str
-    asset_type: str = "STOCK"  # "STOCK", "FUTURES", "FUND", "OPTION"
+    asset_type: Union[
+        Literal["STOCK", "FUTURES", "FUND", "OPTION"],
+        InstrumentAssetTypeEnum
+    ] = InstrumentAssetTypeEnum.STOCK
     multiplier: float = 1.0    # Contract multiplier
     margin_ratio: float = 1.0  # Margin ratio (0.1 means 10% margin)
     tick_size: float = 0.01    # Minimum price variation
@@ -344,10 +347,64 @@ class InstrumentConfig:
     slippage: Optional[float] = None
 
     # Option specific
-    option_type: Optional[str] = None  # "CALL" or "PUT"
+    option_type: Optional[
+        Union[Literal["CALL", "PUT"], InstrumentOptionTypeEnum]
+    ] = None
     strike_price: Optional[float] = None
-    expiry_date: Optional[str] = None
+    expiry_date: Optional[Union[int, date, datetime]] = None
     underlying_symbol: Optional[str] = None
+    settlement_type: Optional[
+        Union[
+            Literal["cash", "settlement_price", "force_close"],
+            InstrumentSettlementTypeEnum
+        ]
+    ] = None
+    settlement_price: Optional[float] = None
+```
+
+Common enums (available directly from top-level `akquant`):
+
+- `InstrumentAssetTypeEnum`: `STOCK` / `FUTURES` / `FUND` / `OPTION`
+- `InstrumentOptionTypeEnum`: `CALL` / `PUT`
+- `InstrumentSettlementTypeEnum`: `CASH` / `SETTLEMENT_PRICE` / `FORCE_CLOSE`
+
+Example:
+
+```python
+conf = akquant.InstrumentConfig(
+    symbol="IF2506",
+    asset_type=akquant.InstrumentAssetTypeEnum.FUTURES,
+    settlement_type=akquant.InstrumentSettlementTypeEnum.CASH,
+)
+```
+
+### `akquant.InstrumentSnapshot`
+
+Static instrument metadata snapshot available to strategies (injected by engine; usually accessed via `Strategy.get_instrument*` APIs).
+
+```python
+@dataclass(frozen=True)
+class InstrumentSnapshot:
+    symbol: str
+    asset_type: Literal["STOCK", "FUTURES", "FUND", "OPTION"]
+    multiplier: float
+    margin_ratio: float
+    tick_size: float
+    lot_size: float
+    option_type: Optional[Literal["CALL", "PUT"]] = None
+    strike_price: Optional[float] = None
+    expiry_date: Optional[int] = None  # YYYYMMDD
+    underlying_symbol: Optional[str] = None
+    settlement_type: Optional[Literal["CASH", "SETTLEMENT_PRICE", "FORCE_CLOSE"]] = None
+    settlement_price: Optional[float] = None
+    static_attrs: Dict[str, Union[str, int, float, bool]] = field(default_factory=dict)
+```
+
+Notes:
+
+*   `expiry_date` uses `int(YYYYMMDD)` semantics.
+*   Snapshot data is available in `on_start`.
+*   Prefer `get_instrument` / `get_instrument_config` / `get_instrument_field` in strategy code.
 
 ### Configuration System Explained
 
@@ -531,6 +588,18 @@ Strategy base class. Users should inherit from this class and override callback 
 *   `log(msg: str, level: int)`: Log with timestamp.
 *   `schedule(trigger_time, payload)`: Register a one-time timer task.
 *   `add_daily_timer(time_str, payload)`: Register a daily timer task.
+
+**Instrument Metadata APIs (Recommended):**
+
+*   `get_instrument(symbol) -> InstrumentSnapshot`: Return static metadata snapshot for one symbol.
+*   `get_instruments(symbols=None) -> Dict[str, InstrumentSnapshot]`: Return snapshot dict for multiple symbols; returns all when `symbols=None`.
+*   `get_instrument_field(symbol, field) -> Any`: Return one metadata field value.
+*   `get_instrument_config(symbol, fields=None) -> Union[Any, Dict[str, Any], InstrumentSnapshot]`: Compatibility API for full object, single field, or multi-field access.
+
+Notes:
+
+*   These APIs are available in `on_start` (snapshots are injected before start callbacks).
+*   Prefer these APIs for static metadata access instead of relying on `bar.extra`.
 
 **Machine Learning Support:**
 

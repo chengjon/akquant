@@ -1,5 +1,5 @@
 use crate::error::AkQuantError;
-use crate::model::{Order, OrderSide};
+use crate::model::{AssetType, Order, OrderSide};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
 
@@ -154,6 +154,7 @@ impl RiskRule for CashMarginRule {
             if price_found {
                 // Check Active Buy Orders for committed margin
                 let mut committed_margin = Decimal::ZERO;
+                let mut pending_sell_release = Decimal::ZERO;
                 for o in ctx.active_orders {
                     if o.side == OrderSide::Buy && o.status == crate::model::OrderStatus::New {
                         let (o_mult, o_margin_ratio) =
@@ -167,6 +168,16 @@ impl RiskRule for CashMarginRule {
                             committed_margin += p * o.quantity * o_mult * o_margin_ratio;
                         } else if let Some(p) = ctx.current_prices.get(&o.symbol) {
                             committed_margin += *p * o.quantity * o_mult * o_margin_ratio;
+                        }
+                    } else if o.side == OrderSide::Sell
+                        && o.status == crate::model::OrderStatus::New
+                        && let Some(instr) = ctx.instruments.get(&o.symbol)
+                        && matches!(instr.asset_type, AssetType::Stock | AssetType::Fund)
+                    {
+                        if let Some(p) = o.price {
+                            pending_sell_release += p * o.quantity;
+                        } else if let Some(p) = ctx.current_prices.get(&o.symbol) {
+                            pending_sell_release += *p * o.quantity;
                         }
                     }
                 }
@@ -182,13 +193,14 @@ impl RiskRule for CashMarginRule {
                 let safety_factor = Decimal::from_f64(1.0 - safety_margin)
                     .unwrap_or(Decimal::from_f64(0.9999).unwrap());
 
-                // Available Margin = (Free Margin - Committed Margin) * Safety Factor
+                // Available Margin = (Free Margin - Committed Margin + Pending Sell Release) * Safety Factor
                 // Note: Free Margin already accounts for Used Margin of existing positions
-                let available_margin = (free_margin - committed_margin) * safety_factor;
+                let available_margin =
+                    (free_margin - committed_margin + pending_sell_release) * safety_factor;
 
                 if required_margin > available_margin {
                     return Err(AkQuantError::OrderError(format!(
-                        "Risk: Insufficient margin. Required: {required_margin}, Available: {available_margin} (Free: {free_margin}, Committed: {committed_margin}, Safety: {safety_margin})",
+                        "Risk: Insufficient margin. Required: {required_margin}, Available: {available_margin} (Free: {free_margin}, Committed: {committed_margin}, PendingSellRelease: {pending_sell_release}, Safety: {safety_margin})",
                     )));
                 }
             }

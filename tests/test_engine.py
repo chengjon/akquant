@@ -1,6 +1,6 @@
 import time
 import warnings
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, cast
 
 import akquant
@@ -3691,3 +3691,173 @@ def test_run_grid_search_single_worker_accepts_camelcase_execution_mode() -> Non
     assert float(results.iloc[0]["end_market_value"]) > float(
         results.iloc[0]["initial_market_value"]
     )
+
+
+def test_run_backtest_expiry_date_str_is_rejected() -> None:
+    """expiry_date should reject string input."""
+
+    class Noop(akquant.Strategy):
+        def on_bar(self, bar: akquant.Bar) -> None:
+            return
+
+    symbol = "OPT_EXPIRY_STR"
+    bars = _build_regression_bars(symbol)
+    config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(),
+        instruments_config=[
+            akquant.InstrumentConfig(
+                symbol=symbol,
+                asset_type="OPTION",
+                option_type="CALL",
+                strike_price=1.0,
+                underlying_symbol="510050.SH",
+                expiry_date=cast(Any, "2026-01-31"),
+            )
+        ],
+    )
+
+    with pytest.raises(TypeError, match="expiry_date no longer supports str"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=Noop,
+            symbols=[symbol],
+            config=config,
+            show_progress=False,
+        )
+
+
+def test_strategy_get_instrument_config_snapshot() -> None:
+    """Strategy should read instrument snapshot fields directly."""
+
+    class CaptureInstrumentStrategy(akquant.Strategy):
+        def __init__(self) -> None:
+            super().__init__()
+            self.snapshot: dict[str, Any] = {}
+
+        def on_start(self) -> None:
+            self.snapshot = {
+                "single": self.get_instrument_field("OPT_META", "expiry_date"),
+                "multi": self.get_instrument_config(
+                    "OPT_META",
+                    fields=["asset_type", "option_type", "multiplier"],
+                ),
+                "all_count": len(self.get_instruments()),
+                "symbol": self.get_instrument("OPT_META").symbol,
+            }
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            return
+
+    symbol = "OPT_META"
+    bars = _build_regression_bars(symbol)
+    strategy = CaptureInstrumentStrategy()
+    config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(),
+        instruments_config=[
+            akquant.InstrumentConfig(
+                symbol=symbol,
+                asset_type="OPTION",
+                option_type="CALL",
+                strike_price=2.5,
+                underlying_symbol="510050.SH",
+                expiry_date=date(2026, 1, 31),
+                multiplier=10.0,
+            )
+        ],
+    )
+
+    _ = akquant.run_backtest(
+        data=bars,
+        strategy=strategy,
+        symbols=[symbol],
+        config=config,
+        show_progress=False,
+    )
+
+    assert strategy.snapshot["single"] == 20260131
+    assert strategy.snapshot["all_count"] == 1
+    assert strategy.snapshot["symbol"] == symbol
+    multi = cast(dict[str, Any], strategy.snapshot["multi"])
+    assert multi["asset_type"] == "OPTION"
+    assert multi["option_type"] == "CALL"
+    assert multi["multiplier"] == pytest.approx(10.0, rel=1e-12)
+
+
+def test_run_backtest_settlement_price_mode_requires_price() -> None:
+    """Futures settlement_price mode should require settlement_price."""
+
+    class Noop(akquant.Strategy):
+        def on_bar(self, bar: akquant.Bar) -> None:
+            return
+
+    symbol = "FUT_SETTLE_REQ"
+    bars = _build_regression_bars(symbol)
+    config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(),
+        instruments_config=[
+            akquant.InstrumentConfig(
+                symbol=symbol,
+                asset_type="FUTURES",
+                multiplier=10.0,
+                margin_ratio=0.1,
+                tick_size=0.2,
+                expiry_date=date(2026, 1, 31),
+                settlement_type="settlement_price",
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="settlement_price is required"):
+        akquant.run_backtest(
+            data=bars,
+            strategy=Noop,
+            symbols=[symbol],
+            config=config,
+            show_progress=False,
+        )
+
+
+def test_run_backtest_settlement_type_rejects_physical() -> None:
+    """Futures settlement_type should reject physical mode."""
+    with pytest.raises(ValueError, match="Unsupported settlement_type"):
+        _ = akquant.InstrumentConfig(
+            symbol="FUT_SETTLE_PHYSICAL",
+            asset_type="FUTURES",
+            multiplier=10.0,
+            margin_ratio=0.1,
+            tick_size=0.2,
+            expiry_date=date(2026, 1, 31),
+            settlement_type=cast(Any, "physical"),
+        )
+
+
+def test_instrument_config_rejects_invalid_asset_type() -> None:
+    """InstrumentConfig should reject unsupported asset_type."""
+    with pytest.raises(ValueError, match="Unsupported asset_type"):
+        _ = akquant.InstrumentConfig(
+            symbol="BAD_ASSET",
+            asset_type=cast(Any, "CRYPTO"),
+        )
+
+
+def test_instrument_config_rejects_invalid_option_type() -> None:
+    """InstrumentConfig should reject unsupported option_type."""
+    with pytest.raises(ValueError, match="Unsupported option_type"):
+        _ = akquant.InstrumentConfig(
+            symbol="BAD_OPT",
+            asset_type="OPTION",
+            option_type=cast(Any, "STRADDLE"),
+        )
+
+
+def test_instrument_config_accepts_enum_inputs() -> None:
+    """InstrumentConfig should accept public enum inputs."""
+    conf = akquant.InstrumentConfig(
+        symbol="ENUM_OK",
+        asset_type=akquant.InstrumentAssetTypeEnum.FUTURES,
+        option_type=akquant.InstrumentOptionTypeEnum.CALL,
+        settlement_type=akquant.InstrumentSettlementTypeEnum.CASH,
+    )
+    assert conf.asset_type == "FUTURES"
+    assert conf.option_type == "CALL"
+    assert conf.settlement_type == "cash"

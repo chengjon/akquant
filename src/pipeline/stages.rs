@@ -108,6 +108,44 @@ fn process_order_request(engine: &mut Engine, py: Python<'_>, mut order: Order) 
     }
 }
 
+fn should_run_post_strategy_match_now(engine: &Engine) -> bool {
+    if !matches!(engine.execution_mode, ExecutionMode::CurrentClose) {
+        return false;
+    }
+    match engine.current_event.as_ref() {
+        Some(Event::Bar(_) | Event::Tick(_)) => true,
+        Some(Event::Timer(_)) => engine.timer_same_cycle_enabled(),
+        _ => false,
+    }
+}
+
+fn emit_execution_reports_for_current_event(engine: &mut Engine) {
+    let Some(event) = engine.current_event.clone() else {
+        return;
+    };
+
+    if !matches!(event, Event::Bar(_) | Event::Tick(_) | Event::Timer(_)) {
+        return;
+    }
+
+    let ctx = EngineContext {
+        instruments: &engine.instruments,
+        portfolio: &engine.state.portfolio,
+        last_prices: &engine.last_prices,
+        market_model: engine.market_manager.model.as_ref(),
+        execution_mode: engine.execution_mode,
+        bar_index: engine.bar_count,
+        current_time: engine.clock.timestamp().unwrap_or(0),
+        session: engine.clock.session,
+        active_orders: &engine.state.order_manager.active_orders,
+    };
+
+    let reports = engine.execution_model.on_event(&event, &ctx);
+    for report in reports {
+        let _ = engine.event_manager.send(report);
+    }
+}
+
 impl Processor for ChannelProcessor {
     fn process(
         &mut self,
@@ -118,6 +156,8 @@ impl Processor for ChannelProcessor {
         let mut trades_to_process = Vec::new();
         let mut pending_order_requests = Vec::new();
         let mut oco_suppressed_fill_order_ids: HashSet<String> = HashSet::new();
+        let mut settle_sells_before_buys = false;
+        let mut run_intermediate_sell_match = false;
         loop {
             let mut drained_event = false;
             while let Some(event) = engine.event_manager.try_recv() {
@@ -263,6 +303,26 @@ impl Processor for ChannelProcessor {
             }
 
             if !pending_order_requests.is_empty() {
+                if settle_sells_before_buys {
+                    if !trades_to_process.is_empty() {
+                        engine.state.order_manager.process_trades(
+                            std::mem::take(&mut trades_to_process),
+                            &mut engine.state.portfolio,
+                            &engine.instruments,
+                            engine.market_manager.model.as_ref(),
+                            &engine.history_buffer,
+                            &engine.last_prices,
+                        );
+                    }
+                    settle_sells_before_buys = false;
+                }
+                if run_intermediate_sell_match {
+                    emit_execution_reports_for_current_event(engine);
+                    run_intermediate_sell_match = false;
+                    settle_sells_before_buys = true;
+                    continue;
+                }
+
                 pending_order_requests.sort_by(|left, right| {
                     let left_priority = engine.strategy_priority_for_order(left);
                     let right_priority = engine.strategy_priority_for_order(right);
@@ -274,8 +334,38 @@ impl Processor for ChannelProcessor {
                         left_id.cmp(&right_id)
                     })
                 });
-                for order in pending_order_requests.drain(..) {
-                    process_order_request(engine, py, order);
+
+                let has_buy = pending_order_requests
+                    .iter()
+                    .any(|order| order.side == crate::model::OrderSide::Buy);
+                let has_sell = pending_order_requests
+                    .iter()
+                    .any(|order| order.side == crate::model::OrderSide::Sell);
+                let can_do_two_phase = has_buy && has_sell && should_run_post_strategy_match_now(engine);
+
+                if can_do_two_phase {
+                    let mut sell_orders = Vec::new();
+                    let mut buy_orders = Vec::new();
+                    for order in pending_order_requests.drain(..) {
+                        if order.side == crate::model::OrderSide::Sell {
+                            sell_orders.push(order);
+                        } else {
+                            buy_orders.push(order);
+                        }
+                    }
+
+                    for order in sell_orders {
+                        process_order_request(engine, py, order);
+                    }
+
+                    if !buy_orders.is_empty() {
+                        pending_order_requests.extend(buy_orders);
+                        run_intermediate_sell_match = true;
+                    }
+                } else {
+                    for order in pending_order_requests.drain(..) {
+                        process_order_request(engine, py, order);
+                    }
                 }
                 continue;
             }
@@ -777,6 +867,7 @@ mod tests {
                 symbol: symbol.to_string(),
                 lot_size: dec!(100),
                 tick_size: dec!(0.01),
+                expiry_date: None,
             }),
         }
     }

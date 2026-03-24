@@ -6,6 +6,7 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::expiry::ExpirySettlementHandler;
 use super::handler::SettlementHandler;
 use super::option::OptionSettlementHandler;
 
@@ -21,6 +22,7 @@ pub struct SettlementContext<'a> {
 /// Centralizes daily settlement logic including T+1 settlement, option expiry, and order expiration.
 pub struct SettlementManager {
     option_handler: OptionSettlementHandler,
+    expiry_handler: ExpirySettlementHandler,
 }
 
 impl SettlementManager {
@@ -28,6 +30,7 @@ impl SettlementManager {
     pub fn new() -> Self {
         Self {
             option_handler: OptionSettlementHandler,
+            expiry_handler: ExpirySettlementHandler,
         }
     }
 
@@ -53,12 +56,19 @@ impl SettlementManager {
         );
 
         // 2. Option Expiry
-        let tasks = self.option_handler.check_settlement(
+        let mut tasks = self.option_handler.check_settlement(
             ctx.date,
             portfolio,
             ctx.instruments,
             ctx.last_prices,
         );
+        // 3. Futures/Stock Expiry
+        tasks.extend(self.expiry_handler.check_settlement(
+            ctx.date,
+            portfolio,
+            ctx.instruments,
+            ctx.last_prices,
+        ));
 
         for task in tasks {
             // Execute settlement task
@@ -91,7 +101,7 @@ impl SettlementManager {
             }
         }
 
-        // 3. Order Expiration (Day Orders)
+        // 4. Order Expiration (Day Orders)
         // Partition orders into expired and kept
         let (expired, kept): (Vec<Order>, Vec<Order>) = active_orders
             .drain(..)

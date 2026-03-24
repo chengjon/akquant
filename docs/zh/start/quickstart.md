@@ -294,6 +294,49 @@ orders_by_strategy = result.orders_by_strategy()
 executions_by_strategy = result.executions_by_strategy()
 ```
 
+## 2.1 快速读取标的静态属性
+
+当策略需要读取合约属性（如到期日、行权价、乘数）时，推荐使用策略 API：
+
+- `self.get_instrument(symbol)`
+- `self.get_instrument_field(symbol, field)`
+- `self.get_instrument_config(symbol, fields=None)`
+
+```python
+import akquant
+from akquant import InstrumentConfig, Strategy, run_backtest
+
+
+class MetaQuickStrategy(Strategy):
+    def on_start(self):
+        self.subscribe("OPTION_A")
+        expiry = self.get_instrument_field("OPTION_A", "expiry_date")
+        print(expiry)
+
+    def on_bar(self, bar):
+        meta = self.get_instrument_config(
+            bar.symbol, fields=["asset_type", "option_type", "multiplier"]
+        )
+        if meta["asset_type"] == "OPTION":
+            pass
+
+
+config = akquant.BacktestConfig(
+    instruments_config=[
+        InstrumentConfig(
+            symbol="OPTION_A",
+            asset_type=akquant.InstrumentAssetTypeEnum.OPTION,
+            option_type=akquant.InstrumentOptionTypeEnum.CALL,
+            strike_price=100.0,
+            expiry_date=20260131,
+            multiplier=100.0,
+        )
+    ]
+)
+
+result = run_backtest(data=df, strategy=MetaQuickStrategy, config=config)
+```
+
 ## 3. 进阶学习
 
 刚才的例子太简单了？想要学习如何编写真正的量化策略（如双均线、MACD 等）？

@@ -11,7 +11,7 @@ pub struct StockInstrument {
     pub symbol: String,
     pub lot_size: Decimal,
     pub tick_size: Decimal,
-    // Add other stock-specific fields if needed
+    pub expiry_date: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +30,7 @@ pub struct FuturesInstrument {
     pub tick_size: Decimal,
     pub expiry_date: Option<u32>,
     pub settlement_type: Option<SettlementType>,
+    pub settlement_price: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,7 +105,7 @@ impl Instrument {
     /// :param settlement_type: 结算方式 (可选)
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (symbol, asset_type, multiplier=None, margin_ratio=None, tick_size=None, option_type=None, strike_price=None, expiry_date=None, lot_size=None, underlying_symbol=None, settlement_type=None))]
+    #[pyo3(signature = (symbol, asset_type, multiplier=None, margin_ratio=None, tick_size=None, option_type=None, strike_price=None, expiry_date=None, lot_size=None, underlying_symbol=None, settlement_type=None, settlement_price=None))]
     pub fn new(
         symbol: String,
         asset_type: AssetType,
@@ -117,6 +118,7 @@ impl Instrument {
         lot_size: Option<&Bound<'_, PyAny>>,
         underlying_symbol: Option<String>,
         settlement_type: Option<SettlementType>,
+        settlement_price: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         let multiplier_val = multiplier
             .map(extract_decimal)
@@ -134,12 +136,14 @@ impl Instrument {
             .map(extract_decimal)
             .transpose()?
             .unwrap_or(Decimal::ONE);
+        let settlement_price_val = settlement_price.map(extract_decimal).transpose()?;
 
         let inner = match asset_type {
             AssetType::Stock => InstrumentEnum::Stock(StockInstrument {
                 symbol: symbol.clone(),
                 lot_size: lot_val,
                 tick_size: tick_val,
+                expiry_date,
             }),
             AssetType::Fund => InstrumentEnum::Fund(FundInstrument {
                 symbol: symbol.clone(),
@@ -153,6 +157,7 @@ impl Instrument {
                 tick_size: tick_val,
                 expiry_date,
                 settlement_type,
+                settlement_price: settlement_price_val,
             }),
             AssetType::Option => InstrumentEnum::Option(OptionInstrument {
                 symbol: symbol.clone(),
@@ -264,6 +269,7 @@ impl Instrument {
 
     pub fn expiry_date(&self) -> Option<u32> {
         match &self.inner {
+            InstrumentEnum::Stock(s) => s.expiry_date,
             InstrumentEnum::Futures(f) => f.expiry_date,
             InstrumentEnum::Option(o) => Some(o.expiry_date),
             _ => None,
@@ -287,6 +293,21 @@ impl Instrument {
     pub fn option_type(&self) -> Option<OptionType> {
         match &self.inner {
             InstrumentEnum::Option(o) => Some(o.option_type),
+            _ => None,
+        }
+    }
+
+    pub fn settlement_type(&self) -> Option<SettlementType> {
+        match &self.inner {
+            InstrumentEnum::Futures(f) => f.settlement_type,
+            InstrumentEnum::Option(o) => o.settlement_type,
+            _ => None,
+        }
+    }
+
+    pub fn settlement_price(&self) -> Option<Decimal> {
+        match &self.inner {
+            InstrumentEnum::Futures(f) => f.settlement_price,
             _ => None,
         }
     }

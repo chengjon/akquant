@@ -69,6 +69,7 @@ mod tests {
                 margin_ratio: Decimal::from_str("0.1").unwrap(),
                 expiry_date: None,
                 settlement_type: None,
+                settlement_price: None,
             }),
         };
 
@@ -105,6 +106,7 @@ mod tests {
                 margin_ratio: Decimal::from_str("0.1").unwrap(),
                 expiry_date: None,
                 settlement_type: None,
+                settlement_price: None,
             }),
         };
 

@@ -80,6 +80,7 @@ class OptionType:
 class SettlementType:
     Physical: typing.ClassVar["SettlementType"]
     Cash: typing.ClassVar["SettlementType"]
+    ForceClose: typing.ClassVar["SettlementType"]
 
 class ATR:
     r"""平均真实波幅 (ATR)."""
@@ -822,6 +823,7 @@ class Instrument:
         lot_size: float = ...,
         underlying_symbol: typing.Optional[str] = ...,
         settlement_type: typing.Optional[SettlementType] = ...,
+        settlement_price: typing.Optional[float] = ...,
     ) -> "Instrument": ...
 
 class MACD:

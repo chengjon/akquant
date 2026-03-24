@@ -15,7 +15,6 @@ import akquant as aq
 import numpy as np
 import pandas as pd
 from akquant import (
-    AssetType,
     BacktestConfig,
     BacktestStreamEvent,
     ExecutionMode,
@@ -405,7 +404,7 @@ def run_stream_consistency_suite() -> List[str]:
 
     future_config = InstrumentConfig(
         symbol="FUTURE_A",
-        asset_type=str(AssetType.Futures),
+        asset_type="FUTURES",
         multiplier=300.0,
         margin_ratio=0.1,
         tick_size=0.2,
@@ -424,7 +423,7 @@ def run_stream_consistency_suite() -> List[str]:
 
     option_config = InstrumentConfig(
         symbol="OPTION_A",
-        asset_type=str(AssetType.Option),
+        asset_type="OPTION",
         multiplier=100.0,
         margin_ratio=1.0,
         tick_size=0.0001,
@@ -482,7 +481,7 @@ def main(generate_baseline: bool = False) -> None:
     # Initial Cash 200,000.
     future_config = InstrumentConfig(
         symbol="FUTURE_A",
-        asset_type=str(AssetType.Futures),
+        asset_type="FUTURES",
         multiplier=300.0,
         margin_ratio=0.1,
         tick_size=0.2,
@@ -506,7 +505,7 @@ def main(generate_baseline: bool = False) -> None:
     # Commission 5 per contract.
     option_config = InstrumentConfig(
         symbol="OPTION_A",
-        asset_type=str(AssetType.Option),
+        asset_type="OPTION",
         multiplier=100.0,
         margin_ratio=1.0,  # Options usually full premium paid if buying
         tick_size=0.0001,

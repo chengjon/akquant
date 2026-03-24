@@ -598,13 +598,6 @@ def order_target_value(
         elif delta_qty < 0:
             delta_qty = -((abs(delta_qty) // current_lot_size) * current_lot_size)
 
-    if delta_qty > 0 and strategy.ctx:
-        max_buy_qty = calculate_max_buy_qty(
-            strategy, symbol, current_price, float(strategy.ctx.cash)
-        )
-        if delta_qty > max_buy_qty:
-            delta_qty = max_buy_qty
-
     if delta_qty > 0:
         buy(strategy, symbol, delta_qty, price, **kwargs)
     elif delta_qty < 0:

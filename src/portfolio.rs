@@ -65,6 +65,7 @@ fn test_portfolio_calculate_margin() {
             tick_size: Decimal::from(1),
             expiry_date: None,
             settlement_type: None,
+            settlement_price: None,
         }),
     };
     instruments.insert("FUT".to_string(), fut_instr);
@@ -361,6 +362,7 @@ mod tests {
                 symbol: "AAPL".to_string(),
                 lot_size: Decimal::from(100),
                 tick_size: Decimal::new(1, 2),
+                expiry_date: None,
             }),
         };
         instruments.insert("AAPL".to_string(), instr);
@@ -399,6 +401,7 @@ mod tests {
                 tick_size: Decimal::new(2, 1),    // 0.2
                 expiry_date: None,
                 settlement_type: None,
+                settlement_price: None,
             }),
         };
         instruments.insert("FUT".to_string(), instr);

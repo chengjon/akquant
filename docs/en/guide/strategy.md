@@ -388,6 +388,38 @@ In addition to `get_position`, you can query more account information:
 *   **`self.get_open_orders()`**: Get current open orders.
 *   **`self.get_available_position(symbol)`**: Get available position (considering T+1 rule).
 
+### 5.6 Instrument Static Metadata Query (Recommended)
+
+When strategy logic needs static fields like strike, expiry, multiplier, option type, or underlying symbol, prefer Strategy APIs instead of `bar.extra`.
+
+Available APIs:
+
+*   `self.get_instrument(symbol)`: Returns `InstrumentSnapshot`.
+*   `self.get_instrument_field(symbol, field)`: Returns one field value.
+*   `self.get_instrument_config(symbol, fields=None)`: Compatibility API for single or batch field access.
+*   `self.get_instruments(symbols=None)`: Returns snapshot dict for multiple symbols.
+
+These APIs are available in `on_start` (snapshots are injected before strategy start callbacks).
+
+```python
+from akquant import Bar, Strategy
+
+
+class MetaAwareStrategy(Strategy):
+    def on_start(self):
+        self.subscribe("OPTION_A")
+        expiry = self.get_instrument_field("OPTION_A", "expiry_date")
+        strike = self.get_instrument_field("OPTION_A", "strike_price")
+        print("meta:", expiry, strike)
+
+    def on_bar(self, bar: Bar):
+        meta = self.get_instrument_config(
+            bar.symbol, fields=["asset_type", "option_type", "multiplier"]
+        )
+        if meta["asset_type"] == "OPTION" and meta["option_type"] == "CALL":
+            pass
+```
+
 ## 6. Risk Management
 
 AKQuant has a built-in Rust-level risk manager that can simulate exchange or broker risk control rules during backtesting.

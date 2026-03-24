@@ -161,6 +161,31 @@ if __name__ == "__main__":
 *   `self.buy(symbol, quantity)`: 发出买单。默认是市价单（按当前价格成交）。
 *   `self.sell(symbol, quantity)`: 发出卖单。
 
+### 3.4 读取标的静态属性（新接口）
+
+如果你的策略需要读取合约属性（如行权价、到期日、乘数、期权类型），推荐直接使用策略 API，而不是依赖 `bar.extra`：
+
+*   `self.get_instrument(symbol)`
+*   `self.get_instrument_field(symbol, field)`
+*   `self.get_instrument_config(symbol, fields=None)`
+
+示例：
+
+```python
+class MetaAwareStrategy(Strategy):
+    def on_start(self):
+        self.subscribe("OPTION_A")
+        expiry = self.get_instrument_field("OPTION_A", "expiry_date")
+        print("expiry:", expiry)
+
+    def on_bar(self, bar):
+        meta = self.get_instrument_config(
+            bar.symbol, fields=["asset_type", "option_type", "multiplier"]
+        )
+        if meta["asset_type"] == "OPTION":
+            pass
+```
+
 ## 4. 常见问题 (FAQ)
 
 **Q: 为什么程序报错 `RuntimeError: History tracking is not enabled`？**

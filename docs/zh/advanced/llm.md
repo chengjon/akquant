@@ -35,6 +35,7 @@ Your task is to write trading strategies or backtest scripts based on user requi
         *   `self.sell(symbol, quantity, price=None)`: Sell.
         *   `self.order_target_percent(target, symbol)`: Adjust position to target percentage.
         *   `self.order_target_value(target, symbol)`: Adjust position to target value.
+        *   在 `execution_mode="current_close"` 下，同一事件周期中若同时存在卖单与买单，撮合采用先卖后买语义：先处理卖单成交并结算资金，再进行买单风控与下单数量计算。
     *   **Position**: `self.get_position(symbol)` returns current holding (float).
     *   **Account**: `self.ctx.cash`, `self.ctx.equity`.
 
