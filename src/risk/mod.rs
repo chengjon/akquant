@@ -154,6 +154,7 @@ mod tests {
             current_time: 1_700_000_000_000_000_000,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &manager.config,
         };
         assert!(manager.check_internal(&order, &ctx_high).is_ok());
 
@@ -169,6 +170,7 @@ mod tests {
             current_time: 1_700_000_100_000_000_000,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &manager.config,
         };
         let err = manager
             .check_internal(&order, &ctx_low)
@@ -213,6 +215,7 @@ mod tests {
             current_time: day1_open,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &manager.config,
         };
         assert!(manager.check_internal(&order, &ctx_day1_start).is_ok());
 
@@ -228,6 +231,7 @@ mod tests {
             current_time: day1_open + 10_000_000_000,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &manager.config,
         };
         let err = manager
             .check_internal(&order, &ctx_day1_drop)
@@ -247,6 +251,7 @@ mod tests {
             current_time: day1_open + 86_400_000_000_000,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &manager.config,
         };
         assert!(manager.check_internal(&order, &ctx_day2_start).is_ok());
     }
@@ -286,6 +291,7 @@ mod tests {
             current_time: 1_700_000_000_000_000_000,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &manager.config,
         };
         assert!(manager.check_internal(&order, &ctx_start).is_ok());
 
@@ -301,6 +307,7 @@ mod tests {
             current_time: 1_700_000_100_000_000_000,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &manager.config,
         };
         let err = manager
             .check_internal(&order, &ctx_drop)

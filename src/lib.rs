@@ -22,7 +22,7 @@ mod risk;
 pub mod settlement;
 pub mod statistics;
 
-use analysis::{BacktestResult, ClosedTrade, PerformanceMetrics, TradePnL};
+use analysis::{BacktestResult, ClosedTrade, LiquidationAudit, PerformanceMetrics, TradePnL};
 use context::StrategyContext;
 use data::{BarAggregator, DataFeed, from_arrays};
 use engine::Engine;
@@ -64,6 +64,7 @@ fn akquant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<BacktestResult>()?;
     m.add_class::<TradePnL>()?;
     m.add_class::<ClosedTrade>()?;
+    m.add_class::<LiquidationAudit>()?;
     m.add_class::<RiskManager>()?;
     m.add_class::<RiskConfig>()?;
     indicators::register_py_classes(m)?;

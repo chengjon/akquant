@@ -422,6 +422,18 @@ class RiskConfig:
     :param max_daily_loss: Max allowed daily loss percentage.
     :param stop_loss_threshold: Net value threshold (e.g., 0.8). If equity drops below
                                 initial_cash * threshold, trading is stopped.
+    :param account_mode: Account mode. "cash" (default) or "margin".
+    :param enable_short_sell: Whether margin account allows opening short stock
+                              positions.
+    :param initial_margin_ratio: Initial margin ratio for stock/fund in margin mode.
+    :param maintenance_margin_ratio: Maintenance margin ratio reference for
+                                     margin account.
+    :param financing_rate_annual: Annual financing rate for margin buying.
+    :param borrow_rate_annual: Annual borrow rate for short selling.
+    :param allow_force_liquidation: Whether to force-liquidate positions when
+                                    maintenance ratio is breached.
+    :param liquidation_priority: Forced-liquidation order, "short_first" (default)
+                                 or "long_first".
     """
 
     active: bool = True
@@ -440,6 +452,14 @@ class RiskConfig:
     stop_loss_threshold: Optional[float] = (
         None  # e.g., 0.8 means stop if equity < 0.8 * initial
     )
+    account_mode: str = "cash"
+    enable_short_sell: bool = False
+    initial_margin_ratio: float = 1.0
+    maintenance_margin_ratio: float = 0.3
+    financing_rate_annual: float = 0.08
+    borrow_rate_annual: float = 0.10
+    allow_force_liquidation: bool = True
+    liquidation_priority: str = "short_first"
 
 
 @dataclass

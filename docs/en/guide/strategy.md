@@ -469,6 +469,48 @@ Suggested account-level presets (starting points):
 
 Start from the balanced preset, then tighten or loosen values based on observed volatility and turnover.
 
+### 6.1 Margin Account Backtest (Financing / Short Sell)
+
+If your strategy needs financing long or stock short selling in backtests, switch the account mode to `margin` in `RiskConfig`:
+
+```python
+from akquant.config import RiskConfig
+
+risk_config = RiskConfig(
+    account_mode="margin",
+    enable_short_sell=True,
+    initial_margin_ratio=0.5,
+    maintenance_margin_ratio=0.3,
+    financing_rate_annual=0.08,
+    borrow_rate_annual=0.10,
+    allow_force_liquidation=True,
+    liquidation_priority="short_first",
+)
+```
+
+Key fields:
+
+- `account_mode`: `"cash"` or `"margin"`.
+- `enable_short_sell`: allows opening stock short positions.
+- `initial_margin_ratio`: initial margin ratio used for stock/fund sizing checks.
+- `maintenance_margin_ratio`: maintenance threshold.
+- `allow_force_liquidation`: force close when maintenance is breached.
+- `liquidation_priority`: `"short_first"` or `"long_first"`.
+
+You can read extended margin fields via `get_account()` inside strategy callbacks:
+
+```python
+snap = self.get_account()
+print(
+    snap["account_mode"],
+    snap["borrowed_cash"],
+    snap["short_market_value"],
+    snap["maintenance_ratio"],
+    snap["accrued_interest"],
+    snap["daily_interest"],
+)
+```
+
 ## 6. Using High-Performance Indicators {: #indicatorset }
 
 AKQuant includes commonly used technical indicators built into the Rust layer. They use Incremental Calculation to avoid repeated full recalculations, resulting in extremely high performance.

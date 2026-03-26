@@ -442,3 +442,40 @@ result = run_backtest(
 - PyCharm 看不到进度条怎么办？开启 `Emulate terminal in output console`，或使用 `on_event + progress` 事件输出文本进度。
 - 如何回滚？阶段 5 后不再支持 `_engine_mode` 参数级回滚，建议使用版本级回滚。
 - 首页导航入口：见 [文档首页的阶段 5 迁移入口](../index.md)。
+
+## 5. 信用账户与强平审计（回测）
+
+如果你要在回测中验证融资/融券场景，可在 `RiskConfig` 中开启 `margin` 模式：
+
+```python
+from akquant import run_backtest
+from akquant.config import RiskConfig
+
+result = run_backtest(
+    data=df,
+    strategy=MyStrategy,
+    symbols="sh600000",
+    risk_config=RiskConfig(
+        account_mode="margin",
+        enable_short_sell=True,
+        initial_margin_ratio=0.5,
+        maintenance_margin_ratio=0.3,
+        financing_rate_annual=0.08,
+        borrow_rate_annual=0.10,
+        allow_force_liquidation=True,
+        liquidation_priority="short_first",
+    ),
+)
+```
+
+回测完成后可以直接查看审计数据：
+
+```python
+print(result.liquidation_audit_df)
+result.report(filename="report_margin.html", show=False)
+```
+
+`report_margin.html` 会包含：
+
+- 强平审计明细（日期、强平标的、优先顺序、当日利息）
+- 风险图表区中的按日强平统计图（有数据时显示）

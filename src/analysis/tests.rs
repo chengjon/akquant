@@ -167,6 +167,7 @@ fn test_max_drawdown_logic() {
         initial_cash: Decimal::from(100),
         orders: vec![],
         executions: vec![],
+        liquidation_audits: vec![],
     });
     assert_eq!(result.metrics.max_drawdown, 0.25);
 
@@ -186,6 +187,7 @@ fn test_max_drawdown_logic() {
         initial_cash: Decimal::from(100),
         orders: vec![],
         executions: vec![],
+        liquidation_audits: vec![],
     });
     assert_eq!(result_2.metrics.max_drawdown, 0.0);
 
@@ -205,6 +207,7 @@ fn test_max_drawdown_logic() {
         initial_cash: Decimal::from(100),
         orders: vec![],
         executions: vec![],
+        liquidation_audits: vec![],
     });
     assert_eq!(result_3.metrics.max_drawdown, 0.2);
 
@@ -227,6 +230,7 @@ fn test_max_drawdown_logic() {
         initial_cash: Decimal::from(100),
         orders: vec![],
         executions: vec![],
+        liquidation_audits: vec![],
     });
     assert_eq!(result_4.metrics.max_drawdown, 0.5);
 }
@@ -259,6 +263,7 @@ fn test_ulcer_index_logic() {
         initial_cash: Decimal::from(100),
         orders: vec![],
         executions: vec![],
+        liquidation_audits: vec![],
     });
     let expected_ui = 0.004f64.sqrt();
     assert!((result.metrics.ulcer_index - expected_ui).abs() < 1e-9);
@@ -282,6 +287,7 @@ fn test_calmar_uses_raw_drawdown_ratio_not_pct() {
         initial_cash: Decimal::from(100),
         orders: vec![],
         executions: vec![],
+        liquidation_audits: vec![],
     });
 
     let expected_raw_calmar = result.metrics.annualized_return / result.metrics.max_drawdown;

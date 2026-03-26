@@ -89,6 +89,26 @@ plt.show()
 result.plot(engine="plotly", filename="backtest.html")
 ```
 
+### 13.3.3 信用账户强平审计视图
+
+在融资/融券回测中，如果发生维持担保比例触发的强平，`BacktestResult` 会产出结构化审计表：
+
+```python
+liq_audit = result.liquidation_audit_df
+print(liq_audit.head())
+```
+
+使用内置报告：
+
+```python
+result.report(filename="report_margin.html", show=False)
+```
+
+报告会自动包含：
+
+1. 强平审计明细表（日期、当日计息、强平标的、强平顺序）
+2. 风险图表区中的按日强平统计图（有数据时展示）
+
 ## 13.4 第三方工具集成：QuantStats
 
 `AKQuant` 完美支持 `QuantStats`，这是一个强大的 Python 量化分析库，能生成媲美专业基金的 Tearsheet。

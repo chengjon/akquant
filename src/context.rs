@@ -31,6 +31,7 @@ pub struct EngineContext<'a> {
     pub current_time: i64,
     pub session: TradingSession,
     pub active_orders: &'a [Order],
+    pub risk_config: &'a RiskConfig,
 }
 
 pub struct ContextInit {
@@ -47,6 +48,8 @@ pub struct ContextInit {
     pub event_tx: Option<Sender<Event>>,
     pub risk_config: RiskConfig,
     pub strategy_id: Option<String>,
+    pub margin_accrued_interest: f64,
+    pub margin_daily_interest: f64,
 }
 
 pub struct ContextUpdate {
@@ -59,6 +62,8 @@ pub struct ContextUpdate {
     pub closed_trades: Arc<Vec<ClosedTrade>>,
     pub recent_trades: Vec<Trade>,
     pub recent_rejected_orders: Vec<Order>,
+    pub margin_accrued_interest: f64,
+    pub margin_daily_interest: f64,
 }
 
 impl StrategyContext {
@@ -91,6 +96,8 @@ impl StrategyContext {
 
         self.recent_trades = update.recent_trades;
         self.recent_rejected_orders = update.recent_rejected_orders;
+        self.margin_accrued_interest = update.margin_accrued_interest;
+        self.margin_daily_interest = update.margin_daily_interest;
 
         // Reset accumulators
         self.orders.clear();
@@ -158,6 +165,10 @@ pub struct StrategyContext {
     pub risk_config: RiskConfig,
     #[pyo3(get)]
     pub strategy_id: Option<String>,
+    #[pyo3(get)]
+    pub margin_accrued_interest: f64,
+    #[pyo3(get)]
+    pub margin_daily_interest: f64,
 }
 
 impl StrategyContext {
@@ -183,6 +194,8 @@ impl StrategyContext {
             event_tx: init.event_tx,
             risk_config: init.risk_config,
             strategy_id: init.strategy_id,
+            margin_accrued_interest: init.margin_accrued_interest,
+            margin_daily_interest: init.margin_daily_interest,
         }
     }
 }
@@ -214,6 +227,8 @@ impl StrategyContext {
         recent_trades: Option<Vec<Trade>>,
         risk_config: Option<RiskConfig>,
         strategy_id: Option<String>,
+        margin_accrued_interest: Option<f64>,
+        margin_daily_interest: Option<f64>,
     ) -> PyResult<Self> {
         let pos_dec: HashMap<String, Decimal> = positions
             .into_iter()
@@ -245,6 +260,8 @@ impl StrategyContext {
             event_tx: None,
             risk_config: risk_config.unwrap_or_default(),
             strategy_id,
+            margin_accrued_interest: margin_accrued_interest.unwrap_or(0.0),
+            margin_daily_interest: margin_daily_interest.unwrap_or(0.0),
         })
     }
 

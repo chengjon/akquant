@@ -15,6 +15,9 @@ impl RiskRule for StockAvailablePositionRule {
 
     fn check(&self, order: &Order, ctx: &RiskCheckContext) -> Result<(), AkQuantError> {
         if order.side == OrderSide::Sell {
+            if ctx.config.is_margin_account() && ctx.config.enable_short_sell {
+                return Ok(());
+            }
             let available = ctx
                 .portfolio
                 .available_positions
@@ -215,5 +218,53 @@ mod tests {
         let rule = StockAvailablePositionRule;
         let result = rule.check(&new_sell, &ctx);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_margin_account_can_short_sell_without_available_position() {
+        let symbol = "sz300274".to_string();
+        let portfolio = Portfolio {
+            cash: Decimal::from(1_000_000),
+            positions: Arc::new(HashMap::new()),
+            available_positions: Arc::new(HashMap::new()),
+        };
+
+        let instrument = Instrument {
+            asset_type: AssetType::Stock,
+            inner: InstrumentEnum::Stock(StockInstrument {
+                symbol: symbol.clone(),
+                lot_size: Decimal::from(100),
+                tick_size: Decimal::new(1, 2),
+                expiry_date: None,
+            }),
+        };
+
+        let mut instruments = HashMap::new();
+        instruments.insert(symbol.clone(), instrument.clone());
+        let current_prices = HashMap::new();
+        let mut config = RiskConfig::new();
+        config.account_mode = "margin".to_string();
+        config.enable_short_sell = true;
+
+        let active_orders: Vec<Order> = vec![];
+        let ctx = make_context(
+            &portfolio,
+            &instrument,
+            &instruments,
+            &active_orders,
+            &current_prices,
+            &config,
+        );
+
+        let new_sell = make_order(
+            "o2",
+            &symbol,
+            OrderSide::Sell,
+            Decimal::from(100),
+            OrderStatus::New,
+        );
+        let rule = StockAvailablePositionRule;
+        let result = rule.check(&new_sell, &ctx);
+        assert!(result.is_ok());
     }
 }

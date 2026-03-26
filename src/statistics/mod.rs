@@ -1,7 +1,7 @@
 use rust_decimal::prelude::*;
 use std::collections::HashMap;
 
-use crate::analysis::{BacktestResult, PositionSnapshot};
+use crate::analysis::{BacktestResult, LiquidationAudit, PositionSnapshot};
 use crate::model::Instrument;
 use crate::portfolio::Portfolio;
 
@@ -19,6 +19,8 @@ pub struct StatisticsManager {
     cash_curve: Vec<(i64, Decimal)>,
     /// 持仓快照 [(timestamp, snapshots)]
     pub snapshots: Vec<(i64, Vec<PositionSnapshot>)>,
+    /// 强平审计记录
+    pub liquidation_audits: Vec<LiquidationAudit>,
 }
 
 impl Default for StatisticsManager {
@@ -34,6 +36,7 @@ impl StatisticsManager {
             equity_curve: Vec::new(),
             cash_curve: Vec::new(),
             snapshots: Vec::new(),
+            liquidation_audits: Vec::new(),
         }
     }
 
@@ -54,6 +57,10 @@ impl StatisticsManager {
     ) {
         let snapshots = Self::create_snapshot(portfolio, instruments, last_prices, trade_tracker);
         self.snapshots.push((timestamp, snapshots));
+    }
+
+    pub fn record_liquidation_audit(&mut self, audit: LiquidationAudit) {
+        self.liquidation_audits.push(audit);
     }
 
     /// 创建持仓快照 (静态方法/无状态)
@@ -170,6 +177,7 @@ impl StatisticsManager {
             initial_cash,
             orders: order_manager.get_all_orders(),
             executions: order_manager.trades.clone(),
+            liquidation_audits: self.liquidation_audits.clone(),
         })
     }
 

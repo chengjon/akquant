@@ -49,6 +49,8 @@
 - [44_strategy_source_loader_demo.py](./44_strategy_source_loader_demo.py): strategy_source + strategy_loader 动态加载示例（明文 + 外部解密）。
 - [45_talib_indicator_playbook_demo.py](./45_talib_indicator_playbook_demo.py): TA-Lib 指标组合模板示例（趋势跟随 + 均值回归 + 风险过滤，支持 `--data-source synthetic|akshare`）。
 - [46_broker_profile_demo.py](./46_broker_profile_demo.py): `broker_profile` 模板注入示例（默认费率/滑点/手数一键生效）。
+- [47_margin_liquidation_audit_demo.py](./47_margin_liquidation_audit_demo.py): 信用账户强平审计示例（`margin` 模式 + `liquidation_audit_df` + 报告输出）。
+- [48_margin_liquidation_priority_compare.py](./48_margin_liquidation_priority_compare.py): 强平顺序对比示例（`short_first` vs `long_first`）。
 
 ## 流式回测与实时报告
 

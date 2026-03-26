@@ -59,6 +59,7 @@ fn process_order_request(engine: &mut Engine, py: Python<'_>, mut order: Order) 
             current_time: engine.clock.timestamp().unwrap_or(0),
             session: engine.clock.session,
             active_orders: &engine.state.order_manager.active_orders,
+            risk_config: &engine.risk_manager.config,
         };
         engine.risk_manager.check_and_adjust(&mut order, &ctx)
     };
@@ -138,6 +139,7 @@ fn emit_execution_reports_for_current_event(engine: &mut Engine) {
         current_time: engine.clock.timestamp().unwrap_or(0),
         session: engine.clock.session,
         active_orders: &engine.state.order_manager.active_orders,
+        risk_config: &engine.risk_manager.config,
     };
 
     let reports = engine.execution_model.on_event(&event, &ctx);
@@ -532,13 +534,58 @@ impl Processor for DataProcessor {
                         instruments: &engine.instruments,
                         last_prices: &engine.last_prices,
                         market_manager: &engine.market_manager,
+                        risk_config: &engine.risk_manager.config,
                     };
-                    engine.settlement_manager.process_daily_settlement(
+                    let settlement_outcome = engine.settlement_manager.process_daily_settlement(
                         &mut engine.state.portfolio,
                         &mut engine.state.order_manager.active_orders,
                         &mut expired_orders,
                         &settlement_ctx,
                     );
+                    engine.margin_daily_interest = settlement_outcome.daily_interest;
+                    engine.margin_accrued_interest += settlement_outcome.daily_interest;
+                    if settlement_outcome.daily_interest > Decimal::ZERO {
+                        let mut settlement_payload = HashMap::new();
+                        settlement_payload.insert("date", local_date.to_string());
+                        settlement_payload.insert(
+                            "daily_interest",
+                            settlement_outcome.daily_interest.to_string(),
+                        );
+                        settlement_payload.insert(
+                            "accrued_interest",
+                            engine.margin_accrued_interest.to_string(),
+                        );
+                        engine.emit_stream_event(py, "settlement", None, "info", settlement_payload);
+                    }
+                    if settlement_outcome.forced_liquidation {
+                        let liquidated_symbols = settlement_outcome.liquidated_symbols.clone();
+                        let priority = engine.risk_manager.config.liquidation_priority.clone();
+                        engine.statistics_manager.record_liquidation_audit(
+                            crate::analysis::LiquidationAudit {
+                                timestamp,
+                                date: local_date.to_string(),
+                                daily_interest: settlement_outcome
+                                    .daily_interest
+                                    .to_f64()
+                                    .unwrap_or_default(),
+                                liquidated_count: liquidated_symbols.len(),
+                                liquidated_symbols: liquidated_symbols.clone(),
+                                priority: priority.clone(),
+                            },
+                        );
+                        let mut risk_payload = HashMap::new();
+                        risk_payload.insert("date", local_date.to_string());
+                        risk_payload.insert(
+                            "liquidated_count",
+                            liquidated_symbols.len().to_string(),
+                        );
+                        risk_payload.insert(
+                            "liquidated_symbols",
+                            liquidated_symbols.join(","),
+                        );
+                        risk_payload.insert("priority", priority);
+                        engine.emit_stream_event(py, "risk", None, "warn", risk_payload);
+                    }
 
                     for o in expired_orders {
                         engine.state.order_manager.orders.push(o);
@@ -794,6 +841,7 @@ impl Processor for ExecutionProcessor {
                         current_time: engine.clock.timestamp().unwrap_or(0),
                         session: engine.clock.session,
                         active_orders: &engine.state.order_manager.active_orders,
+                        risk_config: &engine.risk_manager.config,
                     };
 
                     let reports = engine.execution_model.on_event(&event, &ctx);

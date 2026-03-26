@@ -483,6 +483,26 @@ def _resolve_mark_price(strategy: Any, symbol: str) -> float:
     return 0.0
 
 
+def _is_margin_account(strategy: Any) -> bool:
+    if strategy.ctx is None:
+        return False
+    risk_config = getattr(strategy.ctx, "risk_config", None)
+    account_mode = str(getattr(risk_config, "account_mode", "cash")).strip().lower()
+    return account_mode == "margin"
+
+
+def _stock_margin_ratio(strategy: Any, margin_ratio: float) -> float:
+    if not _is_margin_account(strategy):
+        return margin_ratio
+    if strategy.ctx is None:
+        return margin_ratio
+    risk_config = getattr(strategy.ctx, "risk_config", None)
+    ratio = float(getattr(risk_config, "initial_margin_ratio", margin_ratio))
+    if ratio <= 0.0:
+        return margin_ratio
+    return ratio
+
+
 def _calc_position_margin(strategy: Any, symbol: str, quantity: float) -> float:
     if quantity == 0.0:
         return 0.0
@@ -515,6 +535,8 @@ def _calc_position_margin(strategy: Any, symbol: str, quantity: float) -> float:
             margin_per_unit = price * (1.0 + margin_ratio)
         return max(margin_per_unit, 0.0) * multiplier * abs(qty)
 
+    if asset_type in {"STOCK", "FUND"}:
+        margin_ratio = _stock_margin_ratio(strategy, margin_ratio)
     return abs(qty * price * multiplier) * margin_ratio
 
 
@@ -549,7 +571,7 @@ def _calc_frozen_cash(strategy: Any) -> float:
     return frozen
 
 
-def get_account(strategy: Any) -> Dict[str, float]:
+def get_account(strategy: Any) -> Dict[str, Any]:
     """获取账户资金详情快照."""
     if strategy.ctx is None:
         raise RuntimeError("Context not ready")
@@ -559,12 +581,30 @@ def get_account(strategy: Any) -> Dict[str, float]:
     market_value = float(equity - cash)
     margin = float(_calc_used_margin(strategy))
     frozen_cash = float(_calc_frozen_cash(strategy))
+    borrowed_cash = float(max(-cash, 0.0))
+    short_market_value = 0.0
+    for sym, qty in strategy.ctx.positions.items():
+        qty_f = float(qty)
+        if qty_f >= 0.0:
+            continue
+        short_market_value += abs(qty_f) * _resolve_mark_price(strategy, str(sym))
+    denominator = market_value + short_market_value
+    maintenance_ratio = float(equity / denominator) if denominator > 0.0 else 0.0
+    account_mode = "margin" if _is_margin_account(strategy) else "cash"
+    accrued_interest = float(getattr(strategy.ctx, "margin_accrued_interest", 0.0))
+    daily_interest = float(getattr(strategy.ctx, "margin_daily_interest", 0.0))
     return {
         "cash": cash,
         "equity": equity,
         "market_value": market_value,
         "frozen_cash": frozen_cash,
         "margin": margin,
+        "borrowed_cash": borrowed_cash,
+        "short_market_value": float(short_market_value),
+        "maintenance_ratio": maintenance_ratio,
+        "account_mode": account_mode,
+        "accrued_interest": accrued_interest,
+        "daily_interest": daily_interest,
     }
 
 

@@ -84,6 +84,7 @@ impl RiskManager {
             current_time: 0,
             session: crate::model::TradingSession::Continuous,
             active_orders: &active_orders,
+            risk_config: &self.config,
         };
 
         match self.check_internal(order, &ctx) {
@@ -204,7 +205,14 @@ impl RiskManager {
 
                 if price > Decimal::ZERO {
                     let multiplier = instr.multiplier();
-                    let margin_ratio = instr.margin_ratio();
+                    let margin_ratio = if self.config.is_margin_account()
+                        && (instr.asset_type == AssetType::Stock
+                            || instr.asset_type == AssetType::Fund)
+                    {
+                        self.config.stock_initial_margin_ratio()
+                    } else {
+                        instr.margin_ratio()
+                    };
 
                     // Cost per unit = Price * Multiplier * MarginRatio
                     // For Stock, MarginRatio is usually 1.0 (or 100% cash)

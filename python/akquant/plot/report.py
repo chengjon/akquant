@@ -470,6 +470,10 @@ HTML_TEMPLATE = """
             <summary>策略风控拒单明细 (Risk Rejections by Strategy)</summary>
             <div class="details-content">{risk_by_strategy_html}</div>
         </details>
+        <details class="details-block">
+            <summary>强平审计明细 (Forced Liquidation Audit)</summary>
+            <div class="details-content">{liquidation_audit_html}</div>
+        </details>
         {risk_charts_html}
 
         <footer>
@@ -832,6 +836,8 @@ def _build_chart_html_sections(
     has_risk_trend_chart = False
     has_risk_strategy_trend_chart = False
     has_risk_reason_trend_chart = False
+    has_liquidation_count_chart = False
+    has_liquidation_interest_chart = False
     total_reject_count = 0.0
     risk_df = (
         result.risk_rejections_by_strategy()
@@ -1099,6 +1105,85 @@ def _build_chart_html_sections(
             )
             has_risk_strategy_trend_chart = True
 
+    liquidation_audit_df = (
+        result.liquidation_audit_df
+        if hasattr(result, "liquidation_audit_df")
+        else pd.DataFrame()
+    )
+    liquidation_count_chart_html = ""
+    liquidation_interest_chart_html = ""
+    if not liquidation_audit_df.empty:
+        liq_df = liquidation_audit_df.copy()
+        if "timestamp" in liq_df.columns:
+            liq_df["timestamp"] = pd.to_datetime(liq_df["timestamp"], errors="coerce")
+        elif "date" in liq_df.columns:
+            liq_df["timestamp"] = pd.to_datetime(liq_df["date"], errors="coerce")
+        else:
+            liq_df["timestamp"] = pd.NaT
+        liq_df = liq_df.dropna(subset=["timestamp"]).sort_values("timestamp")
+
+        if not liq_df.empty and "liquidated_count" in liq_df.columns:
+            liq_df["liquidated_count"] = pd.to_numeric(
+                liq_df["liquidated_count"], errors="coerce"
+            ).fillna(0.0)
+            daily_liq = (
+                liq_df.set_index("timestamp")["liquidated_count"].resample("D").sum()
+            ).reset_index()
+            if not daily_liq.empty and float(daily_liq["liquidated_count"].sum()) > 0.0:
+                px = __import__("plotly.express", fromlist=["line"])
+                fig_liq_count = px.line(
+                    daily_liq,
+                    x="timestamp",
+                    y="liquidated_count",
+                    markers=True,
+                    title="按日强平标的数趋势 (Daily Liquidated Symbols Trend)",
+                    labels={
+                        "timestamp": "日期 (Date)",
+                        "liquidated_count": "强平标的数 (Liquidated Symbols)",
+                    },
+                )
+                fig_liq_count.update_layout(
+                    height=320, margin=dict(l=20, r=20, t=60, b=20)
+                )
+                fig_liq_count.update_traces(
+                    hovertemplate="日期=%{x}<br>强平标的数=%{y:.0f}<extra></extra>"
+                )
+                liquidation_count_chart_html = fig_liq_count.to_html(
+                    full_html=False, include_plotlyjs=False, config=config
+                )
+                has_liquidation_count_chart = True
+
+        if not liq_df.empty and "daily_interest" in liq_df.columns:
+            liq_df["daily_interest"] = pd.to_numeric(
+                liq_df["daily_interest"], errors="coerce"
+            ).fillna(0.0)
+            daily_interest = (
+                liq_df.set_index("timestamp")["daily_interest"].resample("D").sum()
+            ).reset_index()
+            has_positive_interest = bool((daily_interest["daily_interest"] > 0.0).any())
+            if not daily_interest.empty and has_positive_interest:
+                px = __import__("plotly.express", fromlist=["bar"])
+                fig_liq_interest = px.bar(
+                    daily_interest,
+                    x="timestamp",
+                    y="daily_interest",
+                    title="按日强平计息 (Daily Liquidation Interest)",
+                    labels={
+                        "timestamp": "日期 (Date)",
+                        "daily_interest": "当日利息 (Daily Interest)",
+                    },
+                )
+                fig_liq_interest.update_layout(
+                    height=320, margin=dict(l=20, r=20, t=60, b=20)
+                )
+                fig_liq_interest.update_traces(
+                    hovertemplate="日期=%{x}<br>当日利息=%{y:.4f}<extra></extra>"
+                )
+                liquidation_interest_chart_html = fig_liq_interest.to_html(
+                    full_html=False, include_plotlyjs=False, config=config
+                )
+                has_liquidation_interest_chart = True
+
     risk_chart_blocks: list[str] = []
 
     def append_risk_chart_block(chart_html: str) -> None:
@@ -1120,6 +1205,10 @@ def _build_chart_html_sections(
         append_risk_chart_block(risk_reject_trend_by_strategy_html)
     if has_risk_reason_trend_chart:
         append_risk_chart_block(risk_reason_trend_html)
+    if has_liquidation_count_chart:
+        append_risk_chart_block(liquidation_count_chart_html)
+    if has_liquidation_interest_chart:
+        append_risk_chart_block(liquidation_interest_chart_html)
 
     if risk_chart_blocks:
         risk_charts_html = "".join(risk_chart_blocks)
@@ -1405,6 +1494,52 @@ def _build_analysis_table_sections(
     else:
         risk_by_strategy_html = "<div>暂无策略归属风控拒单聚合数据</div>"
 
+    liquidation_audit_df = (
+        result.liquidation_audit_df
+        if hasattr(result, "liquidation_audit_df")
+        else pd.DataFrame()
+    )
+    if not liquidation_audit_df.empty:
+        liq_df = liquidation_audit_df.copy()
+        cols = [
+            "timestamp",
+            "date",
+            "daily_interest",
+            "liquidated_count",
+            "liquidated_symbols",
+            "priority",
+        ]
+        cols = [c for c in cols if c in liq_df.columns]
+        if "priority" in liq_df.columns:
+            liq_df["priority"] = (
+                liq_df["priority"]
+                .astype(str)
+                .replace({"short_first": "先平空头", "long_first": "先平多头"})
+            )
+        if "liquidated_symbols" in liq_df.columns:
+            liq_df["liquidated_symbols"] = (
+                liq_df["liquidated_symbols"].astype(str).str.replace(",", ", ")
+            )
+        liquidation_view = _rename_table_columns(
+            liq_df[cols],
+            {
+                "timestamp": "时间戳 (Timestamp)",
+                "date": "日期 (Date)",
+                "daily_interest": "当日利息 (Daily Interest)",
+                "liquidated_count": "强平标的数 (Liquidated Count)",
+                "liquidated_symbols": "强平标的 (Liquidated Symbols)",
+                "priority": "强平顺序 (Priority)",
+            },
+        )
+        liquidation_audit_html = _format_table(
+            liquidation_view,
+            max_rows=20,
+            compact_currency_columns={"当日利息 (Daily Interest)"},
+            compact_currency=compact_currency,
+        )
+    else:
+        liquidation_audit_html = "<div>暂无强平审计数据</div>"
+
     if overview_cards:
         analysis_overview_html = "".join(
             [
@@ -1428,6 +1563,7 @@ def _build_analysis_table_sections(
         "orders_by_strategy_html": orders_by_strategy_html,
         "executions_by_strategy_html": executions_by_strategy_html,
         "risk_by_strategy_html": risk_by_strategy_html,
+        "liquidation_audit_html": liquidation_audit_html,
     }
 
 
@@ -1503,6 +1639,7 @@ def plot_report(
         orders_by_strategy_html=analysis_sections["orders_by_strategy_html"],
         executions_by_strategy_html=analysis_sections["executions_by_strategy_html"],
         risk_by_strategy_html=analysis_sections["risk_by_strategy_html"],
+        liquidation_audit_html=analysis_sections["liquidation_audit_html"],
         risk_charts_html=chart_sections["risk_charts_html"],
     )
 

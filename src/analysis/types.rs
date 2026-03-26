@@ -77,6 +77,32 @@ impl ClosedTrade {
 
 #[gen_stub_pyclass]
 #[pyclass(from_py_object)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiquidationAudit {
+    #[pyo3(get)]
+    pub timestamp: i64,
+    #[pyo3(get)]
+    pub date: String,
+    #[pyo3(get)]
+    pub daily_interest: f64,
+    #[pyo3(get)]
+    pub liquidated_count: usize,
+    #[pyo3(get)]
+    pub liquidated_symbols: Vec<String>,
+    #[pyo3(get)]
+    pub priority: String,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl LiquidationAudit {
+    pub fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 /// 绩效指标.
 ///

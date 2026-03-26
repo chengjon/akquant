@@ -58,6 +58,11 @@ Your task is to write trading strategies or backtest scripts based on user requi
             `{"price_basis": "current_close", "temporal": "next_event"}`.
         *   `timezone`: Default "Asia/Shanghai".
         *   `risk_config`: Use `engine.risk_manager` to set pre-trade checks (Position Limit, Sector Limit, Leverage).
+        *   `risk_config.account_mode`: `"cash"`（默认）或 `"margin"`，信用账户回测需设置为 `"margin"`。
+        *   `risk_config.enable_short_sell`: 信用账户是否允许股票开空，默认 `False`。
+        *   `risk_config.allow_force_liquidation`: 维持担保比例触发时是否执行强平，默认 `True`。
+        *   `risk_config.liquidation_priority`: 强平顺序，`"short_first"`（默认）或 `"long_first"`。
+        *   `result.liquidation_audit_df`: 回测结果中的强平审计表，包含日期、利息、强平标的与顺序。
     *   Example:
         ```python
         engine = Engine()

@@ -56,6 +56,11 @@ Your task is to write trading strategies or backtest scripts based on user requi
         *   `fill_policy`: Preferred unified semantics, e.g.
             `{"price_basis": "current_close", "temporal": "next_event"}`.
         *   `timezone`: Default "Asia/Shanghai".
+        *   `risk_config.account_mode`: `"cash"` (default) or `"margin"` for margin-account backtests.
+        *   `risk_config.enable_short_sell`: Whether stock short opening is allowed in margin mode.
+        *   `risk_config.allow_force_liquidation`: Whether forced liquidation runs when maintenance ratio is breached.
+        *   `risk_config.liquidation_priority`: Forced-liquidation order, `"short_first"` (default) or `"long_first"`.
+        *   `result.liquidation_audit_df`: Forced-liquidation audit table in backtest result with date, interest, symbols, and priority.
     *   Example:
         ```python
         run_backtest(

@@ -395,7 +395,44 @@ Phase-5 Migration FAQ:
 *   How do we roll back? Since Phase 5, `_engine_mode` runtime fallback is removed; use release-level rollback.
 *   Home navigation entry: see [Quick Links in docs home](../index.md#quick-links).
 
-## 4. Advanced Learning
+## 4. Margin Account & Liquidation Audit (Backtest)
+
+To validate financing/short-selling behavior in backtests, enable `margin` mode in `RiskConfig`:
+
+```python
+from akquant import run_backtest
+from akquant.config import RiskConfig
+
+result = run_backtest(
+    data=df,
+    strategy=MyStrategy,
+    symbols="sh600000",
+    risk_config=RiskConfig(
+        account_mode="margin",
+        enable_short_sell=True,
+        initial_margin_ratio=0.5,
+        maintenance_margin_ratio=0.3,
+        financing_rate_annual=0.08,
+        borrow_rate_annual=0.10,
+        allow_force_liquidation=True,
+        liquidation_priority="short_first",
+    ),
+)
+```
+
+After the run, inspect the audit output directly:
+
+```python
+print(result.liquidation_audit_df)
+result.report(filename="report_margin.html", show=False)
+```
+
+The generated report includes:
+
+*   Forced liquidation audit table (date, symbols, priority, daily interest)
+*   Daily liquidation charts in the risk chart area (shown when data exists)
+
+## 5. Advanced Learning
 
 Too simple? Want to learn how to write real quantitative strategies (like Dual Moving Average, MACD, etc.)?
 

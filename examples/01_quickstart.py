@@ -112,6 +112,11 @@ pd.set_option("display.max_columns", None)
 pd.set_option("display.max_rows", None)
 print(result)
 print(result.orders_df)
+liquidation_audit_df = result.liquidation_audit_df
+if liquidation_audit_df.empty:
+    print("liquidation_audit_df is empty")
+else:
+    print(liquidation_audit_df)
 print(f"stream_events={len(events)}")
 
 # Verify metrics manually in Python

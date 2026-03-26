@@ -16,6 +16,7 @@ pub struct CalculatorInput {
     pub initial_cash: Decimal,
     pub orders: Vec<Order>,
     pub executions: Vec<Trade>,
+    pub liquidation_audits: Vec<LiquidationAudit>,
 }
 
 #[gen_stub_pyclass]
@@ -31,6 +32,7 @@ pub struct CalculatorInput {
 /// :ivar snapshots: 每日持仓快照 [(timestamp, [snapshot])]
 /// :ivar orders: 订单列表
 /// :ivar executions: 成交列表
+/// :ivar liquidation_audits: 强平审计记录
 pub struct BacktestResult {
     #[pyo3(get)]
     pub equity_curve: Vec<(i64, f64)>,
@@ -49,6 +51,8 @@ pub struct BacktestResult {
     pub orders: Vec<Order>,
     #[pyo3(get)]
     pub executions: Vec<Trade>,
+    #[pyo3(get)]
+    pub liquidation_audits: Vec<LiquidationAudit>,
 }
 
 impl BacktestResult {
@@ -102,6 +106,7 @@ impl BacktestResult {
                 snapshots: input.snapshots,
                 orders: input.orders,
                 executions: input.executions,
+                liquidation_audits: input.liquidation_audits,
             };
         }
 
@@ -363,6 +368,7 @@ impl BacktestResult {
             snapshots: input.snapshots,
             orders: input.orders,
             executions: input.executions,
+            liquidation_audits: input.liquidation_audits,
         }
     }
 }

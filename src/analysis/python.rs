@@ -698,6 +698,34 @@ impl BacktestResult {
         Ok(dict.into())
     }
 
+    pub fn get_liquidation_audits_dict(&self, py: Python) -> PyResult<Py<PyAny>> {
+        let n = self.liquidation_audits.len();
+        let mut timestamps = Vec::with_capacity(n);
+        let mut dates = Vec::with_capacity(n);
+        let mut daily_interests = Vec::with_capacity(n);
+        let mut liquidated_counts = Vec::with_capacity(n);
+        let mut liquidated_symbols = Vec::with_capacity(n);
+        let mut priorities = Vec::with_capacity(n);
+
+        for row in &self.liquidation_audits {
+            timestamps.push(row.timestamp);
+            dates.push(row.date.clone());
+            daily_interests.push(row.daily_interest);
+            liquidated_counts.push(row.liquidated_count as u64);
+            liquidated_symbols.push(row.liquidated_symbols.join(","));
+            priorities.push(row.priority.clone());
+        }
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("timestamp", timestamps)?;
+        dict.set_item("date", dates)?;
+        dict.set_item("daily_interest", daily_interests)?;
+        dict.set_item("liquidated_count", liquidated_counts)?;
+        dict.set_item("liquidated_symbols", liquidated_symbols)?;
+        dict.set_item("priority", priorities)?;
+        Ok(dict.into())
+    }
+
     /// Get orders as a DataFrame similar to PyBroker's format.
     #[getter]
     pub fn orders_df(&self, py: Python) -> PyResult<Py<PyAny>> {

@@ -522,6 +522,8 @@ impl Engine {
             strategy_last_pnl: HashMap::new(),
             strategy_peak_pnl: HashMap::new(),
             strategy_reduce_only_active: std::collections::HashSet::new(),
+            margin_accrued_interest: Decimal::ZERO,
+            margin_daily_interest: Decimal::ZERO,
             snapshot_time: 0,
             stream_callback: None,
             stream_run_id: None,

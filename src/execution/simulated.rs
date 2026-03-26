@@ -227,7 +227,14 @@ impl ExecutionClient for SimulatedExecutionClient {
                                 );
 
                                 let multiplier = instrument.multiplier();
-                                let margin_ratio = instrument.margin_ratio();
+                                let margin_ratio = if ctx.risk_config.is_margin_account()
+                                    && (instrument.asset_type == AssetType::Stock
+                                        || instrument.asset_type == AssetType::Fund)
+                                {
+                                    ctx.risk_config.stock_initial_margin_ratio()
+                                } else {
+                                    instrument.margin_ratio()
+                                };
 
                                 // Margin Required = Price * Qty * Multiplier * MarginRatio
                                 let margin_required =
@@ -462,7 +469,7 @@ mod tests {
             available_positions: HashMap::new().into(),
         };
         let last_prices = HashMap::new();
-        let _risk_manager = crate::risk::RiskManager::new();
+        let risk_manager = crate::risk::RiskManager::new();
 
         let china_config = crate::market::ChinaMarketConfig {
             stock: Some(crate::market::stock::StockConfig::default()),
@@ -482,6 +489,7 @@ mod tests {
             current_time: 0,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &risk_manager.config,
         };
 
         let events = sim.on_event(&event, &ctx);
@@ -542,7 +550,7 @@ mod tests {
             available_positions: HashMap::new().into(),
         };
         let last_prices = HashMap::new();
-        let _risk_manager = crate::risk::RiskManager::new();
+        let risk_manager = crate::risk::RiskManager::new();
 
         let china_config = crate::market::ChinaMarketConfig {
             stock: Some(crate::market::stock::StockConfig::default()),
@@ -562,6 +570,7 @@ mod tests {
             current_time: 0,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &risk_manager.config,
         };
 
         let events = sim.on_event(&event, &ctx);
@@ -610,7 +619,7 @@ mod tests {
             available_positions: HashMap::new().into(),
         };
         let last_prices = HashMap::new();
-        let _risk_manager = crate::risk::RiskManager::new();
+        let risk_manager = crate::risk::RiskManager::new();
 
         let china_config = crate::market::ChinaMarketConfig {
             stock: Some(crate::market::stock::StockConfig::default()),
@@ -630,6 +639,7 @@ mod tests {
             current_time: 0,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &risk_manager.config,
         };
 
         let events = sim.on_event(&event, &ctx);
@@ -678,7 +688,7 @@ mod tests {
             available_positions: HashMap::new().into(),
         };
         let last_prices = HashMap::new();
-        let _risk_manager = crate::risk::RiskManager::new();
+        let risk_manager = crate::risk::RiskManager::new();
 
         let china_config = crate::market::ChinaMarketConfig {
             stock: Some(crate::market::stock::StockConfig::default()),
@@ -698,6 +708,7 @@ mod tests {
             current_time: 0,
             session: TradingSession::Continuous,
             active_orders: &[],
+            risk_config: &risk_manager.config,
         };
 
         let events = sim.on_event(&event, &ctx);
