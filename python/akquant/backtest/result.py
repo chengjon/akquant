@@ -642,6 +642,34 @@ class BacktestResult:
             ).dt.tz_convert(self._timezone)
         return df
 
+    @cached_property
+    def liquidation_audit_df(self) -> pd.DataFrame:
+        """Get margin forced-liquidation audit records as a Pandas DataFrame."""
+        if not hasattr(self._raw, "get_liquidation_audits_dict"):
+            return pd.DataFrame()
+
+        try:
+            data = self._raw.get_liquidation_audits_dict()
+            if not data:
+                return pd.DataFrame()
+            df = pd.DataFrame(data)
+        except Exception:
+            return pd.DataFrame()
+
+        if df.empty:
+            return df
+        if "timestamp" in df.columns and pd.api.types.is_numeric_dtype(df["timestamp"]):
+            df["timestamp"] = pd.to_datetime(
+                df["timestamp"], unit="ns", utc=True
+            ).dt.tz_convert(self._timezone)
+        if "date" in df.columns and not pd.api.types.is_datetime64_any_dtype(
+            df["date"]
+        ):
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        if "timestamp" in df.columns:
+            df = df.sort_values("timestamp").reset_index(drop=True)
+        return cast(pd.DataFrame, df)
+
     def exposure_df(self, freq: Optional[str] = "D") -> pd.DataFrame:
         """Get portfolio exposure decomposition time series."""
         positions = self.positions_df.copy()

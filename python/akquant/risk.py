@@ -45,6 +45,32 @@ def apply_risk_config(engine: "Engine", config: Optional[PyRiskConfig]) -> None:
 
     if config.safety_margin is not None:
         rust_config.safety_margin = config.safety_margin
+    account_mode = getattr(config, "account_mode", None)
+    if account_mode is not None:
+        setattr(rust_config, "account_mode", str(account_mode))
+    enable_short_sell = getattr(config, "enable_short_sell", None)
+    if enable_short_sell is not None:
+        setattr(rust_config, "enable_short_sell", bool(enable_short_sell))
+    initial_margin_ratio = getattr(config, "initial_margin_ratio", None)
+    if initial_margin_ratio is not None:
+        setattr(rust_config, "initial_margin_ratio", float(initial_margin_ratio))
+    maintenance_margin_ratio = getattr(config, "maintenance_margin_ratio", None)
+    if maintenance_margin_ratio is not None:
+        setattr(
+            rust_config, "maintenance_margin_ratio", float(maintenance_margin_ratio)
+        )
+    financing_rate_annual = getattr(config, "financing_rate_annual", None)
+    if financing_rate_annual is not None:
+        setattr(rust_config, "financing_rate_annual", float(financing_rate_annual))
+    borrow_rate_annual = getattr(config, "borrow_rate_annual", None)
+    if borrow_rate_annual is not None:
+        setattr(rust_config, "borrow_rate_annual", float(borrow_rate_annual))
+    allow_force_liquidation = getattr(config, "allow_force_liquidation", None)
+    if allow_force_liquidation is not None:
+        setattr(rust_config, "allow_force_liquidation", bool(allow_force_liquidation))
+    liquidation_priority = getattr(config, "liquidation_priority", None)
+    if liquidation_priority is not None:
+        setattr(rust_config, "liquidation_priority", str(liquidation_priority))
 
     # Use the dedicated setter method to ensure the update propagates to the Engine
     # Direct attribute assignment (engine.risk_manager.config = ...) might only

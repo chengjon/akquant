@@ -20,6 +20,22 @@ pub struct RiskConfig {
     pub check_cash: bool,
     #[pyo3(get, set)]
     pub safety_margin: f64,
+    #[pyo3(get, set)]
+    pub account_mode: String,
+    #[pyo3(get, set)]
+    pub enable_short_sell: bool,
+    #[pyo3(get, set)]
+    pub initial_margin_ratio: f64,
+    #[pyo3(get, set)]
+    pub maintenance_margin_ratio: f64,
+    #[pyo3(get, set)]
+    pub financing_rate_annual: f64,
+    #[pyo3(get, set)]
+    pub borrow_rate_annual: f64,
+    #[pyo3(get, set)]
+    pub allow_force_liquidation: bool,
+    #[pyo3(get, set)]
+    pub liquidation_priority: String,
 }
 
 #[pymethods]
@@ -34,6 +50,14 @@ impl RiskConfig {
             active: true,
             check_cash: true,
             safety_margin: 0.0001,
+            account_mode: "cash".to_string(),
+            enable_short_sell: false,
+            initial_margin_ratio: 1.0,
+            maintenance_margin_ratio: 0.3,
+            financing_rate_annual: 0.08,
+            borrow_rate_annual: 0.10,
+            allow_force_liquidation: true,
+            liquidation_priority: "short_first".to_string(),
         }
     }
 
@@ -78,5 +102,23 @@ impl RiskConfig {
             None => None,
         };
         Ok(())
+    }
+}
+
+impl RiskConfig {
+    pub fn is_margin_account(&self) -> bool {
+        self.account_mode.eq_ignore_ascii_case("margin")
+    }
+
+    pub fn stock_initial_margin_ratio(&self) -> Decimal {
+        Decimal::from_f64(self.initial_margin_ratio).unwrap_or(Decimal::ONE)
+    }
+
+    pub fn maintenance_margin_ratio_decimal(&self) -> Decimal {
+        Decimal::from_f64(self.maintenance_margin_ratio).unwrap_or(Decimal::ZERO)
+    }
+
+    pub fn liquidation_short_first(&self) -> bool {
+        !self.liquidation_priority.eq_ignore_ascii_case("long_first")
     }
 }

@@ -109,6 +109,44 @@ result = aq.run_backtest(
 
 一键平仓。无论当前持有多头还是空头，都会发出相反方向的市价单将其平掉。
 
+### 5.3.4 信用账户参数与账户快照
+
+当你在股票场景做融资/融券回测时，需要在 `RiskConfig` 中显式启用信用账户模式：
+
+```python
+from akquant.config import RiskConfig
+
+risk_config = RiskConfig(
+    account_mode="margin",
+    enable_short_sell=True,
+    initial_margin_ratio=0.5,
+    maintenance_margin_ratio=0.3,
+    financing_rate_annual=0.08,
+    borrow_rate_annual=0.10,
+    allow_force_liquidation=True,
+    liquidation_priority="short_first",
+)
+```
+
+策略内可通过 `get_account()` 读取信用账户专有字段：
+
+- `borrowed_cash`: 融资负债
+- `short_market_value`: 空头市值
+- `maintenance_ratio`: 维持担保比例
+- `accrued_interest` / `daily_interest`: 累计与当日计息
+
+```python
+snap = self.get_account()
+print(
+    snap["account_mode"],
+    snap["borrowed_cash"],
+    snap["short_market_value"],
+    snap["maintenance_ratio"],
+    snap["accrued_interest"],
+    snap["daily_interest"],
+)
+```
+
 ## 5.4 高级策略模式 (Advanced Patterns)
 
 在实际开发中，简单的双均线往往不够用。我们需要更复杂的策略模式。

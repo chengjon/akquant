@@ -231,4 +231,12 @@ exec_by_strategy = result.executions_by_strategy()  # strategy-level execution s
 risk_by_strategy = result.risk_rejections_by_strategy()  # strategy-level risk rejection summary
 risk_trend = result.risk_rejections_trend(freq="D")  # daily trend of risk rejections
 risk_trend_by_strategy = result.risk_rejections_trend_by_strategy(freq="D")
+
+# margin-account forced liquidation audit (when enabled)
+liquidation_audit = result.liquidation_audit_df
 ```
+
+When margin mode is enabled and forced liquidation occurs, `result.report(...)` automatically includes:
+
+- a forced liquidation audit table (date, daily interest, symbols, priority)
+- daily liquidation charts in the risk chart section (shown when data exists)

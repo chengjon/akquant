@@ -211,3 +211,199 @@ def test_short_option_margin_is_checked_and_account_margin_updates() -> None:
     assert any("Insufficient margin" in r for r in reasons), reasons
     assert ShortPutStrategy.account_snapshots
     assert any(s["margin"] > 0.0 for s in ShortPutStrategy.account_snapshots)
+
+
+def test_margin_account_allows_short_sell_when_enabled() -> None:
+    """Margin account should allow opening short stock positions."""
+
+    class ShortStockStrategy(Strategy):
+        def __init__(self) -> None:
+            self.ordered = False
+
+        def on_bar(self, bar: Bar) -> None:
+            if not self.ordered:
+                self.sell(bar.symbol, 10)
+                self.ordered = True
+
+    bars = _build_bars(
+        [
+            pd.Timestamp("2023-01-01 10:00:00", tz="Asia/Shanghai"),
+            pd.Timestamp("2023-01-01 10:01:00", tz="Asia/Shanghai"),
+        ],
+        [10.0, 10.0],
+        symbol="SHORTABLE",
+    )
+    result = run_backtest(
+        data=bars,
+        strategy=ShortStockStrategy,
+        symbol="SHORTABLE",
+        initial_cash=100000.0,
+        show_progress=False,
+        execution_mode="current_close",
+        lot_size=1,
+        risk_config=RiskConfig(account_mode="margin", enable_short_sell=True),
+    )
+
+    reasons = _reject_reasons(result)
+    assert all("Insufficient available position" not in r for r in reasons), reasons
+    sell_rows = result.orders_df[result.orders_df["side"].astype(str) == "sell"]
+    assert not sell_rows.empty
+    assert float(sell_rows["filled_quantity"].sum()) > 0.0
+
+
+def test_margin_account_stock_buy_uses_initial_margin_ratio() -> None:
+    """Margin account stock buying should apply initial margin ratio for sizing."""
+
+    class LeveragedBuyStrategy(Strategy):
+        account_snapshots: list[dict[str, Any]] = []
+
+        def __init__(self) -> None:
+            self.ordered = False
+
+        def on_bar(self, bar: Bar) -> None:
+            if not self.ordered:
+                self.buy(bar.symbol, 1500)
+                self.ordered = True
+
+        def on_trade(self, trade: Any) -> None:
+            self.__class__.account_snapshots.append(self.get_account())
+
+    bars = _build_bars(
+        [
+            pd.Timestamp("2023-01-01 10:00:00", tz="Asia/Shanghai"),
+            pd.Timestamp("2023-01-01 10:01:00", tz="Asia/Shanghai"),
+        ],
+        [100.0, 100.0],
+        symbol="MARGIN_BUY",
+    )
+    LeveragedBuyStrategy.account_snapshots = []
+    result = run_backtest(
+        data=bars,
+        strategy=LeveragedBuyStrategy,
+        symbol="MARGIN_BUY",
+        initial_cash=100000.0,
+        show_progress=False,
+        execution_mode="current_close",
+        lot_size=1,
+        risk_config=RiskConfig(
+            account_mode="margin",
+            enable_short_sell=True,
+            initial_margin_ratio=0.5,
+        ),
+    )
+
+    reasons = _reject_reasons(result)
+    assert not any("Insufficient margin" in r for r in reasons), reasons
+    filled_qty = float(result.orders_df["filled_quantity"].sum())
+    assert filled_qty >= 1500.0
+    assert LeveragedBuyStrategy.account_snapshots
+    snap = LeveragedBuyStrategy.account_snapshots[-1]
+    assert "borrowed_cash" in snap
+    assert "short_market_value" in snap
+    assert "maintenance_ratio" in snap
+    assert snap.get("account_mode") == "margin"
+
+
+def test_margin_account_daily_financing_interest_is_deducted() -> None:
+    """Margin account financing interest should be deducted on day switch."""
+
+    class FinancingInterestStrategy(Strategy):
+        account_snapshots: list[dict[str, Any]] = []
+
+        def __init__(self) -> None:
+            self.ordered = False
+
+        def on_bar(self, bar: Bar) -> None:
+            if not self.ordered:
+                self.buy(bar.symbol, 150)
+                self.ordered = True
+                return
+            self.__class__.account_snapshots.append(self.get_account())
+
+    bars = _build_bars(
+        [
+            pd.Timestamp("2023-01-01 10:00:00", tz="Asia/Shanghai"),
+            pd.Timestamp("2023-01-01 14:00:00", tz="Asia/Shanghai"),
+            pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai"),
+        ],
+        [100.0, 100.0, 100.0],
+        symbol="INTEREST",
+    )
+    FinancingInterestStrategy.account_snapshots = []
+    run_backtest(
+        data=bars,
+        strategy=FinancingInterestStrategy,
+        symbol="INTEREST",
+        initial_cash=10000.0,
+        show_progress=False,
+        execution_mode="current_close",
+        lot_size=1,
+        risk_config=RiskConfig(
+            account_mode="margin",
+            initial_margin_ratio=0.5,
+            financing_rate_annual=36.5,
+            borrow_rate_annual=0.0,
+            allow_force_liquidation=False,
+        ),
+    )
+
+    assert len(FinancingInterestStrategy.account_snapshots) >= 2
+    day1_snapshot = FinancingInterestStrategy.account_snapshots[0]
+    day2_snapshot = FinancingInterestStrategy.account_snapshots[1]
+    day1_cash = float(day1_snapshot["cash"])
+    day2_cash = float(day2_snapshot["cash"])
+    assert day2_cash < day1_cash
+    assert float(day2_snapshot.get("accrued_interest", 0.0)) > 0.0
+    assert float(day2_snapshot.get("daily_interest", 0.0)) > 0.0
+
+
+def test_margin_account_force_liquidation_on_maintenance_breach() -> None:
+    """Margin account should force-liquidate positions when breached."""
+
+    class ForceLiquidationStrategy(Strategy):
+        pos_snapshots: list[float] = []
+
+        def __init__(self) -> None:
+            self.ordered = False
+
+        def on_bar(self, bar: Bar) -> None:
+            if not self.ordered:
+                self.buy(bar.symbol, 150)
+                self.ordered = True
+            self.__class__.pos_snapshots.append(float(self.get_position(bar.symbol)))
+
+    bars = _build_bars(
+        [
+            pd.Timestamp("2023-01-01 10:00:00", tz="Asia/Shanghai"),
+            pd.Timestamp("2023-01-01 14:00:00", tz="Asia/Shanghai"),
+            pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai"),
+        ],
+        [100.0, 20.0, 20.0],
+        symbol="LIQ",
+    )
+    ForceLiquidationStrategy.pos_snapshots = []
+    result = run_backtest(
+        data=bars,
+        strategy=ForceLiquidationStrategy,
+        symbol="LIQ",
+        initial_cash=10000.0,
+        show_progress=False,
+        execution_mode="current_close",
+        lot_size=1,
+        risk_config=RiskConfig(
+            account_mode="margin",
+            initial_margin_ratio=0.5,
+            maintenance_margin_ratio=0.5,
+            financing_rate_annual=0.0,
+            borrow_rate_annual=0.0,
+            allow_force_liquidation=True,
+        ),
+    )
+
+    assert ForceLiquidationStrategy.pos_snapshots
+    assert any(p > 0.0 for p in ForceLiquidationStrategy.pos_snapshots[:-1])
+    assert ForceLiquidationStrategy.pos_snapshots[-1] == 0.0
+    liquidation_df = result.liquidation_audit_df
+    assert not liquidation_df.empty
+    assert "liquidated_symbols" in liquidation_df.columns
+    assert "priority" in liquidation_df.columns

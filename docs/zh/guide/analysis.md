@@ -207,7 +207,15 @@ executions_by_strategy = result.executions_by_strategy()
 risk_by_strategy = result.risk_rejections_by_strategy()
 risk_trend = result.risk_rejections_trend(freq="D")
 risk_trend_by_strategy = result.risk_rejections_trend_by_strategy(freq="D")
+
+# 5) 信用账户强平审计（融资融券回测时）
+liquidation_audit = result.liquidation_audit_df
 ```
+
+当启用信用账户并触发强平后，`result.report(...)` 的 HTML 报告会自动包含：
+
+- 强平审计明细表（日期、当日计息、强平标的、强平顺序）
+- 风险图表区中的按日强平统计图（有数据时展示）
 
 或者使用 `plot` 方法快速预览特定图表：
 

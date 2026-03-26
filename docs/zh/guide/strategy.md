@@ -137,6 +137,48 @@ result = run_backtest(
 
 建议先从“中性”起步，再根据策略波动与换手逐步收紧或放宽。
 
+### 3.1 信用账户回测（融资/融券）
+
+若策略需要在回测中启用融资买入或融券卖出，可在 `RiskConfig` 中显式切换到账户模式 `margin`：
+
+```python
+from akquant.config import RiskConfig
+
+risk_config = RiskConfig(
+    account_mode="margin",
+    enable_short_sell=True,
+    initial_margin_ratio=0.5,
+    maintenance_margin_ratio=0.3,
+    financing_rate_annual=0.08,
+    borrow_rate_annual=0.10,
+    allow_force_liquidation=True,
+    liquidation_priority="short_first",
+)
+```
+
+常用字段说明：
+
+- `account_mode`: `"cash"` / `"margin"`。
+- `enable_short_sell`: `True` 时允许股票开空。
+- `initial_margin_ratio`: 初始保证金比例（影响可开仓规模）。
+- `maintenance_margin_ratio`: 维持担保比例阈值。
+- `allow_force_liquidation`: 维持担保比例跌破阈值时是否触发强平。
+- `liquidation_priority`: `"short_first"` 或 `"long_first"`。
+
+策略中可通过 `get_account()` 读取信用账户扩展字段：
+
+```python
+snap = self.get_account()
+print(
+    snap["account_mode"],
+    snap["borrowed_cash"],
+    snap["short_market_value"],
+    snap["maintenance_ratio"],
+    snap["accrued_interest"],
+    snap["daily_interest"],
+)
+```
+
 ## 4. 常用工具 (Utilities)
 
 AKQuant 提供了一系列便捷工具来简化策略开发。

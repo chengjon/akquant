@@ -1286,7 +1286,7 @@ class Strategy:
         """
         return _get_order_impl(self, order_id)
 
-    def get_account(self) -> Dict[str, float]:
+    def get_account(self) -> Dict[str, Any]:
         """
         获取账户资金详情快照.
 
@@ -1297,6 +1297,12 @@ class Strategy:
                 - market_value: 持仓总市值 (equity - cash)
                 - frozen_cash: 当前未完成订单预占资金
                 - margin: 当前仓位占用保证金
+                - borrowed_cash: 融资负债 (现金为负时)
+                - short_market_value: 空头市值
+                - maintenance_ratio: 维持担保比例
+                - account_mode: 账户模式 ("cash" / "margin")
+                - accrued_interest: 累计计提利息
+                - daily_interest: 当日计提利息
         """
         return _get_account_impl(self)
 

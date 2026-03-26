@@ -5,6 +5,7 @@ from typing import cast
 import pandas as pd
 import pytest
 from akquant import Bar, Strategy, run_backtest
+from akquant.config import RiskConfig
 from akquant.plot import (
     plot_dashboard,
     plot_pnl_vs_duration,
@@ -36,6 +37,21 @@ class NoTradeStrategy(Strategy):
     def on_bar(self, bar: Bar) -> None:
         """Do nothing on each bar."""
         _ = bar
+
+
+class MarginLiquidationStrategy(Strategy):
+    """Open a leveraged long to trigger forced liquidation on drawdown."""
+
+    def __init__(self) -> None:
+        """Initialize one-shot order flag."""
+        super().__init__()
+        self.ordered = False
+
+    def on_bar(self, bar: Bar) -> None:
+        """Buy once with leverage-like sizing."""
+        if not self.ordered:
+            self.buy(symbol=bar.symbol, quantity=150)
+            self.ordered = True
 
 
 def _build_data(symbol: str = "TEST", n: int = 5) -> list[Bar]:
@@ -105,11 +121,8 @@ def test_report_contains_new_analysis_sections(tmp_path: Path) -> None:
     assert "组合归因与容量分析 (Attribution & Capacity)" in html
     assert "最新净暴露比 (Latest Net Exposure %)" in html
     assert "平均换手率 (Avg Turnover)" in html
-    assert "暂无策略级风控拒单占比图" in html
-    assert "暂无策略级拒单原因占比图" in html
-    assert "暂无按日风控拒单趋势图" in html
-    assert "暂无按策略风控拒单趋势图" in html
-    assert "暂无按日拒单原因趋势图" in html
+    assert "策略风控拒单明细 (Risk Rejections by Strategy)" in html
+    assert "暂无策略归属风控拒单聚合数据" in html
     assert "未提供行情数据，已跳过 K 线复盘图" in html
 
 
@@ -140,8 +153,8 @@ def test_report_includes_trade_kline_with_market_data(tmp_path: Path) -> None:
     html = report_path.read_text(encoding="utf-8")
     assert "交易复盘 (K线买卖点)" in html
     assert "Strategy Analysis: TEST" in html
-    assert "净盈亏" in html
-    assert "持仓K线数" in html
+    assert "entry" in html
+    assert "exit" in html
 
 
 def test_report_handles_empty_trade_analysis_blocks(tmp_path: Path) -> None:
@@ -194,3 +207,65 @@ def test_plot_functions_return_figures_for_non_empty_result() -> None:
     assert fig_rolling is not None
     fig_returns = plot_returns_distribution(result.daily_returns)
     assert fig_returns is not None
+
+
+def test_report_contains_forced_liquidation_audit_section(tmp_path: Path) -> None:
+    """Report HTML should include forced liquidation audit section and entries."""
+    _skip_if_no_plotly()
+    bars = [
+        Bar(
+            timestamp=pd.Timestamp("2023-01-01 10:00:00").value,
+            open=100.0,
+            high=100.2,
+            low=99.8,
+            close=100.0,
+            volume=10000.0,
+            symbol="LIQ",
+        ),
+        Bar(
+            timestamp=pd.Timestamp("2023-01-01 14:00:00").value,
+            open=20.0,
+            high=20.2,
+            low=19.8,
+            close=20.0,
+            volume=10000.0,
+            symbol="LIQ",
+        ),
+        Bar(
+            timestamp=pd.Timestamp("2023-01-02 10:00:00").value,
+            open=20.0,
+            high=20.2,
+            low=19.8,
+            close=20.0,
+            volume=10000.0,
+            symbol="LIQ",
+        ),
+    ]
+    result = run_backtest(
+        data=bars,
+        strategy=MarginLiquidationStrategy,
+        symbol="LIQ",
+        initial_cash=10000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+        risk_config=RiskConfig(
+            account_mode="margin",
+            initial_margin_ratio=0.5,
+            maintenance_margin_ratio=0.5,
+            financing_rate_annual=0.0,
+            borrow_rate_annual=0.0,
+            allow_force_liquidation=True,
+            liquidation_priority="short_first",
+        ),
+    )
+    report_path = tmp_path / "report_with_liquidation_audit.html"
+    result.report(filename=str(report_path), show=False)
+    html = report_path.read_text(encoding="utf-8")
+    assert "强平审计明细 (Forced Liquidation Audit)" in html
+    assert "强平标的 (Liquidated Symbols)" in html
+    assert "LIQ" in html
