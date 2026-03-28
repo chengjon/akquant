@@ -11,6 +11,8 @@ import pickle
 import threading
 import time
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from datetime import time as datetime_time
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type, Union, cast
 
 import numpy as np
@@ -162,10 +164,26 @@ class JSONEncoder(json.JSONEncoder):
 
     def default(self, obj: Any) -> Any:
         """Encode object."""
+        if obj is pd.NaT:
+            return None
+        if isinstance(obj, pd.Timestamp):
+            if pd.isna(obj):
+                return None
+            return obj.isoformat()
+        if isinstance(obj, pd.Timedelta):
+            return obj.total_seconds()
+        if isinstance(obj, (datetime, date, datetime_time)):
+            return obj.isoformat()
+        if isinstance(obj, timedelta):
+            return obj.total_seconds()
         if isinstance(obj, (np.integer, np.int64, np.int32)):
             return int(obj)
         elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            if np.isnan(obj) or np.isinf(obj):
+                return None
             return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
         return super().default(obj)
