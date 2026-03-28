@@ -1,6 +1,7 @@
 import time
 import warnings
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any, cast
 
 import akquant
@@ -3691,6 +3692,43 @@ def test_run_grid_search_single_worker_accepts_camelcase_execution_mode() -> Non
     assert float(results.iloc[0]["end_market_value"]) > float(
         results.iloc[0]["initial_market_value"]
     )
+
+
+def test_run_grid_search_db_path_serializes_timestamp_metrics(
+    tmp_path: Path,
+) -> None:
+    """Grid search cache should serialize Timestamp metrics into JSON strings."""
+    import json
+    import sqlite3
+
+    symbol = "OPT_DB_TS_SERIALIZE"
+    data = _build_benchmark_data(n=40, symbol=symbol)
+    db_path = tmp_path / "walk_forward_cache.db"
+
+    results = akquant.run_grid_search(
+        strategy=NoopStrategy,
+        param_grid={"dummy": [1]},
+        data=data,
+        symbol=symbol,
+        max_workers=1,
+        return_df=True,
+        show_progress=False,
+        db_path=str(db_path),
+    )
+
+    assert isinstance(results, pd.DataFrame)
+    assert len(results) == 1
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT metrics_json FROM optimization_results WHERE strategy_name = ?",
+            (NoopStrategy.__name__,),
+        ).fetchone()
+
+    assert row is not None
+    metrics = json.loads(cast(str, row[0]))
+    assert isinstance(metrics.get("start_time"), str)
+    assert isinstance(metrics.get("end_time"), str)
 
 
 def test_run_backtest_expiry_date_str_is_rejected() -> None:
