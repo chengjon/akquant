@@ -157,6 +157,47 @@ class SmaStrategy(Strategy):
 --8<-- "examples/textbook/ch11_optimization.py"
 ```
 
+### 11.4.2A 新参数（并行日志与严格参数校验）
+
+为提升优化可观测性与结果可靠性，推荐关注以下参数：
+
+*   `forward_worker_logs`（`run_grid_search`）：
+    *   `False`（默认）：性能优先，子进程日志可能在主进程不可见；
+    *   `True`：将子进程 `self.log()` 聚合回主进程，适合排障与教学演示。
+*   `strict_strategy_params`（`run_backtest`，默认 `True`）：
+    *   严格校验策略构造参数；
+    *   当 `param_grid` 中存在策略不接受的参数时，立即抛错，避免静默回退导致“看似跑完但结果无效”。
+*   `run_walk_forward` 也支持通过 `**kwargs` 透传这两个参数：
+    *   `forward_worker_logs` 作用于样本内优化阶段（内部 `run_grid_search`）；
+    *   `strict_strategy_params` 在样本内优化与样本外验证阶段都生效。
+
+示例：
+
+```python
+results = run_grid_search(
+    strategy=TailTradingStrategy,
+    param_grid=param_grid,
+    data=all_data,
+    max_workers=4,
+    forward_worker_logs=True,
+)
+```
+
+WFO 传导示例：
+
+```python
+wfo_results = run_walk_forward(
+    strategy=TailTradingStrategy,
+    param_grid=param_grid,
+    data=all_data,
+    train_period=250,
+    test_period=60,
+    max_workers=4,
+    forward_worker_logs=True,
+    strict_strategy_params=True,
+)
+```
+
 ### 11.4.3 结果分析
 
 运行上述代码后，我们会得到一个按夏普比率排序的参数表。

@@ -47,9 +47,74 @@ def run_backtest(
     broker_profile: Optional[str] = None,
     timer_execution_policy: Literal["same_cycle", "next_event"] = "same_cycle",
     fill_policy: Optional[Dict[str, str]] = None,
+    strict_strategy_params: bool = True,
     **kwargs: Any,
 ) -> BacktestResult
 ```
+
+### `akquant.run_grid_search`
+
+参数网格搜索入口，用于批量回测并按指标排序返回最优参数组合。
+
+```python
+def run_grid_search(
+    strategy: Type[Strategy],
+    param_grid: Dict[str, Sequence[Any]],
+    data: Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]],
+    sort_by: Union[str, List[str]] = "sharpe_ratio",
+    ascending: Union[bool, List[bool]] = False,
+    return_df: bool = True,
+    result_filter: Optional[Callable[[Dict[str, Any]], bool]] = None,
+    constraint: Optional[Callable[[Dict[str, Any]], bool]] = None,
+    max_workers: Optional[int] = None,
+    show_progress: bool = True,
+    timeout: Optional[float] = None,
+    max_tasks_per_child: Optional[int] = None,
+    db_path: Optional[str] = None,
+    forward_worker_logs: bool = False,
+    **kwargs: Any,
+) -> Union[pd.DataFrame, List[OptimizationResult]]
+```
+
+**关键参数补充:**
+
+*   `forward_worker_logs`: 并行优化时是否将子进程策略日志回传到主进程。
+    *   `False`：吞吐优先，日志可能在主进程不可见。
+    *   `True`：启用日志聚合，便于排障。
+*   `strict_strategy_params`: 通过 `**kwargs` 传递给 `run_backtest`（默认在 `run_grid_search` 内为 `True`）。
+    *   严格校验 `param_grid` 与策略构造参数匹配关系；
+    *   参数不匹配时快速失败，避免静默回退。
+
+### `akquant.run_walk_forward`
+
+滚动优化入口。按窗口执行“样本内参数优化 + 样本外验证”，并拼接样本外资金曲线。
+
+```python
+def run_walk_forward(
+    strategy: Type[Strategy],
+    param_grid: Mapping[str, Sequence[Any]],
+    data: pd.DataFrame,
+    train_period: int,
+    test_period: int,
+    metric: Union[str, List[str]] = "sharpe_ratio",
+    ascending: Union[bool, List[bool]] = False,
+    initial_cash: float = 100_000.0,
+    warmup_period: int = 0,
+    warmup_calc: Optional[Any] = None,
+    constraint: Optional[Any] = None,
+    result_filter: Optional[Any] = None,
+    compounding: bool = False,
+    timeout: Optional[float] = None,
+    max_tasks_per_child: Optional[int] = None,
+    **kwargs: Any,
+) -> pd.DataFrame
+```
+
+**关键参数补充:**
+
+*   `**kwargs` 会透传到 `run_grid_search`（样本内优化阶段）与 `run_backtest`（样本外验证阶段）。
+*   因此，`forward_worker_logs` 可用于控制样本内并行优化日志回传。
+*   同时，`strict_strategy_params` 会在优化与回测阶段保持严格参数校验语义（默认严格）。
 
 ### `akquant.run_warm_start`
 
@@ -102,6 +167,9 @@ def run_warm_start(
     *   `price_basis`: `next_open`、`current_close`、`ohlc4`（OHLC 平均价）或 `hl2`（高低中价）。
     *   预留（暂未实现）: `mid_quote`、`vwap_window`、`twap_window`（当前会抛出 `NotImplementedError`）。
     *   `temporal`: `same_cycle` 或 `next_event`。
+*   `strict_strategy_params`: 是否严格校验策略构造参数（默认 `True`）。
+    *   当传入策略不接受的参数时会立即抛错；
+    *   推荐保持默认值，避免参数错配被静默忽略导致回测结果偏差。
 *   `t_plus_one`: 是否启用 T+1 交易规则 (默认 False)。如果启用，将强制使用中国市场模型。
 *   `slippage`: 全局滑点 (默认 0.0)。例如 0.0001 代表 1bp (0.01%) 的滑点，采用百分比模型。
 *   `volume_limit_pct`: 成交量限制比例 (默认 0.25)。限制单笔成交不超过该 Bar 总成交量的百分比。

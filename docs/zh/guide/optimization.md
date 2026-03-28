@@ -142,6 +142,12 @@ results = run_grid_search(
 *   `result_filter`: (可选) 结果筛选回调函数，用于过滤不符合条件的组合。
 *   `warmup_calc`: (可选) 动态计算预热期的回调函数。
 *   `constraint`: (可选) 参数约束回调函数，用于过滤无效组合。
+*   `forward_worker_logs`: (可选) 并行优化时是否将子进程 `self.log()` 回传到主进程日志。
+    *   `False` (默认): 性能更优，日志可能在主进程不可见。
+    *   `True`: 主进程可聚合子进程日志，适合排障与教学演示。
+*   `strict_strategy_params`: (默认 `True`，由 `run_grid_search` 注入到 `run_backtest`)。
+    *   启用后会严格校验 `param_grid` 是否与策略构造函数参数匹配；
+    *   发现未知参数时立即抛错，避免“静默回退”导致优化结果失真。
 
 ### 资源控制与异常处理 (Resource Control & Error Handling)
 
@@ -186,6 +192,14 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 ```
+
+### 并行日志可见性与提示规则
+
+在 `max_workers > 1` 场景下，日志提示与 `forward_worker_logs` 的关系如下：
+
+*   `forward_worker_logs=False`：会提示“子进程日志可能在主进程不可见”。
+*   `forward_worker_logs=True` 且主进程存在有效 logger handler：启用日志回传，不再显示“不可见”提示。
+*   `forward_worker_logs=True` 但主进程无有效 logger handler：会提示“请求了日志回传但主进程无可用 handler”。
 
 ### 持久化与断点续传 (Persistence & Resume)
 
@@ -245,7 +259,10 @@ wfo_results = run_walk_forward(
     metric="sharpe_ratio", # 优化目标
     initial_cash=100_000.0,
     warmup_calc=warmup_calc, # 支持动态预热
-    constraint=param_constraint # 支持参数约束
+    constraint=param_constraint, # 支持参数约束
+    max_workers=4,
+    forward_worker_logs=True,    # 样本内并行优化日志回传
+    strict_strategy_params=True, # 严格参数校验（推荐保持开启）
 )
 
 # wfo_results 包含拼接后的资金曲线和每段使用的参数
@@ -259,6 +276,10 @@ print(wfo_results)
 *   `metric`: 在训练集上选择最优参数的依据指标。支持单个字符串 (如 `"sharpe_ratio"`) 或字符串列表 (如 `["sharpe_ratio", "total_return"]`)。
 *   `ascending`: 排序方向，与 `metric` 对应。支持布尔值或布尔值列表 (默认 `False`，即降序)。
 *   `result_filter`: (可选) 结果筛选回调函数，在每个训练窗口中过滤不符合条件的参数组合。
+*   `kwargs` 透传规则：
+    *   样本内优化阶段透传给 `run_grid_search`；
+    *   样本外验证阶段透传给 `run_backtest`；
+    *   因此可在 WFO 中继续使用 `forward_worker_logs` 与 `strict_strategy_params`。
 
 ---
 

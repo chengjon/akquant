@@ -75,10 +75,6 @@
     *   因子表达式的原理与优势
     *   Polars 高性能计算架构
     *   案例：Alpha101 因子实战 ([examples/textbook/ch14_factor.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch14_factor.py))
-*   **[第 16 章：AKQuant 指标全景与工程化使用](16_rust_indicators.md)**
-    *   AKQuant 支持的 103 个指标分类、解释与 warmup 口径
-    *   指标词典与教学脚手架联动（见 [AKQuant 指标全量说明](../guide/rust_indicator_reference.md)）
-
 ### 第五部分：从回测到实盘 (Live Trading)
 
 *   **[第 15 章：实盘交易系统与运维](15_live_trading.md)**
@@ -86,6 +82,12 @@
     *   主示例：实盘启动与网关接入 ([examples/textbook/ch15_live_trading.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_live_trading.py))
     *   进阶示例：动态策略加载与运行时注入 ([examples/textbook/ch15_strategy_loader.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch15_strategy_loader.py))
     *   风控与熔断机制
+
+### 第六部分：指标工程与工具链 (Indicator Engineering)
+
+*   **[第 16 章：AKQuant 指标全景与工程化使用](16_rust_indicators.md)**
+    *   AKQuant 支持的 103 个指标分类、解释与 warmup 口径
+    *   指标词典与教学脚手架联动（见 [AKQuant 指标全量说明](../guide/rust_indicator_reference.md)）
 
 ## 章节示例映射（主示例 / 进阶示例 / 对应指南）
 

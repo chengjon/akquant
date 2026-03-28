@@ -142,6 +142,12 @@ results = run_grid_search(
 *   `result_filter`: (Optional) Callback function to filter results based on metrics.
 *   `warmup_calc`: (Optional) Callback function for dynamic warmup period calculation.
 *   `constraint`: (Optional) Callback function for parameter constraints to filter invalid combinations.
+*   `forward_worker_logs`: (Optional) Whether to forward worker-process `self.log()` output to the main process during parallel optimization.
+    *   `False` (default): Better throughput, worker logs may not be visible in main process output.
+    *   `True`: Main process aggregates worker logs, useful for debugging and teaching.
+*   `strict_strategy_params`: (default `True`, injected by `run_grid_search` into `run_backtest`).
+    *   Enforces strict validation between `param_grid` keys and strategy constructor signature.
+    *   Raises fast on unknown parameters to avoid silent fallback and distorted optimization results.
 
 ### Resource Control & Error Handling
 
@@ -186,6 +192,14 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 ```
+
+### Parallel Log Visibility & Warning Rules
+
+When `max_workers > 1`, warning behavior is tied to `forward_worker_logs`:
+
+*   `forward_worker_logs=False`: warns that worker logs may not be visible in the main process.
+*   `forward_worker_logs=True` with active main-process logger handlers: log forwarding is enabled and visibility warning is suppressed.
+*   `forward_worker_logs=True` without active main-process handlers: warns that forwarding was requested but no handler is available.
 
 ### Persistence & Resume
 
@@ -245,7 +259,10 @@ wfo_results = run_walk_forward(
     metric="sharpe_ratio", # Optimization target
     initial_cash=100_000.0,
     warmup_calc=warmup_calc, # Support dynamic warmup
-    constraint=param_constraint # Support parameter constraints
+    constraint=param_constraint, # Support parameter constraints
+    max_workers=4,
+    forward_worker_logs=True,    # Forward in-sample worker logs
+    strict_strategy_params=True, # Keep strict constructor validation
 )
 
 # wfo_results contains the concatenated equity curve and parameters used for each segment
@@ -257,6 +274,10 @@ print(wfo_results)
 *   `train_period`: Training window length (number of Bars). Longer windows mean more stable parameters; shorter windows adapt faster to changes.
 *   `test_period`: Test window length (number of Bars). Usually also the rolling step size.
 *   `metric`: The metric used to select optimal parameters on the training set (e.g., `sharpe_ratio`, `total_return`).
+*   `kwargs` passthrough rules:
+    *   forwarded to `run_grid_search` during in-sample optimization;
+    *   forwarded to `run_backtest` during out-of-sample validation;
+    *   therefore `forward_worker_logs` and `strict_strategy_params` remain available in WFO.
 
 ---
 

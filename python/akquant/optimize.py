@@ -7,6 +7,7 @@
 import inspect
 import itertools
 import json
+import logging
 import multiprocessing
 import pickle
 import threading
@@ -14,6 +15,7 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from datetime import time as datetime_time
+from logging.handlers import QueueHandler, QueueListener
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type, Union, cast
 
 import numpy as np
@@ -21,7 +23,10 @@ import pandas as pd
 from tqdm import tqdm  # type: ignore
 
 from .backtest import run_backtest
+from .log import get_logger
 from .strategy import Strategy
+
+_WORKER_LOG_QUEUE: Any = None
 
 
 @dataclass
@@ -158,6 +163,18 @@ def _run_single_backtest(args: Dict[str, Any]) -> OptimizationResult:
     return OptimizationResult(
         params=params, metrics=metrics, duration=duration, error=error_msg
     )
+
+
+def _init_worker_logging(log_queue: Any) -> None:
+    """Initialize worker logger with queue handler."""
+    global _WORKER_LOG_QUEUE
+    _WORKER_LOG_QUEUE = log_queue
+    if log_queue is None:
+        return
+    logger = get_logger()
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+    logger.addHandler(QueueHandler(log_queue))
 
 
 class JSONEncoder(json.JSONEncoder):
@@ -364,6 +381,7 @@ def run_grid_search(
     timeout: Optional[float] = None,
     max_tasks_per_child: Optional[int] = None,
     db_path: Optional[str] = None,
+    forward_worker_logs: bool = False,
     **kwargs: Any,
 ) -> Union[pd.DataFrame, List[OptimizationResult]]:
     """
@@ -386,6 +404,7 @@ def run_grid_search(
     :param max_tasks_per_child: Worker 进程执行多少个任务后重启 (默认: None)。
                                 设置 1 可以避免内存泄漏或超时线程残留。
     :param db_path: SQLite 数据库路径 (可选)。如果提供，将支持断点续传和增量保存。
+    :param forward_worker_logs: 并行时是否将子进程策略日志回传主进程 (默认: False)
     :param kwargs: 传递给 run_backtest 的其他参数 (symbol, cash, etc.)
     :return: 优化结果 (DataFrame 或 List[OptimizationResult])
     """
@@ -525,12 +544,6 @@ def run_grid_search(
         if max_workers is None:
             max_workers = multiprocessing.cpu_count() or 1
 
-        if max_workers > 1:
-            print(
-                "Warning: max_workers>1 uses subprocess workers. Strategy self.log() "
-                "output may not be visible in the main process console."
-            )
-
         # 如果只有一个任务或 worker=1，直接运行
         # (除非设置了 timeout，需要线程支持，仍走单线程逻辑)
         if max_workers == 1 or total_combinations == 1:
@@ -546,26 +559,62 @@ def run_grid_search(
             if timeout is not None and max_tasks_per_child is None:
                 max_tasks_per_child = 1
             _assert_parallel_pickleable(strategy, backtest_kwargs, warmup_calc)
-
-            with multiprocessing.Pool(
-                processes=max_workers, maxtasksperchild=max_tasks_per_child
-            ) as pool:
-                # imap 迭代器
-                iterator = pool.imap(_run_single_backtest, tasks)
-
-                # 使用 tqdm 包装
-                try:
-                    for result in tqdm(
-                        iterator, total=total_combinations, desc="Optimizing"
-                    ):
-                        new_results.append(result)
-                        # 实时写入 DB
-                        if db_path:
-                            _save_result_to_db(db_path, strategy.__name__, result)
-                except Exception as e:
-                    print(f"Error during optimization (Worker Crash/OOM?): {e}")
-                    # 尝试保存已有的结果
-                    pass
+            listener: Optional[QueueListener] = None
+            log_queue: Any = None
+            pool_initializer: Optional[Any] = None
+            pool_init_args: tuple[Any, ...] = ()
+            worker_log_forwarding_active = False
+            if forward_worker_logs:
+                logger = get_logger()
+                active_handlers = [
+                    handler
+                    for handler in logger.handlers
+                    if not isinstance(handler, logging.NullHandler)
+                ]
+                if active_handlers:
+                    log_queue = multiprocessing.Queue()
+                    listener = QueueListener(
+                        log_queue, *active_handlers, respect_handler_level=True
+                    )
+                    listener.start()
+                    pool_initializer = _init_worker_logging
+                    pool_init_args = (log_queue,)
+                    worker_log_forwarding_active = True
+                else:
+                    print(
+                        "Warning: forward_worker_logs=True but no active logger "
+                        "handler found in main process."
+                    )
+            if not worker_log_forwarding_active and not forward_worker_logs:
+                print(
+                    "Warning: max_workers>1 uses subprocess workers. "
+                    "Strategy self.log() output may not be visible in the main "
+                    "process console."
+                )
+            try:
+                with multiprocessing.Pool(
+                    processes=max_workers,
+                    maxtasksperchild=max_tasks_per_child,
+                    initializer=pool_initializer,
+                    initargs=pool_init_args,
+                ) as pool:
+                    iterator = pool.imap(_run_single_backtest, tasks)
+                    try:
+                        for result in tqdm(
+                            iterator, total=total_combinations, desc="Optimizing"
+                        ):
+                            new_results.append(result)
+                            if db_path:
+                                _save_result_to_db(db_path, strategy.__name__, result)
+                    except Exception as e:
+                        print(f"Error during optimization (Worker Crash/OOM?): {e}")
+                        pass
+            finally:
+                if listener is not None:
+                    listener.stop()
+                if log_queue is not None:
+                    log_queue.close()
+                    log_queue.join_thread()
     else:
         print("All tasks completed. Returning existing results.")
 

@@ -60,6 +60,7 @@ def run_backtest(
     broker_profile: Optional[str] = None,
     timer_execution_policy: Literal["same_cycle", "next_event"] = "same_cycle",
     fill_policy: Optional[Dict[str, str]] = None,
+    strict_strategy_params: bool = True,
     **kwargs: Any,
 ) -> BacktestResult
 ```
@@ -82,6 +83,9 @@ def run_backtest(
     *   `price_basis`: `next_open`, `current_close`, `ohlc4` (OHLC average), or `hl2` (high-low midpoint).
     *   Reserved (not implemented yet): `mid_quote`, `vwap_window`, `twap_window` (currently raises `NotImplementedError`).
     *   `temporal`: `same_cycle` or `next_event`.
+*   `strict_strategy_params`: Whether to strictly validate strategy constructor parameters (default `True`).
+    *   Raises immediately if unsupported constructor parameters are provided.
+    *   Recommended to keep enabled to avoid silent parameter mismatch and distorted backtest results.
 *   `t_plus_one`: Enable T+1 trading rule (Default False). If enabled, it forces usage of China Market Model.
 *   `slippage`: Global slippage (Default 0.0). E.g., 0.0001 means 1bp (0.01%) slippage, using percent model.
 *   `volume_limit_pct`: Volume limit percentage (Default 0.25). Limits single trade to not exceed this percentage of the bar's total volume.
@@ -111,6 +115,70 @@ def run_backtest(
 | `execution_mode="current_close", timer_execution_policy="next_event"` | `fill_policy={"price_basis":"current_close","temporal":"next_event"}` |
 | `execution_mode="next_average"` | `fill_policy={"price_basis":"ohlc4","temporal":"same_cycle"}` |
 | `execution_mode="next_high_low_mid"` | `fill_policy={"price_basis":"hl2","temporal":"same_cycle"}` |
+
+### `akquant.run_grid_search`
+
+Grid-search entry for batch backtesting and metric-based parameter ranking.
+
+```python
+def run_grid_search(
+    strategy: Type[Strategy],
+    param_grid: Dict[str, Sequence[Any]],
+    data: Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]],
+    sort_by: Union[str, List[str]] = "sharpe_ratio",
+    ascending: Union[bool, List[bool]] = False,
+    return_df: bool = True,
+    result_filter: Optional[Callable[[Dict[str, Any]], bool]] = None,
+    constraint: Optional[Callable[[Dict[str, Any]], bool]] = None,
+    max_workers: Optional[int] = None,
+    show_progress: bool = True,
+    timeout: Optional[float] = None,
+    max_tasks_per_child: Optional[int] = None,
+    db_path: Optional[str] = None,
+    forward_worker_logs: bool = False,
+    **kwargs: Any,
+) -> Union[pd.DataFrame, List[OptimizationResult]]
+```
+
+**Key parameter notes:**
+
+*   `forward_worker_logs`: Whether to forward worker-process strategy logs to the main process during parallel optimization.
+    *   `False`: throughput-first; worker logs may be invisible in main-process output.
+    *   `True`: enables log aggregation for debugging.
+*   `strict_strategy_params`: Passed via `**kwargs` into `run_backtest` (defaulted to `True` inside `run_grid_search`).
+    *   Enforces strict match between `param_grid` keys and strategy constructor parameters.
+    *   Fails fast on mismatch to avoid silent fallback.
+
+### `akquant.run_walk_forward`
+
+Walk-forward entry. Executes rolling "in-sample optimization + out-of-sample validation" and concatenates OOS equity curves.
+
+```python
+def run_walk_forward(
+    strategy: Type[Strategy],
+    param_grid: Mapping[str, Sequence[Any]],
+    data: pd.DataFrame,
+    train_period: int,
+    test_period: int,
+    metric: Union[str, List[str]] = "sharpe_ratio",
+    ascending: Union[bool, List[bool]] = False,
+    initial_cash: float = 100_000.0,
+    warmup_period: int = 0,
+    warmup_calc: Optional[Any] = None,
+    constraint: Optional[Any] = None,
+    result_filter: Optional[Any] = None,
+    compounding: bool = False,
+    timeout: Optional[float] = None,
+    max_tasks_per_child: Optional[int] = None,
+    **kwargs: Any,
+) -> pd.DataFrame
+```
+
+**Key parameter notes:**
+
+*   `**kwargs` are forwarded to both `run_grid_search` (in-sample optimization) and `run_backtest` (out-of-sample validation).
+*   Therefore, `forward_worker_logs` controls worker-log forwarding during in-sample parallel optimization.
+*   `strict_strategy_params` stays effective across optimization and validation phases (strict by default).
 
 ### `akquant.run_warm_start`
 

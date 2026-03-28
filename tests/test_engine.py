@@ -53,6 +53,23 @@ class NoopStrategy(akquant.Strategy):
         return
 
 
+class WorkerLogStrategy(akquant.Strategy):
+    """Strategy used to verify worker log forwarding in parallel optimization."""
+
+    def __init__(self, dummy: int = 0) -> None:
+        """Initialize strategy with deterministic log payload."""
+        super().__init__()
+        self.dummy = int(dummy)
+        self._logged = False
+
+    def on_bar(self, bar: akquant.Bar) -> None:
+        """Log once per task to test cross-process log forwarding."""
+        if self._logged:
+            return
+        self.log(f"worker-log-{self.dummy}")
+        self._logged = True
+
+
 class ProfileCaptureStrategy(akquant.Strategy):
     """Capture resolved market profile fields from strategy runtime."""
 
@@ -3671,6 +3688,72 @@ def test_run_grid_search_parallel_warns_worker_log_visibility(
     )
     captured = capsys.readouterr()
     assert "self.log() output may not be visible" in captured.out
+
+
+def test_run_grid_search_parallel_forward_worker_logs_suppresses_visibility_warning(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Forwarded worker logs should suppress visibility warning text."""
+    akquant.register_logger(console=True, level="INFO")
+    data = _build_benchmark_data(n=20, symbol="OPT_LOG_VISIBILITY_FORWARD")
+    _ = akquant.run_grid_search(
+        strategy=NoopStrategy,
+        param_grid={"dummy": [1, 2]},
+        data=data,
+        symbol="OPT_LOG_VISIBILITY_FORWARD",
+        max_workers=2,
+        return_df=True,
+        show_progress=False,
+        forward_worker_logs=True,
+    )
+    captured = capsys.readouterr()
+    assert "self.log() output may not be visible" not in captured.out
+
+
+def test_run_grid_search_parallel_forward_worker_logs_warns_no_handler(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Forwarding should warn explicitly when main process has no active handler."""
+    akquant.register_logger(console=False, level="INFO")
+    data = _build_benchmark_data(n=20, symbol="OPT_LOG_NO_HANDLER")
+    _ = akquant.run_grid_search(
+        strategy=NoopStrategy,
+        param_grid={"dummy": [1, 2]},
+        data=data,
+        symbol="OPT_LOG_NO_HANDLER",
+        max_workers=2,
+        return_df=True,
+        show_progress=False,
+        forward_worker_logs=True,
+    )
+    captured = capsys.readouterr()
+    assert "forward_worker_logs=True but no active logger handler" in captured.out
+    assert "self.log() output may not be visible" not in captured.out
+    akquant.register_logger(console=True, level="INFO")
+
+
+def test_run_grid_search_parallel_forward_worker_logs_to_main_process(
+    tmp_path: Path,
+) -> None:
+    """Parallel optimization should forward worker strategy logs when enabled."""
+    log_file = tmp_path / "parallel_worker_logs.log"
+    akquant.register_logger(filename=str(log_file), console=False, level="INFO")
+    data = _build_benchmark_data(n=20, symbol="OPT_LOG_FORWARD")
+    _ = akquant.run_grid_search(
+        strategy=WorkerLogStrategy,
+        param_grid={"dummy": [1, 2]},
+        data=data,
+        symbol="OPT_LOG_FORWARD",
+        max_workers=2,
+        return_df=True,
+        show_progress=False,
+        forward_worker_logs=True,
+    )
+    time.sleep(0.2)
+    logs_text = log_file.read_text(encoding="utf-8")
+    assert "worker-log-1" in logs_text
+    assert "worker-log-2" in logs_text
+    akquant.register_logger(console=True, level="INFO")
 
 
 def test_run_backtest_strict_default_does_not_inject_time_kwargs() -> None:
