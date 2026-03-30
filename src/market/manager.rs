@@ -132,11 +132,7 @@ impl MarketManager {
         }
     }
 
-    pub fn set_futures_fee_rules_by_prefix(
-        &mut self,
-        symbol_prefix: String,
-        commission_rate: f64,
-    ) {
+    pub fn set_futures_fee_rules_by_prefix(&mut self, symbol_prefix: String, commission_rate: f64) {
         if let MarketConfig::China(ref mut c) = self.config {
             let prefix = symbol_prefix.trim().to_uppercase();
             if prefix.is_empty() {

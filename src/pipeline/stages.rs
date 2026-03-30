@@ -5,8 +5,8 @@ use crate::event::Event;
 use crate::model::{Bar, ExecutionMode, Order, OrderStatus, TradingSession};
 use crate::pipeline::processor::{Processor, ProcessorResult};
 use pyo3::prelude::*;
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -237,10 +237,8 @@ impl Processor for ChannelProcessor {
                                         "filled_qty",
                                         cancelled_order_snapshot.filled_quantity.to_string(),
                                     );
-                                    cancel_payload.insert(
-                                        "symbol",
-                                        cancelled_order_snapshot.symbol.clone(),
-                                    );
+                                    cancel_payload
+                                        .insert("symbol", cancelled_order_snapshot.symbol.clone());
                                     cancel_payload.insert(
                                         "owner_strategy_id",
                                         cancelled_order_snapshot
@@ -270,7 +268,9 @@ impl Processor for ChannelProcessor {
                                     .order_manager
                                     .consume_bracket_activation_on_fill(&filled_order_snapshot);
                                 for bracket_order in bracket_exit_orders {
-                                    let _ = engine.event_manager.send(Event::OrderRequest(bracket_order));
+                                    let _ = engine
+                                        .event_manager
+                                        .send(Event::OrderRequest(bracket_order));
                                 }
                             }
                         }
@@ -343,7 +343,8 @@ impl Processor for ChannelProcessor {
                 let has_sell = pending_order_requests
                     .iter()
                     .any(|order| order.side == crate::model::OrderSide::Sell);
-                let can_do_two_phase = has_buy && has_sell && should_run_post_strategy_match_now(engine);
+                let can_do_two_phase =
+                    has_buy && has_sell && should_run_post_strategy_match_now(engine);
 
                 if can_do_two_phase {
                     let mut sell_orders = Vec::new();
@@ -490,8 +491,7 @@ impl Processor for DataProcessor {
                     }
                     let mut progress_payload = HashMap::new();
                     progress_payload.insert("processed", engine.bar_count.to_string());
-                    progress_payload
-                        .insert("total", engine.progress_total_steps.to_string());
+                    progress_payload.insert("total", engine.progress_total_steps.to_string());
                     engine.emit_stream_event(py, "progress", None, "info", progress_payload);
                 }
                 self.last_timestamp = timestamp;
@@ -555,7 +555,13 @@ impl Processor for DataProcessor {
                             "accrued_interest",
                             engine.margin_accrued_interest.to_string(),
                         );
-                        engine.emit_stream_event(py, "settlement", None, "info", settlement_payload);
+                        engine.emit_stream_event(
+                            py,
+                            "settlement",
+                            None,
+                            "info",
+                            settlement_payload,
+                        );
                     }
                     if settlement_outcome.forced_liquidation {
                         let liquidated_symbols = settlement_outcome.liquidated_symbols.clone();
@@ -575,14 +581,9 @@ impl Processor for DataProcessor {
                         );
                         let mut risk_payload = HashMap::new();
                         risk_payload.insert("date", local_date.to_string());
-                        risk_payload.insert(
-                            "liquidated_count",
-                            liquidated_symbols.len().to_string(),
-                        );
-                        risk_payload.insert(
-                            "liquidated_symbols",
-                            liquidated_symbols.join(","),
-                        );
+                        risk_payload
+                            .insert("liquidated_count", liquidated_symbols.len().to_string());
+                        risk_payload.insert("liquidated_symbols", liquidated_symbols.join(","));
                         risk_payload.insert("priority", priority);
                         engine.emit_stream_event(py, "risk", None, "warn", risk_payload);
                     }
@@ -685,7 +686,15 @@ fn flush_pending_engine_bracket_plans(
     if pending_plans.is_empty() {
         return Ok(());
     }
-    for (entry_order_id, stop_trigger_price, take_profit_price, time_in_force, stop_tag, take_profit_tag) in pending_plans {
+    for (
+        entry_order_id,
+        stop_trigger_price,
+        take_profit_price,
+        time_in_force,
+        stop_tag,
+        take_profit_tag,
+    ) in pending_plans
+    {
         let stop_trigger_decimal = stop_trigger_price.and_then(rust_decimal::Decimal::from_f64);
         let take_profit_decimal = take_profit_price.and_then(rust_decimal::Decimal::from_f64);
         engine.state.order_manager.register_bracket_plan(

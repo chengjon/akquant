@@ -1,5 +1,5 @@
-use crate::model::types::{AssetType, SettlementType};
 use crate::model::Instrument;
+use crate::model::types::{AssetType, SettlementType};
 use crate::portfolio::Portfolio;
 use chrono::{Datelike, NaiveDate};
 use rust_decimal::Decimal;
@@ -40,9 +40,9 @@ impl SettlementHandler for ExpirySettlementHandler {
             }
             let maybe_price = if instr.asset_type == AssetType::Futures {
                 match instr.settlement_type().unwrap_or(SettlementType::Cash) {
-                    SettlementType::Cash => instr.settlement_price().or_else(|| {
-                        last_prices.get(symbol).copied()
-                    }),
+                    SettlementType::Cash => instr
+                        .settlement_price()
+                        .or_else(|| last_prices.get(symbol).copied()),
                     SettlementType::Physical => last_prices.get(symbol).copied(),
                     SettlementType::ForceClose => last_prices.get(symbol).copied(),
                 }

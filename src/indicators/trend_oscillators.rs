@@ -104,7 +104,10 @@ impl STOCH {
         }
         let mut out_first = Vec::with_capacity(highs.len());
         let mut out_second = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             if let Some((first, second)) = self.update(high, low, close) {
                 out_first.push(first);
                 out_second.push(second);
@@ -204,7 +207,10 @@ impl AROON {
                 second.push(f64::NAN);
             }
         }
-        Ok((PyArray1::from_vec(py, first), PyArray1::from_vec(py, second)))
+        Ok((
+            PyArray1::from_vec(py, first),
+            PyArray1::from_vec(py, second),
+        ))
     }
 
     #[getter]
@@ -483,7 +489,10 @@ impl ULTOSC {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))

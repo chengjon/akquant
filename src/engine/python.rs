@@ -785,11 +785,7 @@ impl Engine {
         self.market_manager.set_futures_fee_rules(commission_rate);
     }
 
-    pub fn set_futures_fee_rules_by_prefix(
-        &mut self,
-        symbol_prefix: String,
-        commission_rate: f64,
-    ) {
+    pub fn set_futures_fee_rules_by_prefix(&mut self, symbol_prefix: String, commission_rate: f64) {
         self.market_manager
             .set_futures_fee_rules_by_prefix(symbol_prefix, commission_rate);
     }
@@ -805,11 +801,12 @@ impl Engine {
         enforce_tick_size: Option<bool>,
         enforce_lot_size: Option<bool>,
     ) {
-        self.execution_model.set_futures_validation_options_by_prefix(
-            symbol_prefix,
-            enforce_tick_size,
-            enforce_lot_size,
-        );
+        self.execution_model
+            .set_futures_validation_options_by_prefix(
+                symbol_prefix,
+                enforce_tick_size,
+                enforce_lot_size,
+            );
     }
 
     /// 设置基金费率规则

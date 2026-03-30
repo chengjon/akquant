@@ -59,19 +59,28 @@ impl TradeTracker {
     }
 
     pub fn on_split(&mut self, symbol: &str, ratio: Decimal) {
-        // Adjust Long Inventory
+        let safe_ratio = ratio.abs();
+        if safe_ratio <= Decimal::ZERO {
+            return;
+        }
+
         if let Some(queue) = self.long_inventory.get_mut(symbol) {
             for entry in queue.iter_mut() {
-                entry.quantity *= ratio;
-                entry.price /= ratio;
+                entry.quantity = entry
+                    .quantity
+                    .checked_mul(safe_ratio)
+                    .unwrap_or(Decimal::MAX);
+                entry.price = entry.price.checked_div(safe_ratio).unwrap_or(Decimal::ZERO);
             }
         }
 
-        // Adjust Short Inventory
         if let Some(queue) = self.short_inventory.get_mut(symbol) {
             for entry in queue.iter_mut() {
-                entry.quantity *= ratio;
-                entry.price /= ratio;
+                entry.quantity = entry
+                    .quantity
+                    .checked_mul(safe_ratio)
+                    .unwrap_or(Decimal::MAX);
+                entry.price = entry.price.checked_div(safe_ratio).unwrap_or(Decimal::ZERO);
             }
         }
     }

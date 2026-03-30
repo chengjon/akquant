@@ -55,7 +55,11 @@ impl LINEARREG {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -119,7 +123,11 @@ impl LINEARREG_SLOPE {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -184,7 +192,11 @@ impl LINEARREG_INTERCEPT {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -249,7 +261,11 @@ impl LINEARREG_ANGLE {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -314,7 +330,11 @@ impl TSF {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -609,7 +629,11 @@ impl LINEARREG_R2 {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));

@@ -1,10 +1,71 @@
 use super::market_data::extract_decimal;
 use super::types::{AssetType, OptionType, SettlementType};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
+
+const INSTRUMENT_VALIDATION_PREFIX: &str = "AKQ-INSTRUMENT-VALIDATION";
+
+fn validation_err(message: &str) -> PyErr {
+    PyValueError::new_err(format!("[{INSTRUMENT_VALIDATION_PREFIX}] {message}"))
+}
+
+fn ensure_positive(value: Decimal, field: &str) -> PyResult<()> {
+    if value <= Decimal::ZERO {
+        return Err(validation_err(&format!("{field} must be > 0")));
+    }
+    Ok(())
+}
+
+fn ensure_non_negative(value: Decimal, field: &str) -> PyResult<()> {
+    if value < Decimal::ZERO {
+        return Err(validation_err(&format!("{field} must be >= 0")));
+    }
+    Ok(())
+}
+
+fn validate_instrument_inputs(
+    symbol: &str,
+    asset_type: AssetType,
+    multiplier: Decimal,
+    margin_ratio: Decimal,
+    tick_size: Decimal,
+    lot_size: Decimal,
+    strike_price: Option<Decimal>,
+    underlying_symbol: Option<&str>,
+    settlement_price: Option<Decimal>,
+) -> PyResult<()> {
+    if symbol.trim().is_empty() {
+        return Err(validation_err("symbol must not be empty"));
+    }
+    ensure_positive(tick_size, "tick_size")?;
+    ensure_positive(lot_size, "lot_size")?;
+    ensure_positive(multiplier, "multiplier")?;
+    ensure_non_negative(margin_ratio, "margin_ratio")?;
+    if let Some(v) = settlement_price {
+        ensure_positive(v, "settlement_price")?;
+    }
+    if asset_type == AssetType::Option {
+        if let Some(v) = strike_price {
+            ensure_non_negative(v, "strike_price")?;
+        }
+        if let Some(us) = underlying_symbol {
+            if us.trim().is_empty() {
+                return Err(validation_err(
+                    "underlying_symbol must not be empty for option",
+                ));
+            }
+        } else {
+            return Err(validation_err(
+                "underlying_symbol must not be empty for option",
+            ));
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StockInstrument {
@@ -121,6 +182,7 @@ impl Instrument {
         settlement_type: Option<SettlementType>,
         settlement_price: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
+        let clean_symbol = symbol.trim().to_string();
         let multiplier_val = multiplier
             .map(extract_decimal)
             .transpose()?
@@ -138,21 +200,34 @@ impl Instrument {
             .transpose()?
             .unwrap_or(Decimal::ONE);
         let settlement_price_val = settlement_price.map(extract_decimal).transpose()?;
+        let strike_price_val = strike_price.map(extract_decimal).transpose()?;
+        let underlying_symbol_value = underlying_symbol.as_deref();
+        validate_instrument_inputs(
+            &clean_symbol,
+            asset_type,
+            multiplier_val,
+            margin_val,
+            tick_val,
+            lot_val,
+            strike_price_val,
+            underlying_symbol_value,
+            settlement_price_val,
+        )?;
 
         let inner = match asset_type {
             AssetType::Stock => InstrumentEnum::Stock(StockInstrument {
-                symbol: symbol.clone(),
+                symbol: clean_symbol.clone(),
                 lot_size: lot_val,
                 tick_size: tick_val,
                 expiry_date,
             }),
             AssetType::Fund => InstrumentEnum::Fund(FundInstrument {
-                symbol: symbol.clone(),
+                symbol: clean_symbol.clone(),
                 lot_size: lot_val,
                 tick_size: tick_val,
             }),
             AssetType::Futures => InstrumentEnum::Futures(FuturesInstrument {
-                symbol: symbol.clone(),
+                symbol: clean_symbol.clone(),
                 multiplier: multiplier_val,
                 margin_ratio: margin_val,
                 tick_size: tick_val,
@@ -161,27 +236,24 @@ impl Instrument {
                 settlement_price: settlement_price_val,
             }),
             AssetType::Option => InstrumentEnum::Option(OptionInstrument {
-                symbol: symbol.clone(),
+                symbol: clean_symbol.clone(),
                 multiplier: multiplier_val,
                 margin_ratio: margin_val,
                 tick_size: tick_val,
                 option_type: option_type.unwrap_or(OptionType::Call),
-                strike_price: strike_price
-                    .map(extract_decimal)
-                    .transpose()?
-                    .unwrap_or(Decimal::ZERO),
+                strike_price: strike_price_val.unwrap_or(Decimal::ZERO),
                 expiry_date: expiry_date.unwrap_or(0),
                 underlying_symbol: underlying_symbol.unwrap_or_default(),
                 settlement_type,
             }),
             AssetType::Crypto => InstrumentEnum::Crypto(CryptoInstrument {
-                symbol: symbol.clone(),
+                symbol: clean_symbol.clone(),
                 lot_size: lot_val,
                 tick_size: tick_val,
                 multiplier: multiplier_val,
             }),
             AssetType::Forex => InstrumentEnum::Forex(ForexInstrument {
-                symbol: symbol.clone(),
+                symbol: clean_symbol.clone(),
                 lot_size: lot_val,
                 tick_size: tick_val,
                 multiplier: multiplier_val,
@@ -313,5 +385,61 @@ impl Instrument {
             InstrumentEnum::Futures(f) => f.settlement_price,
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_instrument_new_rejects_empty_symbol() {
+        let result = validate_instrument_inputs(
+            "   ",
+            AssetType::Stock,
+            Decimal::ONE,
+            Decimal::ONE,
+            Decimal::new(1, 2),
+            Decimal::ONE,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_instrument_new_rejects_non_positive_tick_size() {
+        let result = validate_instrument_inputs(
+            "AAPL",
+            AssetType::Stock,
+            Decimal::ONE,
+            Decimal::ONE,
+            Decimal::ZERO,
+            Decimal::ONE,
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_instrument_new_rejects_option_without_underlying() {
+        let result = Instrument::new(
+            "OPT".to_string(),
+            AssetType::Option,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(20260101),
+            None,
+            Some("".to_string()),
+            None,
+            None,
+        );
+        assert!(result.is_err());
     }
 }

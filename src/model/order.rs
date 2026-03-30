@@ -1,10 +1,54 @@
 use super::market_data::extract_decimal;
 use super::types::{OrderRole, OrderSide, OrderStatus, OrderType, TimeInForce};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
+
+const ORDER_VALIDATION_PREFIX: &str = "AKQ-ORDER-VALIDATION";
+
+fn validation_err(message: &str) -> PyErr {
+    PyValueError::new_err(format!("[{ORDER_VALIDATION_PREFIX}] {message}"))
+}
+
+fn ensure_positive(value: Decimal, field: &str) -> PyResult<()> {
+    if value <= Decimal::ZERO {
+        return Err(validation_err(&format!("{field} must be > 0")));
+    }
+    Ok(())
+}
+
+fn ensure_non_negative(value: Decimal, field: &str) -> PyResult<()> {
+    if value < Decimal::ZERO {
+        return Err(validation_err(&format!("{field} must be >= 0")));
+    }
+    Ok(())
+}
+
+fn validate_order_inputs(
+    quantity: Decimal,
+    price: Option<Decimal>,
+    trigger_price: Option<Decimal>,
+    trail_offset: Option<Decimal>,
+    trail_reference_price: Option<Decimal>,
+) -> PyResult<()> {
+    ensure_positive(quantity, "quantity")?;
+    if let Some(v) = price {
+        ensure_positive(v, "price")?;
+    }
+    if let Some(v) = trigger_price {
+        ensure_positive(v, "trigger_price")?;
+    }
+    if let Some(v) = trail_offset {
+        ensure_non_negative(v, "trail_offset")?;
+    }
+    if let Some(v) = trail_reference_price {
+        ensure_positive(v, "trail_reference_price")?;
+    }
+    Ok(())
+}
 
 #[gen_stub_pyclass]
 #[pyclass(from_py_object)]
@@ -109,29 +153,41 @@ impl Order {
         trail_reference_price: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         let created_at_ts = created_at.unwrap_or(0);
+        let quantity_dec = extract_decimal(quantity)?;
+        let price_dec = match price {
+            Some(p) => Some(extract_decimal(p)?),
+            None => None,
+        };
+        let trigger_dec = match trigger_price {
+            Some(p) => Some(extract_decimal(p)?),
+            None => None,
+        };
+        let trail_offset_dec = match trail_offset {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        let trail_reference_dec = match trail_reference_price {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        validate_order_inputs(
+            quantity_dec,
+            price_dec,
+            trigger_dec,
+            trail_offset_dec,
+            trail_reference_dec,
+        )?;
         Ok(Order {
             id,
             symbol,
             side,
             order_type,
-            quantity: extract_decimal(quantity)?,
-            price: match price {
-                Some(p) => Some(extract_decimal(p)?),
-                None => None,
-            },
+            quantity: quantity_dec,
+            price: price_dec,
             time_in_force: time_in_force.unwrap_or(TimeInForce::Day),
-            trigger_price: match trigger_price {
-                Some(p) => Some(extract_decimal(p)?),
-                None => None,
-            },
-            trail_offset: match trail_offset {
-                Some(v) => Some(extract_decimal(v)?),
-                None => None,
-            },
-            trail_reference_price: match trail_reference_price {
-                Some(v) => Some(extract_decimal(v)?),
-                None => None,
-            },
+            trigger_price: trigger_dec,
+            trail_offset: trail_offset_dec,
+            trail_reference_price: trail_reference_dec,
             graph_id,
             parent_order_id,
             order_role: order_role.unwrap_or_default(),
@@ -185,7 +241,9 @@ impl Order {
     #[setter]
     fn set_trail_offset(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         if let Some(v) = value {
-            self.trail_offset = Some(extract_decimal(v)?);
+            let dec = extract_decimal(v)?;
+            ensure_non_negative(dec, "trail_offset")?;
+            self.trail_offset = Some(dec);
         } else {
             self.trail_offset = None;
         }
@@ -203,7 +261,9 @@ impl Order {
     #[setter]
     fn set_trail_reference_price(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         if let Some(v) = value {
-            self.trail_reference_price = Some(extract_decimal(v)?);
+            let dec = extract_decimal(v)?;
+            ensure_positive(dec, "trail_reference_price")?;
+            self.trail_reference_price = Some(dec);
         } else {
             self.trail_reference_price = None;
         }
@@ -219,7 +279,9 @@ impl Order {
 
     #[setter]
     fn set_filled_quantity(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.filled_quantity = extract_decimal(value)?;
+        let dec = extract_decimal(value)?;
+        ensure_non_negative(dec, "filled_quantity")?;
+        self.filled_quantity = dec;
         Ok(())
     }
 
@@ -234,7 +296,9 @@ impl Order {
     #[setter]
     fn set_average_filled_price(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         if let Some(v) = value {
-            self.average_filled_price = Some(extract_decimal(v)?);
+            let dec = extract_decimal(v)?;
+            ensure_positive(dec, "average_filled_price")?;
+            self.average_filled_price = Some(dec);
         } else {
             self.average_filled_price = None;
         }
@@ -461,5 +525,17 @@ mod tests {
         let trade: Trade =
             rmp_serde::from_slice(&bytes).expect("deserialize trade from legacy payload");
         assert!(trade.owner_strategy_id.is_none());
+    }
+
+    #[test]
+    fn test_order_new_rejects_non_positive_quantity() {
+        let result = validate_order_inputs(Decimal::ZERO, None, None, None, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_order_new_rejects_non_positive_price() {
+        let result = validate_order_inputs(Decimal::from(1), Some(Decimal::ZERO), None, None, None);
+        assert!(result.is_err());
     }
 }

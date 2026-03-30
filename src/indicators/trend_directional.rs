@@ -129,7 +129,10 @@ impl ADX {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))
@@ -242,7 +245,10 @@ impl DX {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))
@@ -303,7 +309,10 @@ impl ADXR {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))
@@ -400,7 +409,10 @@ impl PLUS_DI {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))
@@ -497,7 +509,10 @@ impl MINUS_DI {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))

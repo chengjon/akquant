@@ -144,8 +144,11 @@ impl MFI {
         closes: Vec<f64>,
         volumes: Vec<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        if highs.len() != lows.len() || highs.len() != closes.len() || highs.len() != volumes.len() {
-            return Err(PyValueError::new_err("highs/lows/closes/volumes length mismatch"));
+        if highs.len() != lows.len() || highs.len() != closes.len() || highs.len() != volumes.len()
+        {
+            return Err(PyValueError::new_err(
+                "highs/lows/closes/volumes length mismatch",
+            ));
         }
         let mut out = Vec::with_capacity(highs.len());
         for ((high, low), (close, volume)) in highs
@@ -201,7 +204,9 @@ impl BOP {
         closes: Vec<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
         if opens.len() != highs.len() || opens.len() != lows.len() || opens.len() != closes.len() {
-            return Err(PyValueError::new_err("opens/highs/lows/closes length mismatch"));
+            return Err(PyValueError::new_err(
+                "opens/highs/lows/closes length mismatch",
+            ));
         }
         let mut out = Vec::with_capacity(opens.len());
         for ((open, high), (low, close)) in opens
@@ -260,8 +265,11 @@ impl AD {
         closes: Vec<f64>,
         volumes: Vec<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        if highs.len() != lows.len() || highs.len() != closes.len() || highs.len() != volumes.len() {
-            return Err(PyValueError::new_err("highs/lows/closes/volumes length mismatch"));
+        if highs.len() != lows.len() || highs.len() != closes.len() || highs.len() != volumes.len()
+        {
+            return Err(PyValueError::new_err(
+                "highs/lows/closes/volumes length mismatch",
+            ));
         }
         let mut out = Vec::with_capacity(highs.len());
         for ((high, low), (close, volume)) in highs
@@ -345,8 +353,11 @@ impl ADOSC {
         closes: Vec<f64>,
         volumes: Vec<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        if highs.len() != lows.len() || highs.len() != closes.len() || highs.len() != volumes.len() {
-            return Err(PyValueError::new_err("highs/lows/closes/volumes length mismatch"));
+        if highs.len() != lows.len() || highs.len() != closes.len() || highs.len() != volumes.len()
+        {
+            return Err(PyValueError::new_err(
+                "highs/lows/closes/volumes length mismatch",
+            ));
         }
         let mut out = Vec::with_capacity(highs.len());
         for ((high, low), (close, volume)) in highs

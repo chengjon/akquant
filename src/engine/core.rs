@@ -577,8 +577,12 @@ impl Engine {
             .strategy_slots
             .get(slot_index)
             .map(|slot| slot.strategy_id.clone());
-        let ctx =
-            self.create_context(active_orders, step_trades, step_rejected_orders, strategy_id);
+        let ctx = self.create_context(
+            active_orders,
+            step_trades,
+            step_rejected_orders,
+            strategy_id,
+        );
         let (py_ctx, persistent_ref) = Python::attach(|py| {
             let py_ctx = Py::new(py, ctx).unwrap();
             Ok::<_, PyErr>((py_ctx.clone_ref(py), py_ctx.clone_ref(py)))
@@ -912,13 +916,12 @@ impl Engine {
         match event {
             Event::Bar(b) => {
                 self.last_prices.insert(b.symbol.clone(), b.close);
-                let py_ctx =
-                    self.get_or_create_strategy_context(
-                        slot_index,
-                        active_orders,
-                        step_trades,
-                        step_rejected_orders,
-                    )?;
+                let py_ctx = self.get_or_create_strategy_context(
+                    slot_index,
+                    active_orders,
+                    step_trades,
+                    step_rejected_orders,
+                )?;
 
                 let args = Python::attach(|py| {
                     let bar = b.clone();
@@ -948,13 +951,12 @@ impl Engine {
             }
             Event::Tick(t) => {
                 self.last_prices.insert(t.symbol.clone(), t.price);
-                let py_ctx =
-                    self.get_or_create_strategy_context(
-                        slot_index,
-                        active_orders,
-                        step_trades,
-                        step_rejected_orders,
-                    )?;
+                let py_ctx = self.get_or_create_strategy_context(
+                    slot_index,
+                    active_orders,
+                    step_trades,
+                    step_rejected_orders,
+                )?;
 
                 let args = Python::attach(|py| {
                     let tick = t.clone();
@@ -982,13 +984,12 @@ impl Engine {
                 Ok((new_orders, new_timers, canceled_ids))
             }
             Event::Timer(timer) => {
-                let py_ctx =
-                    self.get_or_create_strategy_context(
-                        slot_index,
-                        active_orders,
-                        step_trades,
-                        step_rejected_orders,
-                    )?;
+                let py_ctx = self.get_or_create_strategy_context(
+                    slot_index,
+                    active_orders,
+                    step_trades,
+                    step_rejected_orders,
+                )?;
 
                 let args = Python::attach(|py| {
                     let payload = timer.payload.as_str();

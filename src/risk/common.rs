@@ -6,6 +6,42 @@ use std::collections::HashMap;
 
 use super::rule::{RiskCheckContext, RiskRule};
 
+const RISK_OVERFLOW_PREFIX: &str = "AKQ-RISK-OVERFLOW";
+
+fn risk_overflow_error(symbol: &str, field: &str) -> AkQuantError {
+    AkQuantError::OrderError(format!(
+        "[{RISK_OVERFLOW_PREFIX}] overflow while calculating margin for {symbol} at {field}",
+    ))
+}
+
+fn checked_add_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_add(rhs).unwrap_or(Decimal::MAX)
+}
+
+fn checked_sub_or_zero(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_sub(rhs).unwrap_or(Decimal::ZERO)
+}
+
+fn checked_mul_or_err(
+    lhs: Decimal,
+    rhs: Decimal,
+    symbol: &str,
+    field: &str,
+) -> Result<Decimal, AkQuantError> {
+    lhs.checked_mul(rhs)
+        .ok_or_else(|| risk_overflow_error(symbol, field))
+}
+
+fn checked_sub_or_err(
+    lhs: Decimal,
+    rhs: Decimal,
+    symbol: &str,
+    field: &str,
+) -> Result<Decimal, AkQuantError> {
+    lhs.checked_sub(rhs)
+        .ok_or_else(|| risk_overflow_error(symbol, field))
+}
+
 /// Check restricted list
 #[derive(Debug, Clone)]
 pub struct RestrictedListRule;
@@ -148,7 +184,7 @@ impl RiskRule for CashMarginRule {
             prices_for_order.insert(order.symbol.clone(), order_price);
 
             let required_margin =
-                calc_required_margin_delta(order, ctx, &prices_for_order, ctx.portfolio);
+                calc_required_margin_delta(order, ctx, &prices_for_order, ctx.portfolio)?;
 
             if required_margin.is_zero() {
                 return Ok(());
@@ -169,11 +205,9 @@ impl RiskRule for CashMarginRule {
                 };
                 let mut prices_for_active = ctx.current_prices.clone();
                 prices_for_active.insert(o.symbol.clone(), active_price);
-                committed_margin += calc_required_margin_delta(
-                    o,
-                    ctx,
-                    &prices_for_active,
-                    &projected_portfolio,
+                committed_margin = checked_add_or_cap(
+                    committed_margin,
+                    calc_required_margin_delta(o, ctx, &prices_for_active, &projected_portfolio)?,
                 );
 
                 let positions = std::sync::Arc::make_mut(&mut projected_portfolio.positions);
@@ -190,7 +224,13 @@ impl RiskRule for CashMarginRule {
             let safety_margin = ctx.config.safety_margin;
             let safety_factor = Decimal::from_f64(1.0 - safety_margin)
                 .unwrap_or(Decimal::from_f64(0.9999).unwrap());
-            let available_margin = (free_margin * safety_factor - committed_margin).max(Decimal::ZERO);
+            let available_margin = checked_sub_or_zero(
+                free_margin
+                    .checked_mul(safety_factor)
+                    .unwrap_or(Decimal::ZERO),
+                committed_margin,
+            )
+            .max(Decimal::ZERO);
 
             if required_margin > available_margin {
                 return Err(AkQuantError::OrderError(format!(
@@ -212,16 +252,51 @@ fn stock_margin_delta(
     price: Decimal,
     multiplier: Decimal,
     initial_margin_ratio: Decimal,
-) -> Decimal {
+) -> Result<Decimal, AkQuantError> {
     let current_abs = current_pos.abs();
+    let safe_price = price.abs();
+    let safe_multiplier = multiplier.abs();
+    let safe_initial_margin_ratio = initial_margin_ratio.abs();
     let next_pos = match order.side {
         OrderSide::Buy => current_pos + order.quantity,
         OrderSide::Sell => current_pos - order.quantity,
     };
     let next_abs = next_pos.abs();
-    let current_margin = current_abs * price * multiplier * initial_margin_ratio;
-    let next_margin = next_abs * price * multiplier * initial_margin_ratio;
-    (next_margin - current_margin).max(Decimal::ZERO)
+    let current_notional = checked_mul_or_err(
+        current_abs,
+        safe_price,
+        &order.symbol,
+        "current_abs * price",
+    )?;
+    let current_gross = checked_mul_or_err(
+        current_notional,
+        safe_multiplier,
+        &order.symbol,
+        "current_notional * multiplier",
+    )?;
+    let current_margin = checked_mul_or_err(
+        current_gross,
+        safe_initial_margin_ratio,
+        &order.symbol,
+        "current_gross * initial_margin_ratio",
+    )?;
+
+    let next_notional =
+        checked_mul_or_err(next_abs, safe_price, &order.symbol, "next_abs * price")?;
+    let next_gross = checked_mul_or_err(
+        next_notional,
+        safe_multiplier,
+        &order.symbol,
+        "next_notional * multiplier",
+    )?;
+    let next_margin = checked_mul_or_err(
+        next_gross,
+        safe_initial_margin_ratio,
+        &order.symbol,
+        "next_gross * initial_margin_ratio",
+    )?;
+
+    Ok(checked_sub_or_zero(next_margin, current_margin).max(Decimal::ZERO))
 }
 
 fn calc_required_margin_delta(
@@ -229,7 +304,7 @@ fn calc_required_margin_delta(
     ctx: &RiskCheckContext,
     prices: &HashMap<String, Decimal>,
     portfolio: &crate::portfolio::Portfolio,
-) -> Decimal {
+) -> Result<Decimal, AkQuantError> {
     if let Some(instr) = ctx.instruments.get(&order.symbol) {
         if ctx.config.is_margin_account()
             && (instr.asset_type == AssetType::Stock || instr.asset_type == AssetType::Fund)
@@ -239,7 +314,7 @@ fn calc_required_margin_delta(
                 .copied()
                 .unwrap_or_else(|| order.price.unwrap_or(Decimal::ZERO));
             if price <= Decimal::ZERO {
-                return Decimal::ZERO;
+                return Ok(Decimal::ZERO);
             }
             let current_pos = portfolio
                 .positions
@@ -258,14 +333,23 @@ fn calc_required_margin_delta(
 
     let mut projected_portfolio = portfolio.clone();
     let base_used = projected_portfolio.calculate_used_margin(prices, ctx.instruments);
+    if base_used == Decimal::MAX {
+        return Err(risk_overflow_error(&order.symbol, "base_used_margin"));
+    }
     {
         let positions = std::sync::Arc::make_mut(&mut projected_portfolio.positions);
-        let entry = positions.entry(order.symbol.clone()).or_insert(Decimal::ZERO);
+        let entry = positions
+            .entry(order.symbol.clone())
+            .or_insert(Decimal::ZERO);
         match order.side {
             OrderSide::Buy => *entry += order.quantity,
             OrderSide::Sell => *entry -= order.quantity,
         }
     }
     let next_used = projected_portfolio.calculate_used_margin(prices, ctx.instruments);
-    (next_used - base_used).max(Decimal::ZERO)
+    if next_used == Decimal::MAX {
+        return Err(risk_overflow_error(&order.symbol, "next_used_margin"));
+    }
+    let delta = checked_sub_or_err(next_used, base_used, &order.symbol, "next_used - base_used")?;
+    Ok(delta.max(Decimal::ZERO))
 }

@@ -86,11 +86,7 @@ impl ExecutionClient for SimulatedExecutionClient {
         self.matchers.insert(asset_type, matcher);
     }
 
-    fn set_futures_validation_options(
-        &mut self,
-        enforce_tick_size: bool,
-        enforce_lot_size: bool,
-    ) {
+    fn set_futures_validation_options(&mut self, enforce_tick_size: bool, enforce_lot_size: bool) {
         self.futures_enforce_tick_size = enforce_tick_size;
         self.futures_enforce_lot_size = enforce_lot_size;
         self.rebuild_futures_matcher();
@@ -116,8 +112,11 @@ impl ExecutionClient for SimulatedExecutionClient {
             }
         }
         if !updated {
-            self.futures_validation_by_prefix
-                .push((normalized, enforce_tick_size, enforce_lot_size));
+            self.futures_validation_by_prefix.push((
+                normalized,
+                enforce_tick_size,
+                enforce_lot_size,
+            ));
         }
         self.rebuild_futures_matcher();
     }

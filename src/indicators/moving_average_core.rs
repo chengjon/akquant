@@ -39,7 +39,11 @@ impl SMA {
         }
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -96,7 +100,11 @@ impl EMA {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -150,7 +158,11 @@ impl WMA {
         self.value()
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -199,7 +211,11 @@ impl TRIMA {
         self.value()
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));

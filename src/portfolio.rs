@@ -12,6 +12,14 @@ use std::collections::HashMap;
 
 use std::sync::Arc;
 
+fn checked_mul_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_mul(rhs).unwrap_or(Decimal::MAX)
+}
+
+fn checked_add_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_add(rhs).unwrap_or(Decimal::MAX)
+}
+
 #[gen_stub_pyclass]
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -212,7 +220,9 @@ impl Portfolio {
                 } else {
                     Decimal::ONE
                 };
-                equity += quantity * price * multiplier;
+                let exposure =
+                    checked_mul_or_cap(checked_mul_or_cap(*quantity, *price), multiplier);
+                equity = checked_add_or_cap(equity, exposure);
             }
         }
         equity
@@ -253,11 +263,10 @@ impl Portfolio {
                         }
                         _ => linear_calc.calculate_margin(*quantity, *price, instr, None),
                     };
-                    used_margin += margin;
+                    used_margin = checked_add_or_cap(used_margin, margin);
                 } else {
-                    // If no instrument info, assume 100% margin (Spot like)
-                    let position_value = (quantity * price).abs();
-                    used_margin += position_value;
+                    let position_value = checked_mul_or_cap(quantity.abs(), price.abs());
+                    used_margin = checked_add_or_cap(used_margin, position_value);
                 }
             }
         }

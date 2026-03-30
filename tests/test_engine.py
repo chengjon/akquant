@@ -4129,3 +4129,51 @@ def test_instrument_config_accepts_enum_inputs() -> None:
     assert conf.asset_type == "FUTURES"
     assert conf.option_type == "CALL"
     assert conf.settlement_type == "cash"
+
+
+def test_order_rejects_non_positive_quantity() -> None:
+    """Order should reject zero quantity at constructor boundary."""
+    with pytest.raises(ValueError, match=r"AKQ-ORDER-VALIDATION.*quantity must be > 0"):
+        _ = akquant.Order(
+            "o-invalid-qty",
+            "AAPL",
+            akquant.OrderSide.Buy,
+            akquant.OrderType.Limit,
+            0.0,
+            100.0,
+        )
+
+
+def test_instrument_rejects_non_positive_tick_size() -> None:
+    """Instrument should reject non-positive tick size."""
+    with pytest.raises(
+        ValueError, match=r"AKQ-INSTRUMENT-VALIDATION.*tick_size must be > 0"
+    ):
+        _ = akquant.Instrument("AAPL", akquant.AssetType.Stock, tick_size=0.0)
+
+
+def test_instrument_option_rejects_empty_underlying_symbol() -> None:
+    """Option instrument should require non-empty underlying symbol."""
+    with pytest.raises(
+        ValueError,
+        match=r"AKQ-INSTRUMENT-VALIDATION.*underlying_symbol must not be empty",
+    ):
+        _ = akquant.Instrument(
+            "OPT_BAD",
+            akquant.AssetType.Option,
+            expiry_date=20260101,
+            underlying_symbol="",
+        )
+
+
+def test_corporate_action_split_rejects_non_positive_ratio() -> None:
+    """CorporateAction split should reject non-positive ratio."""
+    with pytest.raises(
+        ValueError, match=r"AKQ-CORP-ACTION-VALIDATION.*split ratio must be > 0"
+    ):
+        _ = akquant.CorporateAction(
+            "AAPL",
+            date(2025, 1, 1),
+            akquant.CorporateActionType.Split,
+            0.0,
+        )

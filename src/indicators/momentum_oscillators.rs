@@ -65,7 +65,11 @@ impl RSI {
         Some(rsi)
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));
@@ -138,7 +142,10 @@ impl WILLR {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))
@@ -214,7 +221,11 @@ impl CMO {
         self.current_value
     }
 
-    pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+    pub fn update_many<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: Vec<f64>,
+    ) -> Bound<'py, PyArray1<f64>> {
         let mut out = Vec::with_capacity(values.len());
         for value in values {
             out.push(self.update(value).unwrap_or(f64::NAN));

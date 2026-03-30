@@ -81,7 +81,10 @@ impl TYPPRICE {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))
@@ -126,7 +129,10 @@ impl WCLPRICE {
             return Err(PyValueError::new_err("highs/lows/closes length mismatch"));
         }
         let mut out = Vec::with_capacity(highs.len());
-        for (high, (low, close)) in highs.into_iter().zip(lows.into_iter().zip(closes.into_iter())) {
+        for (high, (low, close)) in highs
+            .into_iter()
+            .zip(lows.into_iter().zip(closes.into_iter()))
+        {
             out.push(self.update(high, low, close).unwrap_or(f64::NAN));
         }
         Ok(PyArray1::from_vec(py, out))
@@ -169,7 +175,9 @@ impl AVGPRICE {
         closes: Vec<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
         if opens.len() != highs.len() || opens.len() != lows.len() || opens.len() != closes.len() {
-            return Err(PyValueError::new_err("opens/highs/lows/closes length mismatch"));
+            return Err(PyValueError::new_err(
+                "opens/highs/lows/closes length mismatch",
+            ));
         }
         let mut out = Vec::with_capacity(opens.len());
         for ((open, high), (low, close)) in opens

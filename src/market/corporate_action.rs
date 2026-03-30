@@ -2,8 +2,30 @@ use crate::analysis::tracker::TradeTracker;
 use crate::model::corporate_action::{CorporateAction, CorporateActionType};
 use crate::portfolio::Portfolio;
 use chrono::NaiveDate;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+const CORP_ACTION_ALERT_PREFIX: &str = "AKQ-CORP-ACTION-ALERT";
+const MIN_SPLIT_RATIO_SCALE: i64 = 1;
+const MIN_SPLIT_RATIO_DP: u32 = 4;
+const MAX_SPLIT_RATIO_SCALE: i64 = 10000;
+const MAX_SPLIT_RATIO_DP: u32 = 0;
+
+fn checked_mul_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_mul(rhs).unwrap_or(Decimal::MAX)
+}
+
+fn checked_add_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_add(rhs).unwrap_or(Decimal::MAX)
+}
+
+fn split_ratio_bounds() -> (Decimal, Decimal) {
+    (
+        Decimal::new(MIN_SPLIT_RATIO_SCALE, MIN_SPLIT_RATIO_DP),
+        Decimal::new(MAX_SPLIT_RATIO_SCALE, MAX_SPLIT_RATIO_DP),
+    )
+}
 
 pub struct CorporateActionManager {
     actions: HashMap<NaiveDate, Vec<CorporateAction>>,
@@ -36,36 +58,131 @@ impl CorporateActionManager {
             for action in actions {
                 match action.action_type {
                     CorporateActionType::Split => {
-                        // Split: ratio > 1.0 (e.g. 2.0 means 1 share becomes 2)
-                        // Reverse Split: ratio < 1.0 (e.g. 0.5 means 2 shares become 1)
-                        // Quantity *= ratio, AvgCost /= ratio
-                        let ratio = action.value;
+                        let ratio = action.value.abs();
+                        let (min_ratio, max_ratio) = split_ratio_bounds();
+                        if ratio <= Decimal::ZERO || ratio < min_ratio || ratio > max_ratio {
+                            eprintln!(
+                                "[{CORP_ACTION_ALERT_PREFIX}] skip split action for {} on {} due to abnormal ratio {}",
+                                action.symbol, action.date, action.value
+                            );
+                            continue;
+                        }
 
                         let positions = Arc::make_mut(&mut portfolio.positions);
                         if let Some(qty) = positions.get_mut(&action.symbol) {
-                            *qty *= ratio;
+                            *qty = checked_mul_or_cap(*qty, ratio);
                         }
 
                         let available = Arc::make_mut(&mut portfolio.available_positions);
                         if let Some(avail) = available.get_mut(&action.symbol) {
-                            *avail *= ratio;
+                            *avail = checked_mul_or_cap(*avail, ratio);
                         }
 
-                        // Update TradeTracker (Inventory Cost Basis)
                         trade_tracker.on_split(&action.symbol, ratio);
                     }
                     CorporateActionType::Dividend => {
-                        // Dividend: value is cash per share
-                        // Cash += Quantity * value
                         if let Some(qty) = portfolio.positions.get(&action.symbol)
                             && !qty.is_zero()
                         {
-                            let dividend_amount = qty * action.value;
-                            portfolio.cash += dividend_amount;
+                            let dividend_amount = checked_mul_or_cap(*qty, action.value);
+                            portfolio.cash = checked_add_or_cap(portfolio.cash, dividend_amount);
                         }
                     }
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::corporate_action::CorporateAction;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn split_caps_position_on_overflow() {
+        let mut manager = CorporateActionManager::new();
+        manager.add(CorporateAction {
+            symbol: "AAPL".to_string(),
+            date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+            action_type: CorporateActionType::Split,
+            value: Decimal::MAX,
+        });
+
+        let mut portfolio = Portfolio {
+            cash: Decimal::ZERO,
+            positions: Arc::new(HashMap::from([("AAPL".to_string(), Decimal::MAX)])),
+            available_positions: Arc::new(HashMap::from([("AAPL".to_string(), Decimal::MAX)])),
+        };
+        let mut tracker = TradeTracker::new();
+
+        manager.process_date(
+            NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+            &mut portfolio,
+            &mut tracker,
+        );
+
+        assert_eq!(portfolio.positions.get("AAPL"), Some(&Decimal::MAX));
+        assert_eq!(
+            portfolio.available_positions.get("AAPL"),
+            Some(&Decimal::MAX)
+        );
+    }
+
+    #[test]
+    fn dividend_caps_cash_on_overflow() {
+        let mut manager = CorporateActionManager::new();
+        manager.add(CorporateAction {
+            symbol: "AAPL".to_string(),
+            date: NaiveDate::from_ymd_opt(2025, 1, 2).expect("valid date"),
+            action_type: CorporateActionType::Dividend,
+            value: Decimal::MAX,
+        });
+
+        let mut portfolio = Portfolio {
+            cash: Decimal::MAX,
+            positions: Arc::new(HashMap::from([("AAPL".to_string(), Decimal::MAX)])),
+            available_positions: Arc::new(HashMap::new()),
+        };
+        let mut tracker = TradeTracker::new();
+
+        manager.process_date(
+            NaiveDate::from_ymd_opt(2025, 1, 2).expect("valid date"),
+            &mut portfolio,
+            &mut tracker,
+        );
+
+        assert_eq!(portfolio.cash, Decimal::MAX);
+    }
+
+    #[test]
+    fn split_out_of_range_ratio_is_skipped() {
+        let mut manager = CorporateActionManager::new();
+        manager.add(CorporateAction {
+            symbol: "AAPL".to_string(),
+            date: NaiveDate::from_ymd_opt(2025, 1, 3).expect("valid date"),
+            action_type: CorporateActionType::Split,
+            value: Decimal::new(1, 5),
+        });
+
+        let mut portfolio = Portfolio {
+            cash: Decimal::ZERO,
+            positions: Arc::new(HashMap::from([("AAPL".to_string(), Decimal::from(100))])),
+            available_positions: Arc::new(HashMap::from([("AAPL".to_string(), Decimal::from(80))])),
+        };
+        let mut tracker = TradeTracker::new();
+
+        manager.process_date(
+            NaiveDate::from_ymd_opt(2025, 1, 3).expect("valid date"),
+            &mut portfolio,
+            &mut tracker,
+        );
+
+        assert_eq!(portfolio.positions.get("AAPL"), Some(&Decimal::from(100)));
+        assert_eq!(
+            portfolio.available_positions.get("AAPL"),
+            Some(&Decimal::from(80))
+        );
     }
 }

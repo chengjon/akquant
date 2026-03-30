@@ -62,7 +62,13 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    fn make_order(id: &str, symbol: &str, side: OrderSide, qty: Decimal, status: OrderStatus) -> Order {
+    fn make_order(
+        id: &str,
+        symbol: &str,
+        side: OrderSide,
+        qty: Decimal,
+        status: OrderStatus,
+    ) -> Order {
         Order {
             id: id.to_string(),
             symbol: symbol.to_string(),

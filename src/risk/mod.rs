@@ -315,4 +315,36 @@ mod tests {
             .to_string();
         assert!(err.contains("stop-loss threshold"));
     }
+
+    #[test]
+    fn test_check_returns_overflow_error_in_margin_path() {
+        let mut manager = RiskManager::default();
+        manager.config.account_mode = "margin".to_string();
+        manager.config.check_cash = true;
+
+        let portfolio = Portfolio {
+            cash: Decimal::from(1_000_000),
+            positions: Arc::new(HashMap::new()),
+            available_positions: Arc::new(HashMap::new()),
+        };
+
+        let mut instruments = HashMap::new();
+        instruments.insert(
+            "AAPL".to_string(),
+            create_test_instrument("AAPL", AssetType::Stock),
+        );
+
+        let mut order = create_test_order("AAPL", Decimal::MAX, Some(Decimal::MAX));
+        order.side = OrderSide::Buy;
+
+        let mut prices = HashMap::new();
+        prices.insert("AAPL".to_string(), f64::MAX);
+
+        let err = manager
+            .check(&order, &portfolio, instruments, vec![], Some(prices))
+            .expect("overflow should return reject reason");
+        assert!(err.contains("AKQ-RISK-OVERFLOW"));
+        assert!(err.contains("overflow while calculating margin"));
+        assert!(err.contains("AAPL"));
+    }
 }

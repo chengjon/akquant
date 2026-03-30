@@ -1,6 +1,14 @@
 use crate::model::Instrument;
 use rust_decimal::Decimal;
 
+fn checked_mul_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_mul(rhs).unwrap_or(Decimal::MAX)
+}
+
+fn checked_add_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
+    lhs.checked_add(rhs).unwrap_or(Decimal::MAX)
+}
+
 /// Trait for calculating margin requirements for a position.
 pub trait MarginCalculator: Send + Sync {
     /// Calculate the margin required for a position.
@@ -35,9 +43,11 @@ impl MarginCalculator for LinearMarginCalculator {
         instrument: &Instrument,
         _underlying_price: Option<Decimal>,
     ) -> Decimal {
-        let multiplier = instrument.multiplier();
-        let margin_ratio = instrument.margin_ratio();
-        (quantity * price * multiplier).abs() * margin_ratio
+        let multiplier = instrument.multiplier().abs();
+        let margin_ratio = instrument.margin_ratio().abs();
+        let notional = checked_mul_or_cap(quantity.abs(), price.abs());
+        let gross = checked_mul_or_cap(notional, multiplier);
+        checked_mul_or_cap(gross, margin_ratio)
     }
 }
 
@@ -54,9 +64,11 @@ impl MarginCalculator for FuturesMarginCalculator {
         instrument: &Instrument,
         _underlying_price: Option<Decimal>,
     ) -> Decimal {
-        let multiplier = instrument.multiplier();
-        let margin_ratio = instrument.margin_ratio();
-        (quantity * price * multiplier).abs() * margin_ratio
+        let multiplier = instrument.multiplier().abs();
+        let margin_ratio = instrument.margin_ratio().abs();
+        let notional = checked_mul_or_cap(quantity.abs(), price.abs());
+        let gross = checked_mul_or_cap(notional, multiplier);
+        checked_mul_or_cap(gross, margin_ratio)
     }
 }
 
@@ -76,27 +88,78 @@ impl MarginCalculator for OptionMarginCalculator {
         use rust_decimal::prelude::*;
 
         if quantity > Decimal::ZERO {
-            // Long Option: No maintenance margin (premium paid upfront)
-            // But some brokers might require full value if not paid?
-            // Standard practice is 0 for maintenance margin if fully paid.
             Decimal::ZERO
         } else {
-            // Short Option: Complex margin
-            // Simplified Model: (OptionPrice + UnderlyingPrice * MarginRatio) * Multiplier * Abs(Qty)
-            // If underlying price not available, fallback to OptionPrice * (1 + MarginRatio)
             let abs_qty = quantity.abs();
-            let underlying_price = underlying_price.unwrap_or(Decimal::ZERO);
-            let multiplier = instrument.multiplier();
-            let margin_ratio = instrument.margin_ratio();
+            let underlying_price = underlying_price.unwrap_or(Decimal::ZERO).abs();
+            let multiplier = instrument.multiplier().abs();
+            let margin_ratio = instrument.margin_ratio().abs();
+            let option_price = price.abs();
 
             let margin_per_unit = if underlying_price > Decimal::ZERO {
-                price + (underlying_price * margin_ratio)
+                checked_add_or_cap(
+                    option_price,
+                    checked_mul_or_cap(underlying_price, margin_ratio),
+                )
             } else {
-                // Fallback: assume margin ratio applies to option value itself (e.g. 100% + extra)
-                price * (Decimal::ONE + margin_ratio)
+                checked_mul_or_cap(option_price, checked_add_or_cap(Decimal::ONE, margin_ratio))
             };
 
-            margin_per_unit * multiplier * abs_qty
+            checked_mul_or_cap(checked_mul_or_cap(margin_per_unit, multiplier), abs_qty)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::instrument::{FuturesInstrument, InstrumentEnum, OptionInstrument};
+    use crate::model::types::{AssetType, OptionType};
+
+    #[test]
+    fn linear_margin_caps_on_overflow() {
+        let instrument = Instrument {
+            asset_type: AssetType::Futures,
+            inner: InstrumentEnum::Futures(FuturesInstrument {
+                symbol: "FUT".to_string(),
+                multiplier: Decimal::MAX,
+                margin_ratio: Decimal::MAX,
+                tick_size: Decimal::ONE,
+                expiry_date: None,
+                settlement_type: None,
+                settlement_price: None,
+            }),
+        };
+
+        let calc = LinearMarginCalculator;
+        let margin = calc.calculate_margin(Decimal::MAX, Decimal::MAX, &instrument, None);
+        assert_eq!(margin, Decimal::MAX);
+    }
+
+    #[test]
+    fn option_margin_caps_on_overflow() {
+        let instrument = Instrument {
+            asset_type: AssetType::Option,
+            inner: InstrumentEnum::Option(OptionInstrument {
+                symbol: "OPT".to_string(),
+                multiplier: Decimal::MAX,
+                margin_ratio: Decimal::MAX,
+                tick_size: Decimal::ONE,
+                option_type: OptionType::Call,
+                strike_price: Decimal::ZERO,
+                expiry_date: 0,
+                underlying_symbol: "UL".to_string(),
+                settlement_type: None,
+            }),
+        };
+
+        let calc = OptionMarginCalculator;
+        let margin = calc.calculate_margin(
+            Decimal::NEGATIVE_ONE,
+            Decimal::MAX,
+            &instrument,
+            Some(Decimal::MAX),
+        );
+        assert_eq!(margin, Decimal::MAX);
     }
 }

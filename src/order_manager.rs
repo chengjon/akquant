@@ -479,15 +479,21 @@ mod tests {
     #[test]
     fn test_cancel_active_order_updates_status_and_cleans_oco_mapping() {
         let mut manager = OrderManager::new();
-        manager.active_orders.push(make_order("order-a", OrderStatus::Submitted));
-        manager.active_orders.push(make_order("order-b", OrderStatus::Submitted));
+        manager
+            .active_orders
+            .push(make_order("order-a", OrderStatus::Submitted));
+        manager
+            .active_orders
+            .push(make_order("order-b", OrderStatus::Submitted));
         manager.register_oco_group(
             "oco-1".to_string(),
             "order-a".to_string(),
             "order-b".to_string(),
         );
 
-        let cancelled = manager.cancel_active_order("order-b", 123).expect("cancelled");
+        let cancelled = manager
+            .cancel_active_order("order-b", 123)
+            .expect("cancelled");
         assert_eq!(cancelled.status, OrderStatus::Cancelled);
         assert_eq!(cancelled.updated_at, 123);
         assert!(!manager.oco_order_to_group.contains_key("order-b"));

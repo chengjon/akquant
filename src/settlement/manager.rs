@@ -142,8 +142,8 @@ impl SettlementManager {
             compute_portfolio_metrics(portfolio, ctx.last_prices, ctx.instruments);
 
         let borrowed_cash = (-portfolio.cash).max(Decimal::ZERO);
-        let financing_rate = Decimal::from_f64(ctx.risk_config.financing_rate_annual)
-            .unwrap_or(Decimal::ZERO);
+        let financing_rate =
+            Decimal::from_f64(ctx.risk_config.financing_rate_annual).unwrap_or(Decimal::ZERO);
         let borrow_rate =
             Decimal::from_f64(ctx.risk_config.borrow_rate_annual).unwrap_or(Decimal::ZERO);
         let day_divisor = Decimal::from(365);
@@ -189,38 +189,42 @@ impl SettlementManager {
             })
             .collect();
         let short_first = ctx.risk_config.liquidation_short_first();
-        symbols_to_close.sort_by(|(left_symbol, left_exposure), (right_symbol, right_exposure)| {
-            let left_qty = portfolio
-                .positions
-                .get(left_symbol)
-                .copied()
-                .unwrap_or(Decimal::ZERO);
-            let right_qty = portfolio
-                .positions
-                .get(right_symbol)
-                .copied()
-                .unwrap_or(Decimal::ZERO);
-            let left_rank = if short_first {
-                if left_qty < Decimal::ZERO { 0 } else { 1 }
-            } else if left_qty > Decimal::ZERO {
-                0
-            } else {
-                1
-            };
-            let right_rank = if short_first {
-                if right_qty < Decimal::ZERO { 0 } else { 1 }
-            } else if right_qty > Decimal::ZERO {
-                0
-            } else {
-                1
-            };
-            left_rank
-                .cmp(&right_rank)
-                .then_with(|| right_exposure.cmp(left_exposure))
-        });
+        symbols_to_close.sort_by(
+            |(left_symbol, left_exposure), (right_symbol, right_exposure)| {
+                let left_qty = portfolio
+                    .positions
+                    .get(left_symbol)
+                    .copied()
+                    .unwrap_or(Decimal::ZERO);
+                let right_qty = portfolio
+                    .positions
+                    .get(right_symbol)
+                    .copied()
+                    .unwrap_or(Decimal::ZERO);
+                let left_rank = if short_first {
+                    if left_qty < Decimal::ZERO { 0 } else { 1 }
+                } else if left_qty > Decimal::ZERO {
+                    0
+                } else {
+                    1
+                };
+                let right_rank = if short_first {
+                    if right_qty < Decimal::ZERO { 0 } else { 1 }
+                } else if right_qty > Decimal::ZERO {
+                    0
+                } else {
+                    1
+                };
+                left_rank
+                    .cmp(&right_rank)
+                    .then_with(|| right_exposure.cmp(left_exposure))
+            },
+        );
 
-        let symbols_to_close: Vec<String> =
-            symbols_to_close.into_iter().map(|(symbol, _)| symbol).collect();
+        let symbols_to_close: Vec<String> = symbols_to_close
+            .into_iter()
+            .map(|(symbol, _)| symbol)
+            .collect();
         for symbol in symbols_to_close {
             let qty = portfolio
                 .positions
@@ -355,7 +359,10 @@ mod tests {
     #[test]
     fn test_margin_liquidation_closes_positions_when_maintenance_breached() {
         let mut pos = HashMap::new();
-        pos.insert("AAA".to_string(), Decimal::from_str("150").expect("decimal"));
+        pos.insert(
+            "AAA".to_string(),
+            Decimal::from_str("150").expect("decimal"),
+        );
         let mut portfolio = Portfolio {
             cash: Decimal::from(-5000),
             positions: Arc::new(pos),
@@ -455,7 +462,10 @@ mod tests {
                 .unwrap_or(Decimal::ZERO),
             Decimal::from(100)
         );
-        assert_eq!(outcome_short_first.liquidated_symbols, vec!["SHORT".to_string()]);
+        assert_eq!(
+            outcome_short_first.liquidated_symbols,
+            vec!["SHORT".to_string()]
+        );
 
         let mut portfolio_long_first = Portfolio {
             cash: Decimal::from(2000),
@@ -491,6 +501,9 @@ mod tests {
                 .unwrap_or(Decimal::ZERO),
             Decimal::from(-50)
         );
-        assert_eq!(outcome_long_first.liquidated_symbols, vec!["LONG".to_string()]);
+        assert_eq!(
+            outcome_long_first.liquidated_symbols,
+            vec!["LONG".to_string()]
+        );
     }
 }

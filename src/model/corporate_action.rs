@@ -1,7 +1,54 @@
 use chrono::NaiveDate;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+
+const CORP_ACTION_VALIDATION_PREFIX: &str = "AKQ-CORP-ACTION-VALIDATION";
+const MIN_SPLIT_RATIO_SCALE: i64 = 1;
+const MIN_SPLIT_RATIO_DP: u32 = 4;
+const MAX_SPLIT_RATIO_SCALE: i64 = 10000;
+const MAX_SPLIT_RATIO_DP: u32 = 0;
+
+fn validation_err(message: &str) -> PyErr {
+    PyValueError::new_err(format!("[{CORP_ACTION_VALIDATION_PREFIX}] {message}"))
+}
+
+fn split_ratio_bounds() -> (Decimal, Decimal) {
+    (
+        Decimal::new(MIN_SPLIT_RATIO_SCALE, MIN_SPLIT_RATIO_DP),
+        Decimal::new(MAX_SPLIT_RATIO_SCALE, MAX_SPLIT_RATIO_DP),
+    )
+}
+
+fn validate_corporate_action_value(
+    symbol: &str,
+    action_type: CorporateActionType,
+    value: Decimal,
+) -> PyResult<()> {
+    if symbol.trim().is_empty() {
+        return Err(validation_err("symbol must not be empty"));
+    }
+    match action_type {
+        CorporateActionType::Split => {
+            if value <= Decimal::ZERO {
+                return Err(validation_err("split ratio must be > 0"));
+            }
+            let (min_ratio, max_ratio) = split_ratio_bounds();
+            if value < min_ratio || value > max_ratio {
+                return Err(validation_err(&format!(
+                    "split ratio must be within [{min_ratio}, {max_ratio}]",
+                )));
+            }
+        }
+        CorporateActionType::Dividend => {
+            if value < Decimal::ZERO {
+                return Err(validation_err("dividend value must be >= 0"));
+            }
+        }
+    }
+    Ok(())
+}
 
 #[pyclass(eq, eq_int, from_py_object)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -43,6 +90,8 @@ impl CorporateAction {
     ) -> PyResult<Self> {
         use crate::model::market_data::extract_decimal;
         let val = extract_decimal(value)?;
+        let symbol = symbol.trim().to_string();
+        validate_corporate_action_value(&symbol, action_type.clone(), val)?;
         Ok(Self {
             symbol,
             date,
@@ -60,7 +109,38 @@ impl CorporateAction {
     #[setter]
     fn set_value(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         use crate::model::market_data::extract_decimal;
-        self.value = extract_decimal(value)?;
+        let val = extract_decimal(value)?;
+        validate_corporate_action_value(&self.symbol, self.action_type.clone(), val)?;
+        self.value = val;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_corporate_action_rejects_invalid_split_ratio() {
+        let result =
+            validate_corporate_action_value("AAPL", CorporateActionType::Split, Decimal::ZERO);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_corporate_action_rejects_negative_dividend() {
+        let result = validate_corporate_action_value(
+            "AAPL",
+            CorporateActionType::Dividend,
+            Decimal::new(-1, 2),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_corporate_action_rejects_out_of_range_split_ratio() {
+        let result =
+            validate_corporate_action_value("AAPL", CorporateActionType::Split, Decimal::new(1, 5));
+        assert!(result.is_err());
     }
 }

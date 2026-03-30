@@ -28,7 +28,11 @@ macro_rules! define_unary_indicator {
                 self.current_value
             }
 
-            pub fn update_many<'py>(&mut self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyArray1<f64>> {
+            pub fn update_many<'py>(
+                &mut self,
+                py: Python<'py>,
+                values: Vec<f64>,
+            ) -> Bound<'py, PyArray1<f64>> {
                 let mut out = Vec::with_capacity(values.len());
                 for value in values {
                     out.push(self.update(value).unwrap_or(f64::NAN));
@@ -202,7 +206,9 @@ impl CLIP {
         max_values: Vec<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
         if values.len() != min_values.len() || values.len() != max_values.len() {
-            return Err(PyValueError::new_err("values/min_values/max_values length mismatch"));
+            return Err(PyValueError::new_err(
+                "values/min_values/max_values length mismatch",
+            ));
         }
         let mut out = Vec::with_capacity(values.len());
         for (value, (min_value, max_value)) in values
