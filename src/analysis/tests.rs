@@ -161,6 +161,7 @@ fn test_max_drawdown_logic() {
     let result = BacktestResult::calculate(crate::analysis::CalculatorInput {
         equity_curve_decimal: equity_curve,
         cash_curve_decimal: vec![],
+        margin_curve_decimal: vec![],
         snapshots: vec![],
         trade_pnl: empty_pnl.clone(),
         trades: vec![],
@@ -181,6 +182,7 @@ fn test_max_drawdown_logic() {
     let result_2 = BacktestResult::calculate(crate::analysis::CalculatorInput {
         equity_curve_decimal: equity_curve_2,
         cash_curve_decimal: vec![],
+        margin_curve_decimal: vec![],
         snapshots: vec![],
         trade_pnl: empty_pnl.clone(),
         trades: vec![],
@@ -201,6 +203,7 @@ fn test_max_drawdown_logic() {
     let result_3 = BacktestResult::calculate(crate::analysis::CalculatorInput {
         equity_curve_decimal: equity_curve_3,
         cash_curve_decimal: vec![],
+        margin_curve_decimal: vec![],
         snapshots: vec![],
         trade_pnl: empty_pnl.clone(),
         trades: vec![],
@@ -224,6 +227,7 @@ fn test_max_drawdown_logic() {
     let result_4 = BacktestResult::calculate(crate::analysis::CalculatorInput {
         equity_curve_decimal: equity_curve_4,
         cash_curve_decimal: vec![],
+        margin_curve_decimal: vec![],
         snapshots: vec![],
         trade_pnl: empty_pnl.clone(),
         trades: vec![],
@@ -257,6 +261,7 @@ fn test_ulcer_index_logic() {
     let result = BacktestResult::calculate(crate::analysis::CalculatorInput {
         equity_curve_decimal: equity_curve,
         cash_curve_decimal: vec![],
+        margin_curve_decimal: vec![],
         snapshots: vec![],
         trade_pnl: empty_pnl.clone(),
         trades: vec![],
@@ -281,6 +286,7 @@ fn test_calmar_uses_raw_drawdown_ratio_not_pct() {
     let result = BacktestResult::calculate(crate::analysis::CalculatorInput {
         equity_curve_decimal: equity_curve,
         cash_curve_decimal: vec![],
+        margin_curve_decimal: vec![],
         snapshots: vec![],
         trade_pnl: empty_pnl,
         trades: vec![],

@@ -895,13 +895,18 @@ impl Processor for StatisticsProcessor {
                 .state
                 .portfolio
                 .calculate_equity(&engine.last_prices, &engine.instruments);
+            let margin = engine
+                .state
+                .portfolio
+                .calculate_used_margin(&engine.last_prices, &engine.instruments);
             engine
                 .statistics_manager
-                .update(timestamp, equity, engine.state.portfolio.cash);
+                .update(timestamp, equity, engine.state.portfolio.cash, margin);
             let mut payload = HashMap::new();
             payload.insert("timestamp", timestamp.to_string());
             payload.insert("equity", equity.to_string());
             payload.insert("cash", engine.state.portfolio.cash.to_string());
+            payload.insert("margin", margin.to_string());
             engine.emit_stream_event(py, "equity", None, "info", payload);
         }
         Ok(ProcessorResult::Next)

@@ -201,6 +201,7 @@ class BacktestResult:
 
     :ivar equity_curve: 权益曲线 [(timestamp, equity)]
     :ivar cash_curve: 现金曲线 [(timestamp, cash)]
+    :ivar margin_curve: 保证金曲线 [(timestamp, margin)]
     :ivar metrics: 绩效指标对象
     :ivar trade_metrics: 交易统计对象
     :ivar trades: 平仓交易列表
@@ -211,6 +212,7 @@ class BacktestResult:
 
     equity_curve: list[tuple[int, float]]
     cash_curve: list[tuple[int, float]]
+    margin_curve: list[tuple[int, float]]
     metrics: PerformanceMetrics
     trade_metrics: TradePnL
     trades: list[ClosedTrade]

@@ -73,6 +73,29 @@ def _build_data(symbol: str = "TEST", n: int = 5) -> list[Bar]:
     return data
 
 
+def _build_intraday_data(symbol: str = "TEST") -> list[Bar]:
+    data: list[Bar] = []
+    timestamps = [
+        pd.Timestamp("2023-01-01 10:00:00"),
+        pd.Timestamp("2023-01-01 14:00:00"),
+        pd.Timestamp("2023-01-02 10:00:00"),
+    ]
+    closes = [10.0, 10.5, 11.0]
+    for ts, close in zip(timestamps, closes):
+        data.append(
+            Bar(
+                timestamp=ts.value,
+                open=close,
+                high=close + 0.2,
+                low=close - 0.2,
+                close=close,
+                volume=10000.0,
+                symbol=symbol,
+            )
+        )
+    return data
+
+
 def _build_market_df(symbol: str = "TEST", n: int = 5) -> pd.DataFrame:
     rows = []
     for bar in _build_data(symbol=symbol, n=n):
@@ -207,6 +230,72 @@ def test_plot_functions_return_figures_for_non_empty_result() -> None:
     assert fig_rolling is not None
     fig_returns = plot_returns_distribution(result.daily_returns)
     assert fig_returns is not None
+
+
+def test_daily_curve_properties_reduce_intraday_points() -> None:
+    """Daily curve properties should downsample intraday points to day-end."""
+    result = run_backtest(
+        data=_build_intraday_data(),
+        strategy=NoTradeStrategy,
+        symbol="TEST",
+        initial_cash=200000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert len(result.equity_curve) == 3
+    assert len(result.cash_curve) == 3
+    assert len(result.margin_curve) == 3
+    assert len(result.equity_curve_daily) == 2
+    assert len(result.cash_curve_daily) == 2
+    assert len(result.margin_curve_daily) == 2
+
+
+def test_report_accepts_curve_freq_daily(tmp_path: Path) -> None:
+    """Report generation should support daily curve frequency mode."""
+    _skip_if_no_plotly()
+    result = run_backtest(
+        data=_build_intraday_data(),
+        strategy=NoTradeStrategy,
+        symbol="TEST",
+        initial_cash=200000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+    )
+    report_path = tmp_path / "report_curve_freq_daily.html"
+    result.report(filename=str(report_path), show=False, curve_freq="D")
+    assert report_path.exists()
+
+
+def test_report_rejects_invalid_curve_freq(tmp_path: Path) -> None:
+    """Report generation should reject unsupported curve frequency values."""
+    _skip_if_no_plotly()
+    result = run_backtest(
+        data=_build_intraday_data(),
+        strategy=NoTradeStrategy,
+        symbol="TEST",
+        initial_cash=200000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        execution_mode="current_close",
+        lot_size=1,
+        show_progress=False,
+    )
+    report_path = tmp_path / "report_curve_freq_invalid.html"
+    with pytest.raises(ValueError):
+        result.report(filename=str(report_path), show=False, curve_freq="W")
 
 
 def test_report_contains_forced_liquidation_audit_section(tmp_path: Path) -> None:

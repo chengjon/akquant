@@ -17,6 +17,8 @@ pub struct StatisticsManager {
     equity_curve: Vec<(i64, Decimal)>,
     /// 现金曲线 [(timestamp, cash)]
     cash_curve: Vec<(i64, Decimal)>,
+    /// 保证金曲线 [(timestamp, used_margin)]
+    margin_curve: Vec<(i64, Decimal)>,
     /// 持仓快照 [(timestamp, snapshots)]
     pub snapshots: Vec<(i64, Vec<PositionSnapshot>)>,
     /// 强平审计记录
@@ -35,15 +37,17 @@ impl StatisticsManager {
         Self {
             equity_curve: Vec::new(),
             cash_curve: Vec::new(),
+            margin_curve: Vec::new(),
             snapshots: Vec::new(),
             liquidation_audits: Vec::new(),
         }
     }
 
     /// 更新权益和现金曲线
-    pub fn update(&mut self, timestamp: i64, equity: Decimal, cash: Decimal) {
+    pub fn update(&mut self, timestamp: i64, equity: Decimal, cash: Decimal, margin: Decimal) {
         self.equity_curve.push((timestamp, equity));
         self.cash_curve.push((timestamp, cash));
+        self.margin_curve.push((timestamp, margin));
     }
 
     /// 记录持仓快照
@@ -140,6 +144,7 @@ impl StatisticsManager {
         // Prepare data for result creation
         let mut equity_curve = self.equity_curve.clone();
         let mut cash_curve = self.cash_curve.clone();
+        let mut margin_curve = self.margin_curve.clone();
         let mut snapshots = self.snapshots.clone();
 
         // Add final snapshot if needed
@@ -154,6 +159,11 @@ impl StatisticsManager {
             // Append final cash point if not present
             if cash_curve.last().is_none_or(|(t, _)| *t != ts) {
                 cash_curve.push((ts, portfolio.cash));
+            }
+
+            if margin_curve.last().is_none_or(|(t, _)| *t != ts) {
+                let margin = portfolio.calculate_used_margin(last_prices, instruments);
+                margin_curve.push((ts, margin));
             }
 
             // Append final position snapshot if not present
@@ -171,6 +181,7 @@ impl StatisticsManager {
         BacktestResult::calculate(crate::analysis::CalculatorInput {
             equity_curve_decimal: equity_curve,
             cash_curve_decimal: cash_curve,
+            margin_curve_decimal: margin_curve,
             snapshots,
             trade_pnl,
             trades: order_manager.trade_tracker.closed_trades.to_vec(),
@@ -191,5 +202,10 @@ impl StatisticsManager {
     /// 获取当前的现金曲线（只读）
     pub fn cash_curve(&self) -> &Vec<(i64, Decimal)> {
         &self.cash_curve
+    }
+
+    /// 获取当前的保证金曲线（只读）
+    pub fn margin_curve(&self) -> &Vec<(i64, Decimal)> {
+        &self.margin_curve
     }
 }

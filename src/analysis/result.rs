@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 pub struct CalculatorInput {
     pub equity_curve_decimal: Vec<(i64, Decimal)>,
     pub cash_curve_decimal: Vec<(i64, Decimal)>,
+    pub margin_curve_decimal: Vec<(i64, Decimal)>,
     pub snapshots: Vec<(i64, Vec<PositionSnapshot>)>,
     pub trade_pnl: TradePnL,
     pub trades: Vec<ClosedTrade>,
@@ -26,6 +27,7 @@ pub struct CalculatorInput {
 ///
 /// :ivar equity_curve: 权益曲线 [(timestamp, equity)]
 /// :ivar cash_curve: 现金曲线 [(timestamp, cash)]
+/// :ivar margin_curve: 保证金曲线 [(timestamp, margin)]
 /// :ivar metrics: 绩效指标对象
 /// :ivar trade_metrics: 交易统计对象
 /// :ivar trades: 平仓交易列表
@@ -38,6 +40,8 @@ pub struct BacktestResult {
     pub equity_curve: Vec<(i64, f64)>,
     #[pyo3(get)]
     pub cash_curve: Vec<(i64, f64)>,
+    #[pyo3(get)]
+    pub margin_curve: Vec<(i64, f64)>,
     #[pyo3(get)]
     pub metrics: PerformanceMetrics,
     #[pyo3(get)]
@@ -68,11 +72,17 @@ impl BacktestResult {
             .iter()
             .map(|(t, d)| (*t, d.to_f64().unwrap_or_default()))
             .collect();
+        let margin_curve: Vec<(i64, f64)> = input
+            .margin_curve_decimal
+            .iter()
+            .map(|(t, d)| (*t, d.to_f64().unwrap_or_default()))
+            .collect();
 
         if input.equity_curve_decimal.is_empty() {
             return BacktestResult {
                 equity_curve,
                 cash_curve,
+                margin_curve,
                 metrics: PerformanceMetrics {
                     total_return: 0.0,
                     annualized_return: 0.0,
@@ -335,6 +345,7 @@ impl BacktestResult {
         BacktestResult {
             equity_curve,
             cash_curve,
+            margin_curve,
             metrics: PerformanceMetrics {
                 total_return: total_return_f64,
                 annualized_return,

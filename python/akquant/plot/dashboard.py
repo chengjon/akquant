@@ -17,6 +17,7 @@ def plot_dashboard(
     theme: str = "light",
     show: bool = True,
     filename: Optional[str] = None,
+    equity_series: Optional[pd.Series] = None,
 ) -> Optional["go.Figure"]:
     """
     Plot comprehensive dashboard for backtest result.
@@ -29,12 +30,12 @@ def plot_dashboard(
     if not check_plotly():
         return None
 
-    equity_series = result.equity_curve
-    if equity_series.empty:
+    series = equity_series if equity_series is not None else result.equity_curve
+    if series.empty:
         print("No equity curve data available.")
         return None
 
-    equity_df = equity_series.to_frame(name="equity")
+    equity_df = series.to_frame(name="equity")
 
     # Calculate Drawdown
     equity_df["max_equity"] = equity_df["equity"].cummax()

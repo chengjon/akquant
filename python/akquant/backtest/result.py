@@ -140,6 +140,67 @@ class BacktestResult:
         return df["cash"]
 
     @property
+    def margin_curve(self) -> pd.Series:
+        """
+        Get the margin curve as a Pandas Series.
+
+        Index: Datetime (Timezone-aware)
+        Values: Used margin
+        """
+        if not hasattr(self._raw, "margin_curve") or not self._raw.margin_curve:
+            return pd.Series(dtype=float)
+
+        df = pd.DataFrame(self._raw.margin_curve, columns=["timestamp", "margin"])
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"], unit="ns", utc=True
+        ).dt.tz_convert(self._timezone)
+        df.set_index("timestamp", inplace=True)
+        return df["margin"]
+
+    @staticmethod
+    def _to_daily_curve(series: pd.Series) -> pd.Series:
+        """
+        Convert a curve series to daily end-of-day values.
+
+        :param series: Input curve series with DatetimeIndex.
+        :return: Daily curve using last value per day.
+        """
+        if series.empty:
+            return pd.Series(dtype=float)
+        daily_series = series.resample("D").last().dropna()
+        return cast(pd.Series, daily_series)
+
+    @property
+    def equity_curve_daily(self) -> pd.Series:
+        """
+        Get daily equity curve as a Pandas Series.
+
+        Index: Datetime (Timezone-aware)
+        Values: Daily end-of-day equity
+        """
+        return self._to_daily_curve(self.equity_curve)
+
+    @property
+    def cash_curve_daily(self) -> pd.Series:
+        """
+        Get daily cash curve as a Pandas Series.
+
+        Index: Datetime (Timezone-aware)
+        Values: Daily end-of-day cash
+        """
+        return self._to_daily_curve(self.cash_curve)
+
+    @property
+    def margin_curve_daily(self) -> pd.Series:
+        """
+        Get daily margin curve as a Pandas Series.
+
+        Index: Datetime (Timezone-aware)
+        Values: Daily end-of-day used margin
+        """
+        return self._to_daily_curve(self.margin_curve)
+
+    @property
     def trades(self) -> List[ClosedTrade]:
         """
         Get closed trades as a list of raw objects (Raw Access).
@@ -1413,6 +1474,7 @@ class BacktestResult:
         market_data: Optional[Union[pd.DataFrame, dict[str, pd.DataFrame]]] = None,
         plot_symbol: Optional[str] = None,
         include_trade_kline: bool = True,
+        curve_freq: str = "raw",
     ) -> None:
         """
         生成 HTML 策略回测报告 (便捷方法).
@@ -1426,6 +1488,7 @@ class BacktestResult:
         :param market_data: 可选行情数据，用于绘制 K 线买卖点图
         :param plot_symbol: 可选标的代码，指定 K 线复盘标的
         :param include_trade_kline: 是否在报告中包含 K 线复盘图
+        :param curve_freq: 曲线频率，"raw" 为原始频率，"D" 为日频末值
         """
         # 延迟导入，避免循环引用和非必要的 Plotly 依赖
         try:
@@ -1443,4 +1506,5 @@ class BacktestResult:
             market_data=market_data,
             plot_symbol=plot_symbol,
             include_trade_kline=include_trade_kline,
+            curve_freq=curve_freq,
         )

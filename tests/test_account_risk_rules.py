@@ -211,6 +211,9 @@ def test_short_option_margin_is_checked_and_account_margin_updates() -> None:
     assert any("Insufficient margin" in r for r in reasons), reasons
     assert ShortPutStrategy.account_snapshots
     assert any(s["margin"] > 0.0 for s in ShortPutStrategy.account_snapshots)
+    assert not result.margin_curve.empty
+    assert len(result.margin_curve) == len(result.equity_curve)
+    assert float(result.margin_curve.max()) > 0.0
 
 
 def test_margin_account_allows_short_sell_when_enabled() -> None:

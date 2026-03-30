@@ -551,9 +551,37 @@ def _rename_table_columns(df: pd.DataFrame, mapping: dict[str, str]) -> pd.DataF
     return cast(pd.DataFrame, renamed)
 
 
-def _build_summary_context(result: Any) -> dict[str, str]:
+def _normalize_curve_freq(curve_freq: str) -> str:
+    """Normalize curve frequency option."""
+    value = str(curve_freq).strip()
+    if value.lower() == "raw":
+        return "raw"
+    if value.upper() == "D":
+        return "D"
+    raise ValueError("curve_freq must be 'raw' or 'D'")
+
+
+def _resolve_equity_curve(result: Any, curve_freq: str) -> pd.Series:
+    """Resolve equity curve for report rendering."""
+    if curve_freq == "D" and hasattr(result, "equity_curve_daily"):
+        series = cast(pd.Series, result.equity_curve_daily)
+        if not series.empty:
+            return series
+    return cast(pd.Series, result.equity_curve)
+
+
+def _build_daily_returns_from_equity(equity_curve: pd.Series) -> pd.Series:
+    """Build daily returns from equity curve."""
+    if equity_curve.empty:
+        return pd.Series(dtype=float)
+    daily_equity = equity_curve.resample("D").last().ffill()
+    returns = daily_equity.pct_change().fillna(0.0)
+    return cast(pd.Series, returns)
+
+
+def _build_summary_context(result: Any, curve_freq: str = "raw") -> dict[str, str]:
     """Build summary text values for report header."""
-    equity_curve = result.equity_curve
+    equity_curve = _resolve_equity_curve(result, curve_freq)
     start_date = "N/A"
     end_date = "N/A"
     duration_str = "N/A"
@@ -752,6 +780,7 @@ def _build_chart_html_sections(
     market_data: Optional[Union[pd.DataFrame, dict[str, pd.DataFrame]]] = None,
     plot_symbol: Optional[str] = None,
     include_trade_kline: bool = True,
+    curve_freq: str = "raw",
 ) -> dict[str, str]:
     """Build chart HTML sections from plot figures."""
     config = {"responsive": True}
@@ -762,14 +791,17 @@ def _build_chart_html_sections(
         "doubleClick": "reset",
     }
 
-    fig_dashboard = plot_dashboard(result, show=False, theme="light")
+    equity_curve = _resolve_equity_curve(result, curve_freq)
+    fig_dashboard = plot_dashboard(
+        result, show=False, theme="light", equity_series=equity_curve
+    )
     dashboard_html = (
         fig_dashboard.to_html(full_html=False, include_plotlyjs=False, config=config)
         if fig_dashboard
         else "<div>暂无数据</div>"
     )
 
-    returns_series = result.daily_returns
+    returns_series = _build_daily_returns_from_equity(equity_curve)
     fig_rolling = plot_rolling_metrics(returns_series, theme="light")
     rolling_metrics_html = (
         fig_rolling.to_html(full_html=False, include_plotlyjs=False, config=config)
@@ -1576,6 +1608,7 @@ def plot_report(
     market_data: Optional[Union[pd.DataFrame, dict[str, pd.DataFrame]]] = None,
     plot_symbol: Optional[str] = None,
     include_trade_kline: bool = True,
+    curve_freq: str = "raw",
 ) -> None:
     """
     生成类似 QuantStats 的整合版 HTML 报告 (中文优化版).
@@ -1586,21 +1619,24 @@ def plot_report(
     3. 交易分布与持仓时间分析 (Trade Analysis)
 
     :param compact_currency: 是否将金额列按 K/M/B 紧凑显示
+    :param curve_freq: 曲线频率，"raw" 为原始频率，"D" 为日频末值
     """
     if not check_plotly():
         return
+    normalized_curve_freq = _normalize_curve_freq(curve_freq)
 
     # Prepare Icon
     icon_b64 = base64.b64encode(AKQUANT_ICON_SVG.encode("utf-8")).decode("utf-8")
     favicon_uri = f"data:image/svg+xml;base64,{icon_b64}"
 
-    summary_context = _build_summary_context(result)
+    summary_context = _build_summary_context(result, curve_freq=normalized_curve_freq)
     metrics_html = _build_metrics_html(result)
     chart_sections = _build_chart_html_sections(
         result=result,
         market_data=market_data,
         plot_symbol=plot_symbol,
         include_trade_kline=include_trade_kline,
+        curve_freq=normalized_curve_freq,
     )
     analysis_sections = _build_analysis_table_sections(
         result, compact_currency=compact_currency

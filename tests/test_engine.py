@@ -1450,6 +1450,8 @@ def test_run_backtest_without_on_event_keeps_legacy_semantics() -> None:
     )
     assert result.metrics.initial_market_value == pytest.approx(100000.0, rel=1e-9)
     assert len(result.equity_curve) == len(data)
+    assert len(result.cash_curve) == len(data)
+    assert len(result.margin_curve) == len(data)
 
 
 def test_run_backtest_strategy_id_propagates_to_orders() -> None:
