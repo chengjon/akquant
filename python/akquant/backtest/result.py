@@ -1119,13 +1119,22 @@ class BacktestResult:
 
     def _risk_reason_masks(self, rejected: pd.DataFrame) -> dict[str, pd.Series]:
         reason_lower = rejected["reject_reason"].fillna("").astype(str).str.lower()
-        daily_loss_mask = reason_lower.str.contains("daily loss", regex=False)
+        daily_loss_mask = reason_lower.str.contains(
+            "daily loss", regex=False
+        ) | reason_lower.str.contains("stop-loss threshold", regex=False)
         drawdown_mask = reason_lower.str.contains("drawdown", regex=False)
-        reduce_only_mask = reason_lower.str.contains("reduce_only mode", regex=False)
+        reduce_only_mask = reason_lower.str.contains(
+            "reduce_only mode", regex=False
+        ) | reason_lower.str.contains("cooldown", regex=False)
         position_limit_mask = reason_lower.str.contains(
             "projected position", regex=False
+        ) | reason_lower.str.contains("available position", regex=False)
+        position_limit_mask = position_limit_mask | reason_lower.str.contains(
+            "is restricted", regex=False
         )
-        order_size_mask = reason_lower.str.contains("order quantity", regex=False)
+        order_size_mask = reason_lower.str.contains(
+            "order quantity", regex=False
+        ) | reason_lower.str.contains("lot size", regex=False)
         order_value_mask = reason_lower.str.contains("order value", regex=False)
         strategy_budget_mask = reason_lower.str.contains(
             "risk budget", regex=False
@@ -1154,6 +1163,51 @@ class BacktestResult:
             "portfolio_risk_budget_reject_count": portfolio_budget_mask.astype(int),
             "other_risk_reject_count": (~known_mask).astype(int),
         }
+
+    def top_reject_reasons(self, top_n: int = 10) -> pd.DataFrame:
+        """Get Top-N rejection reasons from orders."""
+        columns = ["reject_reason", "count", "ratio"]
+        if top_n <= 0:
+            return pd.DataFrame(columns=columns)
+
+        orders = self.orders_df.copy()
+        if orders.empty:
+            return pd.DataFrame(columns=columns)
+
+        if "reject_reason" not in orders.columns:
+            orders["reject_reason"] = ""
+        if "status" not in orders.columns:
+            orders["status"] = ""
+        reject_reason = orders["reject_reason"].fillna("").astype(str)
+        status = orders["status"].fillna("").astype(str)
+        rejected_mask = (reject_reason.str.len() > 0) | status.str.contains(
+            "Rejected", case=False, regex=False
+        )
+        rejected = orders.loc[rejected_mask].copy()
+        if rejected.empty:
+            return pd.DataFrame(columns=columns)
+
+        cleaned_reason = (
+            rejected["reject_reason"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .replace("", "(empty reject reason)")
+        )
+        all_counts = cleaned_reason.value_counts()
+        counts = all_counts.head(top_n)
+        total = int(all_counts.sum())
+        if total <= 0:
+            return pd.DataFrame(columns=columns)
+
+        frame = pd.DataFrame(
+            {
+                "reject_reason": counts.index.astype(str),
+                "count": counts.values.astype(int),
+            }
+        )
+        frame["ratio"] = frame["count"] / float(total)
+        return cast(pd.DataFrame, frame.reset_index(drop=True))
 
     def risk_rejections_by_strategy(self) -> pd.DataFrame:
         """Get strategy-level risk rejection breakdown table."""

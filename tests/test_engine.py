@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from akquant.backtest import engine as backtest_engine
+from akquant.data import ParquetDataCatalog
 
 
 def test_engine_initialization() -> None:
@@ -682,6 +683,66 @@ def test_fill_policy_next_event_matches_legacy_parameters() -> None:
 
     assert strategy.timer_timestamp is not None
     assert strategy.trade_timestamp != strategy.timer_timestamp
+
+
+def test_run_backtest_catalog_path_loads_data(tmp_path: Path) -> None:
+    """run_backtest should load bars from explicit catalog_path when data is None."""
+    symbol = "CATALOG_PATH_OK"
+    catalog_root = tmp_path / "catalog"
+    catalog = ParquetDataCatalog(root_path=str(catalog_root))
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2023-01-02", periods=3, freq="D"),
+            "open": [10.0, 11.0, 12.0],
+            "high": [10.0, 11.0, 12.0],
+            "low": [10.0, 11.0, 12.0],
+            "close": [10.0, 11.0, 12.0],
+            "volume": [1000.0, 1000.0, 1000.0],
+            "symbol": [symbol, symbol, symbol],
+        }
+    ).set_index("date")
+    _ = catalog.write(symbol, data)
+
+    result = akquant.run_backtest(
+        strategy=SingleBuyStrategy,
+        symbols=symbol,
+        catalog_path=str(catalog_root),
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert not result.orders_df.empty
+    assert str(result.orders_df["symbol"].iloc[0]) == symbol
+
+
+def test_backtest_result_top_reject_reasons_and_lot_size_category() -> None:
+    """Lot-size rejects should be included in top reasons and order-size bucket."""
+    symbol = "LOT_SIZE_REASON"
+    bars = _build_regression_bars(symbol)
+
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=SingleBuyStrategy,
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        lot_size=100,
+        show_progress=False,
+    )
+
+    top_reasons = result.top_reject_reasons(top_n=5)
+    assert not top_reasons.empty
+    assert "reject_reason" in top_reasons.columns
+    assert "count" in top_reasons.columns
+    assert "ratio" in top_reasons.columns
+    assert any(
+        "lot size" in reason
+        for reason in top_reasons["reject_reason"].fillna("").astype(str).tolist()
+    )
+
+    risk_df = result.risk_rejections_by_strategy()
+    assert not risk_df.empty
+    assert int(risk_df["order_size_limit_reject_count"].sum()) >= 1
 
 
 def test_policy_resolver_next_close_same_cycle_sets_timer_same_cycle() -> None:

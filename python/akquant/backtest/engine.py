@@ -1537,6 +1537,7 @@ def run_backtest(
     show_progress: Optional[bool] = None,
     start_time: Optional[Union[str, Any]] = None,
     end_time: Optional[Union[str, Any]] = None,
+    catalog_path: Optional[str] = None,
     config: Optional[BacktestConfig] = None,
     custom_matchers: Optional[Dict[AssetType, Any]] = None,
     risk_config: Optional[Union[Dict[str, Any], RiskConfig]] = None,
@@ -1627,6 +1628,8 @@ def run_backtest(
                        config.start_time.
     :param end_time: 回测结束时间 (e.g., "2020-12-31 15:00"). 优先级高于
                      config.end_time.
+    :param catalog_path: 当 data 未显式传入时，按该目录加载 ParquetDataCatalog 数据。
+                         不传则使用 ParquetDataCatalog 默认目录。
     :param config: BacktestConfig 配置对象 (可选)
     :param strategy_runtime_config: 策略运行时配置对象或字典 (可选)
     :param runtime_config_override: 是否覆盖策略实例内已有 runtime_config (默认 True)
@@ -2442,7 +2445,8 @@ def run_backtest(
         if not symbols:
             logger.warning("No symbols specified and no data provided.")
 
-        catalog = ParquetDataCatalog()
+        catalog = ParquetDataCatalog(root_path=catalog_path)
+        logger.info(f"Loading backtest data from catalog root: {catalog.root}")
         # start_time / end_time already resolved above
 
         loaded_count = 0

@@ -1096,6 +1096,7 @@ def _build_chart_html_sections(
     risk_reject_trend_html = "<div>暂无按日风控拒单趋势图</div>"
     risk_reject_trend_by_strategy_html = "<div>暂无按策略风控拒单趋势图</div>"
     risk_reason_trend_html = "<div>暂无按日拒单原因趋势图</div>"
+    risk_other_reason_table_html = ""
     has_risk_ratio_chart = False
     has_risk_reason_ratio_chart = False
     has_risk_trend_chart = False
@@ -1109,6 +1110,34 @@ def _build_chart_html_sections(
         if hasattr(result, "risk_rejections_by_strategy")
         else pd.DataFrame()
     )
+    top_reasons_df = (
+        result.top_reject_reasons(top_n=8)
+        if hasattr(result, "top_reject_reasons")
+        else pd.DataFrame()
+    )
+    if not top_reasons_df.empty:
+        top_reasons_view = _rename_table_columns(
+            top_reasons_df,
+            {
+                "reject_reason": "拒单原因 (Reject Reason)",
+                "count": "拒单数 (Count)",
+                "ratio": "占比 (Ratio)",
+            },
+        )
+        top_reasons_table_html = _format_table(
+            top_reasons_view,
+            max_rows=8,
+            percentage_columns={"占比 (Ratio)"},
+            compact_currency=False,
+        )
+        risk_other_reason_table_html = (
+            '<div class="chart-container" style="margin-top: 20px;">'
+            "<h3 style='margin: 0 0 10px 0;'>"
+            "拒单原因 Top 8 明细 (Top Reject Reasons)"
+            "</h3>"
+            f"{top_reasons_table_html}"
+            "</div>"
+        )
     if not risk_df.empty and "risk_reject_count" in risk_df.columns:
         risk_base_df = risk_df.copy()
         if "owner_strategy_id" not in risk_base_df.columns:
@@ -1474,6 +1503,8 @@ def _build_chart_html_sections(
         append_risk_chart_block(liquidation_count_chart_html)
     if has_liquidation_interest_chart:
         append_risk_chart_block(liquidation_interest_chart_html)
+    if risk_other_reason_table_html:
+        risk_chart_blocks.append(risk_other_reason_table_html)
 
     if risk_chart_blocks:
         risk_charts_html = "".join(risk_chart_blocks)
