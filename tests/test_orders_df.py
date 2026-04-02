@@ -36,7 +36,7 @@ def test_orders_df() -> None:
     result = run_backtest(
         data=data,
         strategy=OrdersTestStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         commission_rate=0.0002,
         min_commission=5.0,

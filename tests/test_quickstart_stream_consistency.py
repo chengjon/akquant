@@ -84,11 +84,11 @@ def test_quickstart_like_stream_matches_non_stream() -> None:
         transfer_fee_rate=0.0,
         min_commission=5.0,
         lot_size=1,
-        execution_mode=akquant.ExecutionMode.NextAverage,
+        fill_policy={"price_basis": "ohlc4", "temporal": "same_cycle"},
         config=config,
         start_time="20250101",
         end_time="20250106",
-        symbol=["600000", "600004", "600006"],
+        symbols=["600000", "600004", "600006"],
         show_progress=False,
     )
 

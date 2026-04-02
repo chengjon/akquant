@@ -79,7 +79,7 @@ impl RiskManager {
             portfolio,
             last_prices: &prices_dec,
             market_model: &market_model,
-            execution_mode: crate::model::ExecutionMode::NextOpen,
+            execution_policy_core: crate::model::ExecutionPolicyCore::default(),
             bar_index: 0,
             current_time: 0,
             session: crate::model::TradingSession::Continuous,

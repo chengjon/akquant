@@ -139,7 +139,7 @@ if __name__ == "__main__":
         strategy=WalkForwardStrategy,
         symbols="TEST",
         lot_size=1,
-        execution_mode="current_close",  # 在当根 bar 结束时撮合
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         history_depth=60,
         warmup_period=50,
     )

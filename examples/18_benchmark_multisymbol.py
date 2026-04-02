@@ -174,7 +174,7 @@ if __name__ == "__main__":
         strategy=strategy,
         initial_cash=1_000_000.0,
         commission_rate=0.0003,
-        execution_mode="next_open",
+        fill_policy={"price_basis": "open", "temporal": "same_cycle"},
         lot_size=100,
         show_progress=True,
     )

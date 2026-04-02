@@ -170,7 +170,7 @@ On Windows, parallel optimization in `run_grid_search` / `run_walk_forward` uses
 
 *   Strategy classes must be defined in an **importable module**, not directly in `__main__`.
 *   Script entry must be guarded by `if __name__ == "__main__":`.
-*   This is a Python multiprocessing limitation, **not** an `execution_mode` fill-semantics issue.
+*   This is a Python multiprocessing limitation, **not** a fill-policy semantics issue.
 
 Recommended pattern:
 

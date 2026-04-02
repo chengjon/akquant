@@ -1,6 +1,6 @@
 # AKQuant Design and Development Guide
 
-This document details the internal design principles, core component architecture, and extension development guide of `AKQuant`. It aims to help developers deeply understand the project structure for secondary development and functional expansion.
+This document details the internal design principles, core component architecture, and extension development guide of `AKQuant`. It aims to help developers deeply understand the project structure for secondary development and functional expansion. This is an internal document and does not define public API naming conventions.
 
 ## 1. Project Overview
 
@@ -38,7 +38,7 @@ akquant/
 │       ├── instrument.rs   # Instrument information
 │       ├── market_data.rs  # Market data (Bar, Tick)
 │       ├── timer.rs        # Timer events
-│       └── types.rs        # Basic enums (Side, Type, ExecutionMode)
+│       └── types.rs        # Basic enums (Side, Type, PriceBasis/TemporalPolicy)
 ├── python/
 │   └── akquant/            # Python package source (User Interface)
 │       ├── __init__.py     # Exports public API
@@ -73,7 +73,7 @@ akquant/
 To ensure cross-language interaction performance and type safety, core data structures are defined in Rust and exported.
 
 *   **`types.rs`**:
-    *   `ExecutionMode`: `CurrentClose` (Match on current close, i.e., Cheat-on-Close) vs `NextOpen` (Match on next open, more realistic).
+    *   `ExecutionPolicyCore`: unified three-axis execution semantics (`price_basis`, `bar_offset`, `temporal`).
     *   `OrderSide`: `Buy` / `Sell`.
     *   `OrderType`: `Market`, `Limit`.
     *   `TimeInForce`: `Day`, `GTC`, `IOC`/`FOK`.
@@ -86,7 +86,7 @@ To ensure cross-language interaction performance and type safety, core data stru
 
 *   **Matching Mechanism**:
     *   **Limit Order**: Buy requires `Low <= Price`, Sell requires `High >= Price`.
-    *   **Market Order**: Matches at `Close` or `Open` based on `ExecutionMode`.
+    *   **Market Order**: Price basis and timing are resolved from three-axis `fill_policy`.
 *   **Trigger Mechanism**: Supports `trigger_price` (Stop Loss/Take Profit orders).
 
 ### 2.3 Market Rule Layer (`src/market/`)
@@ -158,12 +158,12 @@ Follows standard PnL calculation: `Gross PnL`, `Net PnL`, `Commission`.
 
 ## 3. Key Workflow Details
 
-### 3.1 Backtest Main Loop & Execution Mode
+### 3.1 Backtest Main Loop & Three-Axis Semantics
 
-`Engine::run` flow depends on `ExecutionMode`:
+`Engine::run` flow depends on three-axis execution semantics:
 
-*   **NextOpen**: Recommended mode. Bar Close generates signal -> Next Bar Open matches.
-*   **CurrentClose**: Simplified mode. Bar Close generates signal -> Current Bar Close matches (Cheat-on-Close).
+*   `price_basis + bar_offset` determine which bar price (`open/close/ohlc4/hl2`) is used.
+*   `temporal` controls whether timer orders match in the same cycle or on the next event.
 
 ### 3.2 Order Lifecycle
 

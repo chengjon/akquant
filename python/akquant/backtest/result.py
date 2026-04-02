@@ -45,6 +45,7 @@ class BacktestResult:
         self.strategy = strategy
         self.engine = engine
         self.analyzer_outputs: dict[str, dict[str, Any]] = {}
+        self.resolved_execution_policy: Optional[dict[str, Any]] = None
 
     @property
     def equity_curve(self) -> pd.Series:

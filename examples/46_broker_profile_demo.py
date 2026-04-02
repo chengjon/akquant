@@ -49,7 +49,7 @@ def run_example() -> None:
         data=_build_data(),
         strategy=BrokerProfileDemoStrategy,
         symbols="PROFILE",
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         broker_profile="cn_stock_t1_low_fee",
         show_progress=False,
     )

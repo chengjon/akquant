@@ -211,6 +211,7 @@ impl TimeInForce {
 pub enum ExecutionMode {
     CurrentClose,   // 当前Bar收盘价成交 (Cheat-on-Close)
     NextOpen,       // 下一根Bar开盘价成交 (Real-world)
+    NextClose,      // 下一根Bar收盘价成交
     NextAverage,    // 下一根Bar均价成交 (TWAP/VWAP 模拟)
     NextHighLowMid, // 下一根Bar最高价和最低价的中间价成交
 }
@@ -219,6 +220,95 @@ pub enum ExecutionMode {
 impl ExecutionMode {
     fn __hash__(&self) -> isize {
         *self as isize
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PriceBasis {
+    Open,
+    Close,
+    Ohlc4,
+    Hl2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TemporalPolicy {
+    SameCycle,
+    NextEvent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecutionPolicyCore {
+    pub price_basis: PriceBasis,
+    pub bar_offset: u8,
+    pub temporal: TemporalPolicy,
+}
+
+impl Default for ExecutionPolicyCore {
+    fn default() -> Self {
+        Self {
+            price_basis: PriceBasis::Open,
+            bar_offset: 1,
+            temporal: TemporalPolicy::SameCycle,
+        }
+    }
+}
+
+impl ExecutionPolicyCore {
+    pub fn from_legacy(mode: ExecutionMode, timer_execution_policy: &str) -> Self {
+        let temporal = if timer_execution_policy.trim().eq_ignore_ascii_case("next_event") {
+            TemporalPolicy::NextEvent
+        } else {
+            TemporalPolicy::SameCycle
+        };
+        match mode {
+            ExecutionMode::CurrentClose => Self {
+                price_basis: PriceBasis::Close,
+                bar_offset: 0,
+                temporal,
+            },
+            ExecutionMode::NextOpen => Self {
+                price_basis: PriceBasis::Open,
+                bar_offset: 1,
+                temporal,
+            },
+            ExecutionMode::NextClose => Self {
+                price_basis: PriceBasis::Close,
+                bar_offset: 1,
+                temporal,
+            },
+            ExecutionMode::NextAverage => Self {
+                price_basis: PriceBasis::Ohlc4,
+                bar_offset: 1,
+                temporal,
+            },
+            ExecutionMode::NextHighLowMid => Self {
+                price_basis: PriceBasis::Hl2,
+                bar_offset: 1,
+                temporal,
+            },
+        }
+    }
+
+    pub fn to_legacy_mode(self) -> ExecutionMode {
+        match (self.price_basis, self.bar_offset) {
+            (PriceBasis::Open, 1) => ExecutionMode::NextOpen,
+            (PriceBasis::Close, 0) => ExecutionMode::CurrentClose,
+            (PriceBasis::Close, 1) => ExecutionMode::NextClose,
+            (PriceBasis::Ohlc4, 1) => ExecutionMode::NextAverage,
+            (PriceBasis::Hl2, 1) => ExecutionMode::NextHighLowMid,
+            (PriceBasis::Open, _) => ExecutionMode::NextOpen,
+            (PriceBasis::Close, _) => ExecutionMode::CurrentClose,
+            (PriceBasis::Ohlc4, _) => ExecutionMode::NextAverage,
+            (PriceBasis::Hl2, _) => ExecutionMode::NextHighLowMid,
+        }
+    }
+
+    pub fn temporal_as_str(self) -> &'static str {
+        match self.temporal {
+            TemporalPolicy::SameCycle => "same_cycle",
+            TemporalPolicy::NextEvent => "next_event",
+        }
     }
 }
 

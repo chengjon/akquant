@@ -203,7 +203,9 @@ impl ExecutionClient for SimulatedExecutionClient {
                         let match_ctx = MatchContext {
                             event,
                             instrument,
-                            execution_mode: ctx.execution_mode,
+                            execution_policy_core: order
+                                .fill_policy_override
+                                .unwrap_or(ctx.execution_policy_core),
                             slippage: self.slippage_model.as_ref(),
                             volume_limit_pct: self.volume_limit_pct,
                             bar_index: ctx.bar_index,
@@ -367,7 +369,9 @@ impl ExecutionClient for SimulatedExecutionClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AssetType, Bar, ExecutionMode, Instrument, TimeInForce};
+    use crate::model::{
+        AssetType, Bar, ExecutionPolicyCore, Instrument, PriceBasis, TemporalPolicy, TimeInForce,
+    };
     use std::collections::HashMap;
 
     fn create_test_instruments() -> HashMap<String, Instrument> {
@@ -395,30 +399,12 @@ mod tests {
         price: Option<Decimal>,
     ) -> Order {
         use uuid::Uuid;
-        Order {
-            id: Uuid::new_v4().to_string(),
-            symbol: symbol.to_string(),
-            side,
-            order_type,
-            quantity,
-            price,
-            time_in_force: TimeInForce::Day,
-            trigger_price: None,
-            trail_offset: None,
-            trail_reference_price: None,
-            graph_id: None,
-            parent_order_id: None,
-            order_role: crate::model::OrderRole::Standalone,
-            status: OrderStatus::New,
-            filled_quantity: Decimal::ZERO,
-            average_filled_price: None,
-            created_at: 0,
-            updated_at: 0,
-            commission: Decimal::ZERO,
-            tag: String::new(),
-            reject_reason: String::new(),
-            owner_strategy_id: None,
-        }
+        let mut order =
+            Order::test_new(&Uuid::new_v4().to_string(), symbol, side, order_type, quantity);
+        order.price = price;
+        order.time_in_force = TimeInForce::Day;
+        order.status = OrderStatus::New;
+        order
     }
 
     fn create_test_bar(
@@ -483,7 +469,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &last_prices,
             market_model: market_model.as_ref(),
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 0,
             current_time: 0,
             session: TradingSession::Continuous,
@@ -518,6 +504,76 @@ mod tests {
             })
             .next_back()
             .unwrap();
+    }
+
+    #[test]
+    fn test_execution_market_order_next_close() {
+        let mut sim = SimulatedExecutionClient::new();
+        let instruments = create_test_instruments();
+        let order = create_test_order(
+            "AAPL",
+            crate::model::OrderSide::Buy,
+            crate::model::OrderType::Market,
+            Decimal::from(100),
+            None,
+        );
+        sim.on_order(order);
+
+        let bar = create_test_bar(
+            "AAPL",
+            Decimal::from(100),
+            Decimal::from(105),
+            Decimal::from(95),
+            Decimal::from(102),
+        );
+        let event = Event::Bar(bar);
+
+        let portfolio = crate::portfolio::Portfolio {
+            cash: Decimal::from(100000),
+            positions: HashMap::new().into(),
+            available_positions: HashMap::new().into(),
+        };
+        let last_prices = HashMap::new();
+        let risk_manager = crate::risk::RiskManager::new();
+
+        let china_config = crate::market::ChinaMarketConfig {
+            stock: Some(crate::market::stock::StockConfig::default()),
+            ..Default::default()
+        };
+        let market_config = crate::market::MarketConfig::China(china_config);
+        let market_model = market_config.create_model();
+
+        let ctx = crate::context::EngineContext {
+            instruments: &instruments,
+            portfolio: &portfolio,
+            last_prices: &last_prices,
+            market_model: market_model.as_ref(),
+            execution_policy_core: ExecutionPolicyCore {
+                price_basis: PriceBasis::Close,
+                bar_offset: 1,
+                temporal: TemporalPolicy::SameCycle,
+            },
+            bar_index: 0,
+            current_time: 0,
+            session: TradingSession::Continuous,
+            active_orders: &[],
+            risk_config: &risk_manager.config,
+        };
+
+        let events = sim.on_event(&event, &ctx);
+        let trades: Vec<crate::model::Trade> = events
+            .iter()
+            .filter_map(|e| {
+                if let Event::ExecutionReport(_, Some(trade)) = e {
+                    Some(trade.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].price, Decimal::from(102));
     }
 
     #[test]
@@ -564,7 +620,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &last_prices,
             market_model: market_model.as_ref(),
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 0,
             current_time: 0,
             session: TradingSession::Continuous,
@@ -633,7 +689,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &last_prices,
             market_model: market_model.as_ref(),
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 0,
             current_time: 0,
             session: TradingSession::Continuous,
@@ -702,7 +758,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &last_prices,
             market_model: market_model.as_ref(),
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 0,
             current_time: 0,
             session: TradingSession::Continuous,

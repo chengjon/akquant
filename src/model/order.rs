@@ -1,5 +1,5 @@
 use super::market_data::extract_decimal;
-use super::types::{OrderRole, OrderSide, OrderStatus, OrderType, TimeInForce};
+use super::types::{ExecutionPolicyCore, OrderRole, OrderSide, OrderStatus, OrderType, TimeInForce};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
@@ -89,6 +89,16 @@ pub struct Order {
     pub trail_offset: Option<Decimal>,
     #[serde(default)]
     pub trail_reference_price: Option<Decimal>,
+    #[serde(default)]
+    pub fill_policy_override: Option<ExecutionPolicyCore>,
+    #[serde(default)]
+    pub slippage_type_override: Option<String>,
+    #[serde(default)]
+    pub slippage_value_override: Option<Decimal>,
+    #[serde(default)]
+    pub commission_type_override: Option<String>,
+    #[serde(default)]
+    pub commission_value_override: Option<Decimal>,
     #[pyo3(get)]
     #[serde(default)]
     pub graph_id: Option<String>,
@@ -188,6 +198,11 @@ impl Order {
             trigger_price: trigger_dec,
             trail_offset: trail_offset_dec,
             trail_reference_price: trail_reference_dec,
+            fill_policy_override: None,
+            slippage_type_override: None,
+            slippage_value_override: None,
+            commission_type_override: None,
+            commission_value_override: None,
             graph_id,
             parent_order_id,
             order_role: order_role.unwrap_or_default(),
@@ -325,6 +340,47 @@ impl Order {
             self.tag,
             self.reject_reason
         )
+    }
+}
+
+impl Order {
+    #[cfg(test)]
+    pub fn test_new(
+        id: &str,
+        symbol: &str,
+        side: OrderSide,
+        order_type: OrderType,
+        quantity: Decimal,
+    ) -> Self {
+        Order {
+            id: id.to_string(),
+            symbol: symbol.to_string(),
+            side,
+            order_type,
+            quantity,
+            price: None,
+            time_in_force: TimeInForce::Day,
+            trigger_price: None,
+            trail_offset: None,
+            trail_reference_price: None,
+            fill_policy_override: None,
+            slippage_type_override: None,
+            slippage_value_override: None,
+            commission_type_override: None,
+            commission_value_override: None,
+            graph_id: None,
+            parent_order_id: None,
+            order_role: OrderRole::Standalone,
+            status: OrderStatus::New,
+            filled_quantity: Decimal::ZERO,
+            average_filled_price: None,
+            created_at: 0,
+            updated_at: 0,
+            commission: Decimal::ZERO,
+            tag: String::new(),
+            reject_reason: String::new(),
+            owner_strategy_id: None,
+        }
     }
 }
 

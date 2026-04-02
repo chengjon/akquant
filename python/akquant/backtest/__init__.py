@@ -1,6 +1,7 @@
 from .engine import (
     BacktestStreamEvent,
     FunctionalStrategy,
+    make_fill_policy,
     run_backtest,
     run_warm_start,
 )
@@ -11,5 +12,6 @@ __all__ = [
     "BacktestStreamEvent",
     "run_backtest",
     "run_warm_start",
+    "make_fill_policy",
     "FunctionalStrategy",
 ]

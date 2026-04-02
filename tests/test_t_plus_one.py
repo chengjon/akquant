@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
+from typing import Any, cast
 
 import akquant
 import pandas as pd
-from akquant import AssetType, Bar, Engine, ExecutionMode, Instrument, Strategy
+from akquant import AssetType, Bar, Engine, Instrument, Strategy
 
 
 class TPlusOneStrategy(Strategy):
@@ -102,8 +103,9 @@ def test_t_plus_one_mechanics() -> None:
     # engine.set_t_plus_one(True) # Already set by use_china_market
     engine.set_cash(1_000_000.0)
 
-    # Ensure execution mode allows filling on the same day (CurrentClose)
-    engine.set_execution_mode(ExecutionMode.CurrentClose)
+    # Ensure execution policy allows filling on the same day (close + bar_offset=0)
+    if hasattr(engine, "set_fill_policy"):
+        cast(Any, engine).set_fill_policy("close", 0, "same_cycle")
 
     # Add instrument
     instr = Instrument(

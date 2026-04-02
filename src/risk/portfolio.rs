@@ -94,30 +94,11 @@ mod tests {
         quantity: Decimal,
         price: Decimal,
     ) -> Order {
-        Order {
-            id: "test".to_string(),
-            symbol: symbol.to_string(),
-            side,
-            order_type: OrderType::Limit,
-            quantity,
-            price: Some(price),
-            status: OrderStatus::New,
-            time_in_force: TimeInForce::Day,
-            trigger_price: None,
-            trail_offset: None,
-            trail_reference_price: None,
-            graph_id: None,
-            parent_order_id: None,
-            order_role: crate::model::OrderRole::Standalone,
-            filled_quantity: Decimal::ZERO,
-            average_filled_price: None,
-            created_at: 0,
-            updated_at: 0,
-            commission: Decimal::ZERO,
-            tag: String::new(),
-            reject_reason: String::new(),
-            owner_strategy_id: None,
-        }
+        let mut order = Order::test_new("test", symbol, side, OrderType::Limit, quantity);
+        order.price = Some(price);
+        order.status = OrderStatus::New;
+        order.time_in_force = TimeInForce::Day;
+        order
     }
 
     fn create_context<'a>(

@@ -69,30 +69,12 @@ mod tests {
         qty: Decimal,
         status: OrderStatus,
     ) -> Order {
-        Order {
-            id: id.to_string(),
-            symbol: symbol.to_string(),
-            side,
-            order_type: OrderType::Limit,
-            quantity: qty,
-            price: Some(Decimal::from(10)),
-            time_in_force: TimeInForce::IOC,
-            trigger_price: None,
-            trail_offset: None,
-            trail_reference_price: None,
-            graph_id: None,
-            parent_order_id: None,
-            order_role: OrderRole::Standalone,
-            status,
-            filled_quantity: Decimal::ZERO,
-            average_filled_price: None,
-            created_at: 0,
-            updated_at: 0,
-            commission: Decimal::ZERO,
-            tag: String::new(),
-            reject_reason: String::new(),
-            owner_strategy_id: None,
-        }
+        let mut order = Order::test_new(id, symbol, side, OrderType::Limit, qty);
+        order.price = Some(Decimal::from(10));
+        order.time_in_force = TimeInForce::IOC;
+        order.order_role = OrderRole::Standalone;
+        order.status = status;
+        order
     }
 
     fn make_context<'a>(

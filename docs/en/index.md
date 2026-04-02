@@ -36,7 +36,7 @@ The latest version features a modular design, independent portfolio management, 
     *   **📖 [Machine Learning Guide](advanced/ml.md)**: Learn how to build AI-driven strategies.
 *   **Flexible Configuration**:
     *   **StrategyConfig**: Global strategy configuration.
-    *   **ExecutionMode**: Supports `CurrentClose` and `NextOpen` modes.
+    *   **Three-Axis Fill Policy**: `fill_policy` uses `price_basis`, `bar_offset`, and `temporal` for unified execution semantics.
 *   **Rich Analysis Tools**:
     *   **PerformanceMetrics**:
         *   **Return**: Total Return, Annualized Return, Alpha, Win Rate.

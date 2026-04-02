@@ -333,7 +333,7 @@ class CrossSectionBucketStrategy(Strategy):
 
 *   **停牌/缺失数据**：某些标的当日无 Bar 时，方案 B 可能不触发；可设置超时降级，或允许“有效样本数达阈值”即执行。
 *   **Universe 漂移**：成分股调整后若仍用旧列表，会出现权重与真实池不一致；建议定期刷新并记录生效日期。
-*   **调仓时点与执行模式错配**：例如 `execution_mode="next_open"` 时，收盘时点信号会在下一根撮合；`current_close` 下还需结合 `timer_execution_policy`（或 `fill_policy.temporal`）明确 timer 是否当期成交。
+*   **调仓时点与成交策略错配**：例如 `fill_policy={"price_basis":"open","bar_offset":1}` 时，收盘时点信号会在下一根撮合；应结合 `fill_policy.temporal` 明确 timer 是否当期成交。
 *   **历史长度不足**：新上市或停牌恢复标的数据窗口不完整；评分前统一做 `len(closes)` 检查并跳过不足样本。
 *   **仓位未收敛**：多标的先卖后买若资金未及时释放，可能导致买入不足；可采用目标仓位 API 并在下一时点二次收敛。
 

@@ -27,8 +27,8 @@ use context::StrategyContext;
 use data::{BarAggregator, DataFeed, from_arrays};
 use engine::Engine;
 use model::{
-    AssetType, Bar, ExecutionMode, Instrument, OptionType, Order, OrderRole, OrderSide,
-    OrderStatus, OrderType, SettlementType, Tick, TimeInForce, Trade, TradingSession,
+    AssetType, Bar, Instrument, OptionType, Order, OrderRole, OrderSide, OrderStatus, OrderType,
+    SettlementType, Tick, TimeInForce, Trade, TradingSession,
     corporate_action::{CorporateAction, CorporateActionType},
 };
 use portfolio::Portfolio;
@@ -57,7 +57,6 @@ fn akquant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Instrument>()?;
     m.add_class::<CorporateAction>()?;
     m.add_class::<CorporateActionType>()?;
-    m.add_class::<ExecutionMode>()?;
     m.add_class::<TradingSession>()?;
     m.add_class::<Portfolio>()?;
     m.add_class::<PerformanceMetrics>()?;

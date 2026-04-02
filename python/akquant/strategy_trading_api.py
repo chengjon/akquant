@@ -2,6 +2,10 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 
 from .akquant import OrderSide, OrderStatus, OrderType, TimeInForce
 
+OrderFillPolicy = Dict[str, Any]
+OrderSlippage = Dict[str, Any]
+OrderCommission = Dict[str, Any]
+
 
 def resolve_symbol(strategy: Any, symbol: Optional[str]) -> str:
     """解析标的代码，默认使用当前处理的 bar/tick 标的."""
@@ -135,6 +139,9 @@ def buy(
     order_type: Optional[str] = None,
     trail_offset: Optional[float] = None,
     trail_reference_price: Optional[float] = None,
+    fill_policy: Optional[OrderFillPolicy] = None,
+    slippage: Optional[OrderSlippage] = None,
+    commission: Optional[OrderCommission] = None,
 ) -> str:
     """买入下单."""
     submit_order_method = getattr(strategy, "submit_order", None)
@@ -152,6 +159,9 @@ def buy(
                 order_type=order_type,
                 trail_offset=trail_offset,
                 trail_reference_price=trail_reference_price,
+                fill_policy=fill_policy,
+                slippage=slippage,
+                commission=commission,
             ),
         )
     order_type_enum = _parse_order_type(order_type)
@@ -166,6 +176,9 @@ def buy(
         order_type=order_type_enum,
         trail_offset=trail_offset,
         trail_reference_price=trail_reference_price,
+        fill_policy=fill_policy,
+        slippage=slippage,
+        commission=commission,
     )
 
 
@@ -180,6 +193,9 @@ def sell(
     order_type: Optional[str] = None,
     trail_offset: Optional[float] = None,
     trail_reference_price: Optional[float] = None,
+    fill_policy: Optional[OrderFillPolicy] = None,
+    slippage: Optional[OrderSlippage] = None,
+    commission: Optional[OrderCommission] = None,
 ) -> str:
     """卖出下单."""
     submit_order_method = getattr(strategy, "submit_order", None)
@@ -197,6 +213,9 @@ def sell(
                 order_type=order_type,
                 trail_offset=trail_offset,
                 trail_reference_price=trail_reference_price,
+                fill_policy=fill_policy,
+                slippage=slippage,
+                commission=commission,
             ),
         )
     order_type_enum = _parse_order_type(order_type)
@@ -211,6 +230,9 @@ def sell(
         order_type=order_type_enum,
         trail_offset=trail_offset,
         trail_reference_price=trail_reference_price,
+        fill_policy=fill_policy,
+        slippage=slippage,
+        commission=commission,
     )
 
 
@@ -225,6 +247,9 @@ def _submit_buy_side(
     order_type: Optional[Any] = None,
     trail_offset: Optional[float] = None,
     trail_reference_price: Optional[float] = None,
+    fill_policy: Optional[OrderFillPolicy] = None,
+    slippage: Optional[OrderSlippage] = None,
+    commission: Optional[OrderCommission] = None,
 ) -> str:
     if strategy.ctx is None:
         raise RuntimeError("Context not ready")
@@ -240,11 +265,26 @@ def _submit_buy_side(
             ref_price, strategy.ctx.cash, strategy.ctx, symbol
         )
 
+    effective_fill_policy = _resolve_effective_order_fill_policy(strategy, fill_policy)
+    fill_price_basis, fill_bar_offset, fill_temporal = _normalize_order_fill_policy(
+        effective_fill_policy
+    )
+    effective_slippage = _resolve_effective_order_slippage(strategy, slippage)
+    fill_slippage_type, fill_slippage_value = _normalize_order_slippage(
+        effective_slippage
+    )
+    effective_commission = _resolve_effective_order_commission(strategy, commission)
+    fill_commission_type, fill_commission_value = _normalize_order_commission(
+        effective_commission
+    )
     if quantity > 0:
         if (
             order_type is None
             and trail_offset is None
             and trail_reference_price is None
+            and effective_fill_policy is None
+            and effective_slippage is None
+            and effective_commission is None
         ):
             return cast(
                 str,
@@ -264,6 +304,13 @@ def _submit_buy_side(
                 order_type,
                 trail_offset,
                 trail_reference_price,
+                fill_price_basis,
+                fill_bar_offset,
+                fill_temporal,
+                fill_slippage_type,
+                fill_slippage_value,
+                fill_commission_type,
+                fill_commission_value,
             ),
         )
     return ""
@@ -280,6 +327,9 @@ def _submit_sell_side(
     order_type: Optional[Any] = None,
     trail_offset: Optional[float] = None,
     trail_reference_price: Optional[float] = None,
+    fill_policy: Optional[OrderFillPolicy] = None,
+    slippage: Optional[OrderSlippage] = None,
+    commission: Optional[OrderCommission] = None,
 ) -> str:
     if strategy.ctx is None:
         raise RuntimeError("Context not ready")
@@ -293,11 +343,26 @@ def _submit_sell_side(
         else:
             return ""
 
+    effective_fill_policy = _resolve_effective_order_fill_policy(strategy, fill_policy)
+    fill_price_basis, fill_bar_offset, fill_temporal = _normalize_order_fill_policy(
+        effective_fill_policy
+    )
+    effective_slippage = _resolve_effective_order_slippage(strategy, slippage)
+    fill_slippage_type, fill_slippage_value = _normalize_order_slippage(
+        effective_slippage
+    )
+    effective_commission = _resolve_effective_order_commission(strategy, commission)
+    fill_commission_type, fill_commission_value = _normalize_order_commission(
+        effective_commission
+    )
     if quantity > 0:
         if (
             order_type is None
             and trail_offset is None
             and trail_reference_price is None
+            and effective_fill_policy is None
+            and effective_slippage is None
+            and effective_commission is None
         ):
             return cast(
                 str,
@@ -317,6 +382,13 @@ def _submit_sell_side(
                 order_type,
                 trail_offset,
                 trail_reference_price,
+                fill_price_basis,
+                fill_bar_offset,
+                fill_temporal,
+                fill_slippage_type,
+                fill_slippage_value,
+                fill_commission_type,
+                fill_commission_value,
             ),
         )
     return ""
@@ -349,6 +421,9 @@ def submit_order(
     broker_options: Optional[Dict[str, Any]] = None,
     trail_offset: Optional[float] = None,
     trail_reference_price: Optional[float] = None,
+    fill_policy: Optional[OrderFillPolicy] = None,
+    slippage: Optional[OrderSlippage] = None,
+    commission: Optional[OrderCommission] = None,
 ) -> str:
     """统一下单接口."""
     capabilities = get_execution_capabilities(strategy)
@@ -384,6 +459,9 @@ def submit_order(
             order_type=order_type_enum,
             trail_offset=trail_offset,
             trail_reference_price=trail_reference_price,
+            fill_policy=fill_policy,
+            slippage=slippage,
+            commission=commission,
         )
         _record_broker_options(strategy, order_id, broker_options)
         return order_id
@@ -399,6 +477,9 @@ def submit_order(
             order_type=order_type_enum,
             trail_offset=trail_offset,
             trail_reference_price=trail_reference_price,
+            fill_policy=fill_policy,
+            slippage=slippage,
+            commission=commission,
         )
         _record_broker_options(strategy, order_id, broker_options)
         return order_id
@@ -425,6 +506,142 @@ def _parse_order_type(order_type: Optional[str]) -> Tuple[Optional[str], Optiona
         )
     attr_name = mapping[key]
     return key, getattr(OrderType, attr_name, None)
+
+
+def _normalize_order_fill_policy(
+    fill_policy: Optional[OrderFillPolicy],
+) -> Tuple[Optional[str], Optional[int], Optional[str]]:
+    if fill_policy is None:
+        return None, None, None
+    if not isinstance(fill_policy, dict):
+        raise TypeError("fill_policy must be a dict when provided")
+    raw_basis = str(fill_policy.get("price_basis", "open")).strip().lower()
+    raw_temporal = str(fill_policy.get("temporal", "same_cycle")).strip().lower()
+    if raw_basis not in {"open", "close", "ohlc4", "hl2"}:
+        raise ValueError(
+            "fill_policy.price_basis must be one of: open, close, ohlc4, hl2"
+        )
+    if raw_temporal not in {"same_cycle", "next_event"}:
+        raise ValueError("fill_policy.temporal must be one of: same_cycle, next_event")
+    raw_offset_value = fill_policy.get(
+        "bar_offset",
+        0 if raw_basis == "close" else 1,
+    )
+    try:
+        raw_offset = int(raw_offset_value)
+    except (TypeError, ValueError):
+        raise ValueError("fill_policy.bar_offset must be 0 or 1") from None
+    if raw_offset not in {0, 1}:
+        raise ValueError("fill_policy.bar_offset must be 0 or 1")
+    if raw_basis in {"open", "ohlc4", "hl2"} and raw_offset != 1:
+        raise ValueError(f"fill_policy({raw_basis}) requires bar_offset=1")
+    return raw_basis, raw_offset, raw_temporal
+
+
+def _normalize_order_slippage(
+    slippage: Optional[OrderSlippage],
+) -> Tuple[Optional[str], Optional[float]]:
+    if slippage is None:
+        return None, None
+    if not isinstance(slippage, dict):
+        raise TypeError("slippage must be a dict when provided")
+    raw_type = str(slippage.get("type", "percent")).strip().lower()
+    if raw_type not in {"percent", "fixed"}:
+        raise ValueError("slippage.type must be one of: percent, fixed")
+    raw_value = slippage.get("value", 0.0)
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError("slippage.value must be a number >= 0") from None
+    if value < 0:
+        raise ValueError("slippage.value must be >= 0")
+    return raw_type, value
+
+
+def _normalize_order_commission(
+    commission: Optional[OrderCommission],
+) -> Tuple[Optional[str], Optional[float]]:
+    if commission is None:
+        return None, None
+    if not isinstance(commission, dict):
+        raise TypeError("commission must be a dict when provided")
+    raw_type = str(commission.get("type", "percent")).strip().lower()
+    if raw_type not in {"percent", "fixed"}:
+        raise ValueError("commission.type must be one of: percent, fixed")
+    raw_value = commission.get("value", 0.0)
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError("commission.value must be a number >= 0") from None
+    if value < 0:
+        raise ValueError("commission.value must be >= 0")
+    return raw_type, value
+
+
+def _resolve_effective_order_fill_policy(
+    strategy: Any, fill_policy: Optional[OrderFillPolicy]
+) -> Optional[OrderFillPolicy]:
+    if fill_policy is not None:
+        return fill_policy
+    owner_strategy_id = str(getattr(strategy, "_owner_strategy_id", "") or "").strip()
+    if not owner_strategy_id:
+        owner_strategy_id = "_default"
+    policy_map = cast(
+        Optional[Dict[str, OrderFillPolicy]],
+        getattr(strategy, "_strategy_fill_policy_map", None),
+    )
+    if not policy_map:
+        return None
+    policy = policy_map.get(owner_strategy_id)
+    if policy is None and owner_strategy_id != "_default":
+        policy = policy_map.get("_default")
+    if policy is None:
+        return None
+    return dict(policy)
+
+
+def _resolve_effective_order_slippage(
+    strategy: Any, slippage: Optional[OrderSlippage]
+) -> Optional[OrderSlippage]:
+    if slippage is not None:
+        return slippage
+    owner_strategy_id = str(getattr(strategy, "_owner_strategy_id", "") or "").strip()
+    if not owner_strategy_id:
+        owner_strategy_id = "_default"
+    slippage_map = cast(
+        Optional[Dict[str, OrderSlippage]],
+        getattr(strategy, "_strategy_slippage_map", None),
+    )
+    if not slippage_map:
+        return None
+    resolved = slippage_map.get(owner_strategy_id)
+    if resolved is None and owner_strategy_id != "_default":
+        resolved = slippage_map.get("_default")
+    if resolved is None:
+        return None
+    return dict(resolved)
+
+
+def _resolve_effective_order_commission(
+    strategy: Any, commission: Optional[OrderCommission]
+) -> Optional[OrderCommission]:
+    if commission is not None:
+        return commission
+    owner_strategy_id = str(getattr(strategy, "_owner_strategy_id", "") or "").strip()
+    if not owner_strategy_id:
+        owner_strategy_id = "_default"
+    commission_map = cast(
+        Optional[Dict[str, OrderCommission]],
+        getattr(strategy, "_strategy_commission_map", None),
+    )
+    if not commission_map:
+        return None
+    resolved = commission_map.get(owner_strategy_id)
+    if resolved is None and owner_strategy_id != "_default":
+        resolved = commission_map.get("_default")
+    if resolved is None:
+        return None
+    return dict(resolved)
 
 
 def stop_buy(

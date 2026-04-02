@@ -53,7 +53,7 @@ def _run_once(liquidation_priority: str) -> Any:
         strategy=HedgedMarginStrategy,
         symbols=["LONG", "SHORT"],
         initial_cash=50000.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         risk_config=RiskConfig(

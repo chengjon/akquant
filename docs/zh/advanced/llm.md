@@ -35,7 +35,7 @@ Your task is to write trading strategies or backtest scripts based on user requi
         *   `self.sell(symbol, quantity, price=None)`: Sell.
         *   `self.order_target_percent(target, symbol)`: Adjust position to target percentage.
         *   `self.order_target_value(target, symbol)`: Adjust position to target value.
-        *   在 `execution_mode="current_close"` 下，同一事件周期中若同时存在卖单与买单，撮合采用先卖后买语义：先处理卖单成交并结算资金，再进行买单风控与下单数量计算。
+        *   在 `fill_policy={"price_basis":"close","bar_offset":0}` 下，同一事件周期中若同时存在卖单与买单，撮合采用先卖后买语义：先处理卖单成交并结算资金，再进行买单风控与下单数量计算。
     *   **Position**: `self.get_position(symbol)` returns current holding (float).
     *   **Account**: `self.ctx.cash`, `self.ctx.equity`.
 
@@ -52,10 +52,8 @@ Your task is to write trading strategies or backtest scripts based on user requi
         *   `symbol`: Benchmark symbol or list of symbols.
         *   `initial_cash`: Float (e.g., 100_000.0).
         *   `warmup_period`: Int (optional override).
-        *   `execution_mode`: `ExecutionMode.NextOpen` (default) or `CurrentClose`.
-        *   `timer_execution_policy`: `"same_cycle"` or `"next_event"` (for timer matching timing).
-        *   `fill_policy`: Preferred unified semantics, e.g.
-            `{"price_basis": "current_close", "temporal": "next_event"}`.
+        *   `fill_policy`: 三轴统一语义（推荐），例如
+            `{"price_basis": "close", "bar_offset": 1, "temporal": "same_cycle"}`。
         *   `timezone`: Default "Asia/Shanghai".
         *   `risk_config`: Use `engine.risk_manager` to set pre-trade checks (Position Limit, Sector Limit, Leverage).
         *   `risk_config.account_mode`: `"cash"`（默认）或 `"margin"`，信用账户回测需设置为 `"margin"`。
@@ -104,7 +102,7 @@ Your task is to write trading strategies or backtest scripts based on user requi
 ### Example Strategy (Reference)
 
 ```python
-from akquant import Strategy, Bar, ExecutionMode, run_backtest
+from akquant import Strategy, Bar, run_backtest
 import numpy as np
 
 class MovingAverageStrategy(Strategy):

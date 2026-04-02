@@ -107,13 +107,13 @@ def test_exposure_df_and_capacity_df_basic_properties() -> None:
     result = run_backtest(
         data=_build_single_symbol_data(),
         strategy=ExposureCapacityStrategy,
-        symbol="TEST",
+        symbols="TEST",
         initial_cash=200000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
     )
@@ -167,7 +167,7 @@ def test_attribution_df_keeps_total_pnl_consistent() -> None:
         transfer_fee_rate=0.0,
         min_commission=0.0,
         lot_size=1,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         history_depth=2,
         show_progress=False,
     )

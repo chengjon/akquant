@@ -9,6 +9,7 @@ import akquant
 import numpy as np
 import pandas as pd
 import pytest
+from akquant.backtest import engine as backtest_engine
 
 
 def test_engine_initialization() -> None:
@@ -429,8 +430,8 @@ def test_current_close_timer_order_should_fill_at_timer_timestamp() -> None:
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
-        execution_mode="current_close",
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -465,9 +466,8 @@ def test_daily_timer_trading_day_alignment_uses_local_calendar_day() -> None:
     result = akquant.run_backtest(
         data=data,
         strategy=strategy,
-        symbol=symbol,
-        execution_mode="current_close",
-        timer_execution_policy="same_cycle",
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         t_plus_one=True,
         initial_cash=100000.0,
         commission_rate=0.0,
@@ -514,9 +514,8 @@ def test_current_close_timer_order_next_event_policy_fills_on_next_bar() -> None
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
-        execution_mode="current_close",
-        timer_execution_policy="next_event",
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "next_event"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -553,9 +552,8 @@ def test_current_close_bar_fill_unchanged_with_next_event_timer_policy() -> None
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
-        execution_mode="current_close",
-        timer_execution_policy="next_event",
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "next_event"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -587,9 +585,8 @@ def test_current_close_mixed_bar_timer_next_event_policy() -> None:
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
-        execution_mode="current_close",
-        timer_execution_policy="next_event",
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "next_event"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -637,8 +634,8 @@ def test_fill_policy_same_cycle_matches_legacy_parameters() -> None:
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
-        fill_policy={"price_basis": "current_close", "temporal": "same_cycle"},
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -672,8 +669,8 @@ def test_fill_policy_next_event_matches_legacy_parameters() -> None:
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
-        fill_policy={"price_basis": "current_close", "temporal": "next_event"},
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "next_event"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -685,6 +682,298 @@ def test_fill_policy_next_event_matches_legacy_parameters() -> None:
 
     assert strategy.timer_timestamp is not None
     assert strategy.trade_timestamp != strategy.timer_timestamp
+
+
+def test_policy_resolver_next_close_same_cycle_sets_timer_same_cycle() -> None:
+    """Close + bar_offset=1 + same_cycle should resolve timer policy."""
+    resolved = backtest_engine._resolve_execution_policy(
+        execution_mode="next_open",
+        timer_execution_policy="next_event",
+        fill_policy={"price_basis": "close", "bar_offset": 1, "temporal": "same_cycle"},
+        logger=backtest_engine.get_logger(),
+    )
+    assert resolved.bar_offset == 1
+    assert resolved.temporal == "same_cycle"
+    assert resolved.price_basis == "close"
+    assert resolved.source == "fill_policy"
+
+
+def test_policy_resolver_next_close_next_event_sets_timer_next_event() -> None:
+    """Close + bar_offset=1 + next_event should resolve timer policy."""
+    resolved = backtest_engine._resolve_execution_policy(
+        execution_mode="next_open",
+        timer_execution_policy="same_cycle",
+        fill_policy={"price_basis": "close", "bar_offset": 1, "temporal": "next_event"},
+        logger=backtest_engine.get_logger(),
+    )
+    assert resolved.bar_offset == 1
+    assert resolved.temporal == "next_event"
+    assert resolved.price_basis == "close"
+    assert resolved.source == "fill_policy"
+
+
+@pytest.mark.parametrize(
+    (
+        "execution_mode",
+        "timer_execution_policy",
+        "fill_policy",
+        "expected_basis",
+        "expected_temporal",
+        "expected_source",
+    ),
+    [
+        (
+            "next_open",
+            "same_cycle",
+            None,
+            "open",
+            "same_cycle",
+            "legacy",
+        ),
+        (
+            "current_close",
+            "next_event",
+            None,
+            "close",
+            "next_event",
+            "legacy",
+        ),
+        (
+            "next_close",
+            "same_cycle",
+            None,
+            "close",
+            "same_cycle",
+            "legacy",
+        ),
+        (
+            "next_open",
+            "same_cycle",
+            {"price_basis": "ohlc4", "temporal": "next_event"},
+            "ohlc4",
+            "next_event",
+            "fill_policy",
+        ),
+        (
+            "current_close",
+            "next_event",
+            {"price_basis": "hl2", "temporal": "same_cycle"},
+            "hl2",
+            "same_cycle",
+            "fill_policy",
+        ),
+    ],
+)
+def test_policy_resolver_matrix(
+    execution_mode: str,
+    timer_execution_policy: str,
+    fill_policy: Any,
+    expected_basis: str,
+    expected_temporal: str,
+    expected_source: str,
+) -> None:
+    """Resolver matrix should map basis/temporal and source deterministically."""
+    resolved = backtest_engine._resolve_execution_policy(
+        execution_mode=execution_mode,
+        timer_execution_policy=timer_execution_policy,
+        fill_policy=fill_policy,
+        logger=backtest_engine.get_logger(),
+    )
+    assert resolved.price_basis == expected_basis
+    assert resolved.temporal == expected_temporal
+    assert resolved.source == expected_source
+
+
+def test_run_backtest_rejects_legacy_execution_mode_without_fill_policy() -> None:
+    """run_backtest should reject legacy execution_mode."""
+    symbol = "LEGACY_EXEC_MODE"
+    bars = _build_benchmark_data(4, symbol)
+    with pytest.raises(
+        ValueError,
+        match="run_backtest no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "current_close"}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbols=symbol,
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_backtest_rejects_legacy_timer_policy_without_fill_policy() -> None:
+    """run_backtest should reject legacy timer policy."""
+    symbol = "LEGACY_TIMER_POLICY"
+    bars = _build_benchmark_data(4, symbol)
+    with pytest.raises(
+        ValueError,
+        match="run_backtest no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"timer_execution_policy": "next_event"}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbols=symbol,
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_backtest_rejects_legacy_execution_params() -> None:
+    """run_backtest should reject legacy execution params."""
+    symbol = "LEGACY_COMPAT_OFF"
+    bars = _build_benchmark_data(4, symbol)
+    with pytest.raises(
+        ValueError,
+        match="run_backtest no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "current_close"}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbols=symbol,
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_backtest_rejects_non_bool_legacy_execution_policy_compat() -> None:
+    """legacy_execution_policy_compat should be removed in run_backtest."""
+    symbol = "LEGACY_COMPAT_TYPE"
+    bars = _build_benchmark_data(4, symbol)
+    with pytest.raises(
+        TypeError, match="legacy_execution_policy_compat is no longer supported"
+    ):
+        compat_kwargs: dict[str, Any] = {"legacy_execution_policy_compat": "false"}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbols=symbol,
+            show_progress=False,
+            **compat_kwargs,
+        )
+
+
+def test_run_backtest_rejects_legacy_by_default() -> None:
+    """Default behavior should reject legacy execution params."""
+    symbol = "LEGACY_DEFAULT_OFF"
+    bars = _build_benchmark_data(4, symbol)
+    with pytest.raises(
+        ValueError,
+        match="run_backtest no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "current_close"}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbols=symbol,
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_backtest_rejects_invalid_legacy_env_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy env var should no longer affect fill_policy execution."""
+    monkeypatch.setenv("AKQ_LEGACY_EXECUTION_POLICY_COMPAT", "not_bool")
+    symbol = "LEGACY_ENV_BAD"
+    bars = _build_benchmark_data(2, symbol)
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=NoopStrategy,
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        show_progress=False,
+    )
+    assert result.resolved_execution_policy is not None
+    assert result.resolved_execution_policy["source"] == "fill_policy"
+
+
+def test_run_backtest_explicit_compat_overrides_env_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Removed compat flag should raise even when env is set."""
+    monkeypatch.setenv("AKQ_LEGACY_EXECUTION_POLICY_COMPAT", "false")
+    symbol = "LEGACY_ENV_OVERRIDE"
+    bars = _build_benchmark_data(4, symbol)
+    with pytest.raises(
+        TypeError, match="legacy_execution_policy_compat is no longer supported"
+    ):
+        compat_kwargs: dict[str, Any] = {"legacy_execution_policy_compat": True}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=NoopStrategy,
+            symbols=symbol,
+            show_progress=False,
+            **compat_kwargs,
+        )
+
+
+def test_fill_policy_next_close_maps_to_next_bar_close() -> None:
+    """fill_policy close + bar_offset=1 should map to next bar close."""
+    symbol = "NEXT_CLOSE_BASIS"
+    first_ts = pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai").value
+    second_ts = pd.Timestamp("2023-01-02 10:01:00", tz="Asia/Shanghai").value
+    bars = [
+        akquant.Bar(first_ts, 9.0, 9.5, 8.5, 9.2, 1000.0, symbol),
+        akquant.Bar(second_ts, 10.0, 15.0, 9.0, 12.0, 1000.0, symbol),
+    ]
+    strategy = BarOnlyCaptureStrategy()
+
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=strategy,
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "bar_offset": 1, "temporal": "same_cycle"},
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        show_progress=False,
+    )
+
+    assert strategy.trade_timestamp == second_ts
+    assert strategy.trade_price == pytest.approx(12.0)
+    assert result.resolved_execution_policy is not None
+    assert result.resolved_execution_policy["price_basis"] == "close"
+    assert int(result.resolved_execution_policy["bar_offset"]) == 1
+    assert result.resolved_execution_policy["temporal"] == "same_cycle"
+    assert result.resolved_execution_policy["source"] == "fill_policy"
+
+
+def test_execution_mode_next_close_string_maps_to_next_bar_close() -> None:
+    """execution_mode should be removed and require fill_policy."""
+    symbol = "NEXT_CLOSE_MODE"
+    first_ts = pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai").value
+    second_ts = pd.Timestamp("2023-01-02 10:01:00", tz="Asia/Shanghai").value
+    bars = [
+        akquant.Bar(first_ts, 9.0, 9.5, 8.5, 9.2, 1000.0, symbol),
+        akquant.Bar(second_ts, 10.0, 15.0, 9.0, 12.0, 1000.0, symbol),
+    ]
+    strategy = BarOnlyCaptureStrategy()
+
+    with pytest.raises(
+        ValueError,
+        match="run_backtest no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "next_close"}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=strategy,
+            symbols=symbol,
+            initial_cash=100000.0,
+            commission_rate=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+            min_commission=0.0,
+            lot_size=1,
+            show_progress=False,
+            **legacy_kwargs,
+        )
 
 
 def test_fill_policy_ohlc4_maps_to_next_average() -> None:
@@ -701,7 +990,7 @@ def test_fill_policy_ohlc4_maps_to_next_average() -> None:
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
+        symbols=symbol,
         fill_policy={"price_basis": "ohlc4", "temporal": "same_cycle"},
         initial_cash=100000.0,
         commission_rate=0.0,
@@ -730,7 +1019,7 @@ def test_fill_policy_hl2_maps_to_next_high_low_mid() -> None:
     _ = akquant.run_backtest(
         data=bars,
         strategy=strategy,
-        symbol=symbol,
+        symbols=symbol,
         fill_policy={"price_basis": "hl2", "temporal": "same_cycle"},
         initial_cash=100000.0,
         commission_rate=0.0,
@@ -753,7 +1042,9 @@ def test_fill_policy_reserved_mid_quote_raises_not_implemented() -> None:
             data=bars,
             strategy=SingleBuyStrategy,
             symbols="RESERVED_BASIS",
-            fill_policy={"price_basis": "mid_quote", "temporal": "same_cycle"},
+            fill_policy=cast(
+                Any, {"price_basis": "mid_quote", "temporal": "same_cycle"}
+            ),
             show_progress=False,
         )
 
@@ -766,7 +1057,9 @@ def test_fill_policy_reserved_vwap_window_raises_not_implemented() -> None:
             data=bars,
             strategy=SingleBuyStrategy,
             symbols="RESERVED_BASIS",
-            fill_policy={"price_basis": "vwap_window", "temporal": "same_cycle"},
+            fill_policy=cast(
+                Any, {"price_basis": "vwap_window", "temporal": "same_cycle"}
+            ),
             show_progress=False,
         )
 
@@ -801,8 +1094,8 @@ def test_run_backtest_accepts_data_feed_adapter() -> None:
     result = akquant.run_backtest(
         data=adapter,
         strategy=SingleBuyStrategy,
-        symbol=symbol,
-        execution_mode="current_close",
+        symbols=symbol,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -824,7 +1117,7 @@ def test_run_backtest_accepts_symbols_alias_for_single_symbol() -> None:
         data=data,
         strategy=SingleBuyStrategy,
         symbols="ALIAS_SYMBOL",
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -837,15 +1130,15 @@ def test_run_backtest_accepts_symbols_alias_for_single_symbol() -> None:
     assert set(result.orders_df["symbol"].astype(str)) == {"ALIAS_SYMBOL"}
 
 
-def test_run_backtest_warns_when_using_deprecated_symbol_argument() -> None:
-    """run_backtest should emit deprecation warning for symbol argument."""
+def test_run_backtest_rejects_legacy_symbol_keyword_alias() -> None:
+    """run_backtest should reject removed symbol keyword alias."""
     data = _build_benchmark_data(6, "DEPREC_SYMBOL")
-    with pytest.warns(DeprecationWarning, match="run_backtest\\(symbol=\\.\\.\\.\\)"):
-        result = akquant.run_backtest(
+    with pytest.raises(ValueError, match="no longer accepts `symbol`"):
+        akquant.run_backtest(
             data=data,
             strategy=SingleBuyStrategy,
             symbol="DEPREC_SYMBOL",
-            execution_mode="current_close",
+            fill_policy={"price_basis": "close", "temporal": "same_cycle"},
             initial_cash=100000.0,
             commission_rate=0.0,
             stamp_tax_rate=0.0,
@@ -854,10 +1147,9 @@ def test_run_backtest_warns_when_using_deprecated_symbol_argument() -> None:
             lot_size=1,
             show_progress=False,
         )
-    assert not result.orders_df.empty
 
 
-def test_run_backtest_does_not_warn_when_using_symbols_argument() -> None:
+def test_run_backtest_uses_symbols_without_deprecation_warnings() -> None:
     """run_backtest should not emit deprecation warning for symbols argument."""
     data = _build_benchmark_data(6, "NO_WARN_SYMBOLS")
     with warnings.catch_warnings(record=True) as record:
@@ -866,7 +1158,7 @@ def test_run_backtest_does_not_warn_when_using_symbols_argument() -> None:
             data=data,
             strategy=SingleBuyStrategy,
             symbols="NO_WARN_SYMBOLS",
-            execution_mode="current_close",
+            fill_policy={"price_basis": "close", "temporal": "same_cycle"},
             initial_cash=100000.0,
             commission_rate=0.0,
             stamp_tax_rate=0.0,
@@ -876,18 +1168,17 @@ def test_run_backtest_does_not_warn_when_using_symbols_argument() -> None:
             show_progress=False,
         )
     assert not result.orders_df.empty
-    deprecations = [
+    assert [
         warning
         for warning in record
         if issubclass(warning.category, DeprecationWarning)
-    ]
-    assert len(deprecations) == 0
+    ] == []
 
 
 def test_run_backtest_rejects_conflicting_symbol_and_symbols() -> None:
     """run_backtest should reject conflicting symbol and symbols inputs."""
     data = _build_benchmark_data(4, "AAA")
-    with pytest.raises(ValueError, match="both `symbol` and `symbols`"):
+    with pytest.raises(ValueError, match="no longer accepts `symbol`"):
         akquant.run_backtest(
             data=data,
             strategy=SingleBuyStrategy,
@@ -957,10 +1248,10 @@ def test_run_backtest_dataframe_multisymbol_preserves_bar_symbol() -> None:
     result = akquant.run_backtest(
         data=df,
         strategy=CollectSymbolsStrategy,
-        symbol=["IF2401.CFX", "IF2402.CFX"],
+        symbols=["IF2401.CFX", "IF2402.CFX"],
         start_time="2024-01-02",
         end_time="2024-01-03",
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
@@ -1034,7 +1325,7 @@ def test_engine_run_with_configured_slot_strategy() -> None:
     symbol = "SLOT_RUN"
     engine.use_simple_market(0.0)
     engine.set_force_session_continuous(True)
-    engine.set_execution_mode(akquant.ExecutionMode.CurrentClose)
+    cast(Any, engine).set_fill_policy("close", 0, "same_cycle")
     engine.set_cash(100000.0)
     engine.set_stock_fee_rules(0.0, 0.0, 0.0, 0.0)
 
@@ -1062,7 +1353,7 @@ def test_backtest_regression_baseline() -> None:
     engine = akquant.Engine()
     engine.use_simple_market(0.0)
     engine.set_force_session_continuous(True)
-    engine.set_execution_mode(akquant.ExecutionMode.CurrentClose)
+    cast(Any, engine).set_fill_policy("close", 0, "same_cycle")
     engine.set_cash(100000.0)
     engine.set_stock_fee_rules(0.0, 0.0, 0.0, 0.0)
     engine.set_t_plus_one(False)
@@ -1116,6 +1407,29 @@ def test_backtest_regression_baseline() -> None:
     assert trade.duration_bars == 2
 
 
+def test_engine_set_fill_policy_roundtrip() -> None:
+    """Engine fill policy API should expose three-axis tuple."""
+    engine = akquant.Engine()
+    if not hasattr(engine, "set_fill_policy"):
+        pytest.skip("Engine binary does not expose fill policy methods")
+    cast(Any, engine).set_fill_policy("close", 1, "next_event")
+    basis, bar_offset, temporal = cast(
+        tuple[str, int, str], cast(Any, engine).get_fill_policy()
+    )
+    assert basis == "close"
+    assert int(bar_offset) == 1
+    assert temporal == "next_event"
+
+
+def test_engine_set_fill_policy_invalid_combo() -> None:
+    """Engine fill policy should reject invalid basis/offset combos."""
+    engine = akquant.Engine()
+    if not hasattr(engine, "set_fill_policy"):
+        pytest.skip("Engine binary does not expose fill policy methods")
+    with pytest.raises(ValueError, match="requires bar_offset=1"):
+        cast(Any, engine).set_fill_policy("open", 0, "same_cycle")
+
+
 def test_backtest_performance_baseline() -> None:
     """Verify minimum throughput for a no-op strategy."""
     data = _build_benchmark_data(n=3000, symbol="PERF")
@@ -1123,13 +1437,13 @@ def test_backtest_performance_baseline() -> None:
     result = akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
-        symbol="PERF",
+        symbols="PERF",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
     )
@@ -1174,13 +1488,13 @@ def test_run_backtest_engine_oco_avoids_same_batch_double_fill() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=OcoSameBarStrategy,
-        symbol=symbol,
+        symbols=symbol,
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
     )
@@ -1245,13 +1559,13 @@ def test_run_backtest_engine_bracket_activates_exit_orders() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=BracketEngineStrategy,
-        symbol=symbol,
+        symbols=symbol,
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
     )
@@ -1271,13 +1585,13 @@ def test_run_backtest_on_event_emits_ordered_events() -> None:
     result = akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
-        symbol="STREAM",
+        symbols="STREAM",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         on_event=on_event,
@@ -1313,7 +1627,7 @@ def test_run_backtest_progress_total_uses_unique_timestamps_for_multisymbol() ->
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         on_event=events.append,
@@ -1356,7 +1670,7 @@ def test_run_backtest_on_event_rejects_non_positive_stream_options(
         akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
-            symbol="STREAM_OPT",
+            symbols="STREAM_OPT",
             show_progress=False,
             on_event=lambda _event: None,
             **kwargs,
@@ -1369,13 +1683,13 @@ def test_run_backtest_on_event_matches_run_backtest_result() -> None:
     common_args: dict[str, Any] = dict(
         data=data,
         strategy=NoopStrategy,
-        symbol="CONSIST",
+        symbols="CONSIST",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
     )
@@ -1410,13 +1724,13 @@ def test_run_backtest_on_event_emits_owner_strategy_id_for_trade_events() -> Non
     result = akquant.run_backtest(
         data=bars,
         strategy=RegressionStrategy,
-        symbol="STREAM_OWNER",
+        symbols="STREAM_OWNER",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         on_event=events.append,
@@ -1438,13 +1752,13 @@ def test_run_backtest_without_on_event_keeps_legacy_semantics() -> None:
     result = akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
-        symbol="NO_EVENT",
+        symbols="NO_EVENT",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
     )
@@ -1460,13 +1774,13 @@ def test_run_backtest_strategy_id_propagates_to_orders() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=RegressionStrategy,
-        symbol="OWNER",
+        symbols="OWNER",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1483,13 +1797,13 @@ def test_run_backtest_accepts_strategies_by_slot() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=NoopStrategy,
-        symbol="SLOT_MAP",
+        symbols="SLOT_MAP",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategies_by_slot={"beta": NoopStrategy},
@@ -1509,13 +1823,13 @@ def test_run_backtest_multi_slot_owner_strategy_ids_mixed() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=RegressionStrategy,
-        symbol="SLOT_OWNER_MIX",
+        symbols="SLOT_OWNER_MIX",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1557,13 +1871,13 @@ def test_run_backtest_functional_on_start_on_stop_callbacks() -> None:
     _ = akquant.run_backtest(
         data=_build_regression_bars("FUNC_LIFECYCLE"),
         strategy=on_bar,
-        symbol="FUNC_LIFECYCLE",
+        symbols="FUNC_LIFECYCLE",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         initialize=initialize,
@@ -1623,13 +1937,13 @@ def test_run_backtest_functional_multi_slot_risk_matrix(
     result = akquant.run_backtest(
         data=_build_regression_bars(f"FUNC_SLOT_{limit_key.upper()}"),
         strategy=alpha_on_bar,
-        symbol=f"FUNC_SLOT_{limit_key.upper()}",
+        symbols=f"FUNC_SLOT_{limit_key.upper()}",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1671,13 +1985,13 @@ def test_run_backtest_strategy_max_order_value_by_slot() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="SLOT_RISK_LIMIT",
+        symbols="SLOT_RISK_LIMIT",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1706,13 +2020,13 @@ def test_run_backtest_strategy_max_order_size_by_slot() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="SLOT_RISK_SIZE",
+        symbols="SLOT_RISK_SIZE",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1747,12 +2061,12 @@ def test_run_backtest_strategy_slot_risk_from_config() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="SLOT_RISK_SIZE_CFG",
+        symbols="SLOT_RISK_SIZE_CFG",
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         config=config,
@@ -1785,12 +2099,12 @@ def test_run_backtest_explicit_strategy_slot_risk_overrides_config() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="SLOT_RISK_SIZE_CFG_OVERRIDE",
+        symbols="SLOT_RISK_SIZE_CFG_OVERRIDE",
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         config=config,
@@ -1818,13 +2132,13 @@ def test_backtest_result_strategy_level_views() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=RegressionStrategy,
-        symbol="SLOT_VIEW",
+        symbols="SLOT_VIEW",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1849,13 +2163,13 @@ def test_backtest_result_risk_rejections_by_strategy_view() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=BuyBuySellBuyStrategy,
-        symbol="SLOT_RISK_VIEW",
+        symbols="SLOT_RISK_VIEW",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1886,13 +2200,13 @@ def test_backtest_result_risk_rejections_trend_view() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=BuyBuySellBuyStrategy,
-        symbol="SLOT_RISK_TREND",
+        symbols="SLOT_RISK_TREND",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1920,13 +2234,13 @@ def test_backtest_result_risk_rejections_trend_by_strategy_view() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=BuyBuySellBuyStrategy,
-        symbol="SLOT_RISK_TREND_BY_STRATEGY",
+        symbols="SLOT_RISK_TREND_BY_STRATEGY",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -1955,7 +2269,7 @@ def test_run_backtest_rejects_invalid_strategies_by_slot_type() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_BAD",
+            symbols="SLOT_BAD",
             show_progress=False,
             strategies_by_slot=cast(Any, ["bad"]),
         )
@@ -1971,7 +2285,7 @@ def test_run_backtest_rejects_unknown_strategy_max_order_value_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_BAD",
+            symbols="SLOT_RISK_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_max_order_value={"beta": 100.0},
@@ -1988,7 +2302,7 @@ def test_run_backtest_rejects_unknown_strategy_max_order_size_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_SIZE_BAD",
+            symbols="SLOT_RISK_SIZE_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_max_order_size={"beta": 10.0},
@@ -2005,13 +2319,13 @@ def test_run_backtest_strategy_max_position_size_by_slot() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=DualBuyStrategy,
-        symbol="SLOT_RISK_POSITION",
+        symbols="SLOT_RISK_POSITION",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2037,7 +2351,7 @@ def test_run_backtest_rejects_unknown_strategy_max_position_size_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_POSITION_BAD",
+            symbols="SLOT_RISK_POSITION_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_max_position_size={"beta": 10.0},
@@ -2054,13 +2368,13 @@ def test_run_backtest_strategy_max_daily_loss_by_slot() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=DualBuyStrategy,
-        symbol="SLOT_RISK_DAILY_LOSS",
+        symbols="SLOT_RISK_DAILY_LOSS",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2086,7 +2400,7 @@ def test_run_backtest_rejects_unknown_strategy_max_daily_loss_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_DAILY_LOSS_BAD",
+            symbols="SLOT_RISK_DAILY_LOSS_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_max_daily_loss={"beta": 10.0},
@@ -2103,13 +2417,13 @@ def test_run_backtest_strategy_max_drawdown_by_slot() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=DualBuyStrategy,
-        symbol="SLOT_RISK_DRAWDOWN",
+        symbols="SLOT_RISK_DRAWDOWN",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2135,7 +2449,7 @@ def test_run_backtest_rejects_unknown_strategy_max_drawdown_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_DRAWDOWN_BAD",
+            symbols="SLOT_RISK_DRAWDOWN_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_max_drawdown={"beta": 10.0},
@@ -2152,13 +2466,13 @@ def test_run_backtest_reduce_only_after_risk_allows_only_closing_orders() -> Non
     result = akquant.run_backtest(
         data=bars,
         strategy=BuyBuySellBuyStrategy,
-        symbol="SLOT_RISK_REDUCE_ONLY",
+        symbols="SLOT_RISK_REDUCE_ONLY",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2183,13 +2497,13 @@ def test_run_backtest_strategy_risk_cooldown_blocks_orders() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=ContinuousBuyStrategy,
-        symbol="SLOT_RISK_COOLDOWN",
+        symbols="SLOT_RISK_COOLDOWN",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2213,7 +2527,7 @@ def test_run_backtest_rejects_unknown_strategy_reduce_only_after_risk_key() -> N
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_REDUCE_ONLY_BAD",
+            symbols="SLOT_RISK_REDUCE_ONLY_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_reduce_only_after_risk={"beta": True},
@@ -2230,7 +2544,7 @@ def test_run_backtest_rejects_unknown_strategy_risk_cooldown_bars_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_COOLDOWN_BAD",
+            symbols="SLOT_RISK_COOLDOWN_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_risk_cooldown_bars={"beta": 2},
@@ -2247,7 +2561,7 @@ def test_run_backtest_rejects_unknown_strategy_priority_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_PRIORITY_BAD",
+            symbols="SLOT_PRIORITY_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_priority={"beta": 100},
@@ -2264,7 +2578,7 @@ def test_run_backtest_rejects_unknown_strategy_risk_budget_key() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_BUDGET_BAD",
+            symbols="SLOT_RISK_BUDGET_BAD",
             show_progress=False,
             strategy_id="alpha",
             strategy_risk_budget={"beta": 100.0},
@@ -2278,7 +2592,7 @@ def test_run_backtest_rejects_invalid_risk_budget_mode() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="SLOT_RISK_BUDGET_MODE_BAD",
+            symbols="SLOT_RISK_BUDGET_MODE_BAD",
             show_progress=False,
             risk_budget_mode=cast(Any, "bad_mode"),
         )
@@ -2290,13 +2604,13 @@ def test_run_backtest_strategy_id_propagates_to_executions_df() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=RegressionStrategy,
-        symbol="OWNER_EXEC",
+        symbols="OWNER_EXEC",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha_exec",
@@ -2314,13 +2628,13 @@ def test_run_backtest_with_on_event_matches_stream_entry() -> None:
     common_args: dict[str, Any] = dict(
         data=data,
         strategy=NoopStrategy,
-        symbol="EVENT_EQ",
+        symbols="EVENT_EQ",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
     )
@@ -2371,13 +2685,13 @@ def test_run_backtest_on_event_multi_slot_owner_strategy_ids_mixed() -> None:
     akquant.run_backtest(
         data=bars,
         strategy=RegressionStrategy,
-        symbol="STREAM_SLOT_OWNER",
+        symbols="STREAM_SLOT_OWNER",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2409,13 +2723,13 @@ def test_run_backtest_on_event_strategy_priority_orders_requests_by_priority() -
     akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="STREAM_SLOT_PRIORITY",
+        symbols="STREAM_SLOT_PRIORITY",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2449,13 +2763,13 @@ def test_run_backtest_on_event_portfolio_risk_budget_respects_priority_order() -
     akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="STREAM_SLOT_PORTFOLIO_BUDGET",
+        symbols="STREAM_SLOT_PORTFOLIO_BUDGET",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2498,13 +2812,13 @@ def test_run_backtest_trade_notional_budget_blocks_later_orders() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=ContinuousBuyStrategy,
-        symbol="SLOT_TRADE_NOTIONAL_BUDGET",
+        symbols="SLOT_TRADE_NOTIONAL_BUDGET",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2524,13 +2838,13 @@ def test_run_backtest_trade_notional_budget_resets_daily() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=ContinuousSmallBuyStrategy,
-        symbol="SLOT_TRADE_NOTIONAL_RESET",
+        symbols="SLOT_TRADE_NOTIONAL_RESET",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2553,13 +2867,13 @@ def test_run_backtest_on_event_strategy_max_order_value_by_slot() -> None:
     akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="STREAM_SLOT_RISK",
+        symbols="STREAM_SLOT_RISK",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2590,13 +2904,13 @@ def test_run_backtest_on_event_strategy_max_order_size_by_slot() -> None:
     akquant.run_backtest(
         data=bars,
         strategy=SingleBuyStrategy,
-        symbol="STREAM_SLOT_SIZE",
+        symbols="STREAM_SLOT_SIZE",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2627,13 +2941,13 @@ def test_run_backtest_on_event_strategy_max_position_size_by_slot() -> None:
     akquant.run_backtest(
         data=bars,
         strategy=DualBuyStrategy,
-        symbol="STREAM_SLOT_POSITION",
+        symbols="STREAM_SLOT_POSITION",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2664,13 +2978,13 @@ def test_run_backtest_on_event_strategy_max_daily_loss_by_slot() -> None:
     akquant.run_backtest(
         data=bars,
         strategy=DualBuyStrategy,
-        symbol="STREAM_SLOT_DAILY_LOSS",
+        symbols="STREAM_SLOT_DAILY_LOSS",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2701,13 +3015,13 @@ def test_run_backtest_on_event_strategy_max_drawdown_by_slot() -> None:
     akquant.run_backtest(
         data=bars,
         strategy=DualBuyStrategy,
-        symbol="STREAM_SLOT_DRAWDOWN",
+        symbols="STREAM_SLOT_DRAWDOWN",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2738,13 +3052,13 @@ def test_run_backtest_on_event_reduce_only_after_risk_by_slot() -> None:
     akquant.run_backtest(
         data=bars,
         strategy=BuyBuySellBuyStrategy,
-        symbol="STREAM_SLOT_REDUCE_ONLY",
+        symbols="STREAM_SLOT_REDUCE_ONLY",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         strategy_id="alpha",
@@ -2774,7 +3088,7 @@ def test_run_backtest_rejects_removed_engine_mode_option() -> None:
         akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
-            symbol="BAD_MODE",
+            symbols="BAD_MODE",
             show_progress=False,
             _engine_mode="legacy_blocking",
         )
@@ -2787,13 +3101,13 @@ def test_run_backtest_on_event_high_frequency_keeps_critical_events() -> None:
     akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
-        symbol="HF",
+        symbols="HF",
         initial_cash=100000.0,
         commission_rate=0.0,
         stamp_tax_rate=0.0,
         transfer_fee_rate=0.0,
         min_commission=0.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         on_event=events.append,
@@ -2835,7 +3149,7 @@ def test_run_backtest_on_event_callback_error_continue_mode() -> None:
     result = akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
-        symbol="CALLBACK_CONT",
+        symbols="CALLBACK_CONT",
         show_progress=False,
         on_event=on_event,
         stream_error_mode="continue",
@@ -2845,7 +3159,7 @@ def test_run_backtest_on_event_callback_error_continue_mode() -> None:
     assert events[-1]["event_type"] == "finished"
     assert "callback_error_count" in events[-1]["payload"]
     assert int(str(events[-1]["payload"]["callback_error_count"])) >= 3
-    assert result.metrics.initial_market_value == pytest.approx(1000000.0, rel=1e-9)
+    assert result.metrics.initial_market_value == pytest.approx(100000.0, rel=1e-9)
 
 
 def test_run_backtest_on_event_reports_dropped_events_under_backpressure() -> None:
@@ -2855,7 +3169,7 @@ def test_run_backtest_on_event_reports_dropped_events_under_backpressure() -> No
     akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
-        symbol="DROP",
+        symbols="DROP",
         show_progress=False,
         on_event=events.append,
         stream_progress_interval=1,
@@ -2880,7 +3194,7 @@ def test_run_backtest_on_event_audit_mode_enforces_full_delivery() -> None:
     akquant.run_backtest(
         data=data,
         strategy=NoopStrategy,
-        symbol="AUDIT",
+        symbols="AUDIT",
         show_progress=False,
         on_event=events.append,
         stream_progress_interval=50,
@@ -2915,7 +3229,7 @@ def test_run_backtest_on_event_callback_error_fail_fast_mode() -> None:
         akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
-            symbol="CALLBACK_FAIL",
+            symbols="CALLBACK_FAIL",
             show_progress=False,
             on_event=on_event,
             stream_error_mode="fail_fast",
@@ -2929,7 +3243,7 @@ def test_run_backtest_on_event_rejects_invalid_error_mode() -> None:
         akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
-            symbol="CALLBACK_MODE",
+            symbols="CALLBACK_MODE",
             show_progress=False,
             on_event=lambda _event: None,
             stream_error_mode=cast(Any, "bad_mode"),
@@ -2943,7 +3257,7 @@ def test_run_backtest_on_event_rejects_invalid_stream_mode() -> None:
         akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
-            symbol="MODE_BAD",
+            symbols="MODE_BAD",
             show_progress=False,
             on_event=lambda _event: None,
             stream_mode=cast(Any, "bad_mode"),
@@ -2969,7 +3283,7 @@ def test_run_backtest_on_event_audit_mode_latency_budget_benchmark() -> None:
         akquant.run_backtest(
             data=data,
             strategy=NoopStrategy,
-            symbol="AUDIT_BUDGET",
+            symbols="AUDIT_BUDGET",
             show_progress=False,
             on_event=on_event,
             stream_progress_interval=50,
@@ -2993,8 +3307,8 @@ def test_run_backtest_broker_profile_applies_defaults() -> None:
     result = akquant.run_backtest(
         data=_build_regression_bars("PROFILE"),
         strategy=ProfileCaptureStrategy,
-        symbol="PROFILE",
-        execution_mode="current_close",
+        symbols="PROFILE",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         broker_profile="cn_stock_miniqmt",
         show_progress=False,
     )
@@ -3012,8 +3326,8 @@ def test_run_backtest_broker_profile_explicit_args_override_profile() -> None:
     result = akquant.run_backtest(
         data=_build_regression_bars("PROFILE_OVERRIDE"),
         strategy=ProfileCaptureStrategy,
-        symbol="PROFILE_OVERRIDE",
-        execution_mode="current_close",
+        symbols="PROFILE_OVERRIDE",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         broker_profile="cn_stock_miniqmt",
         commission_rate=0.0011,
         stamp_tax_rate=0.0022,
@@ -3029,13 +3343,33 @@ def test_run_backtest_broker_profile_explicit_args_override_profile() -> None:
     assert strategy.snapshot["lot_size"] == 10
 
 
+def test_run_backtest_broker_profile_explicit_zero_values_are_preserved() -> None:
+    """Explicit 0.0 fee values should not be treated as omitted values."""
+    result = akquant.run_backtest(
+        data=_build_regression_bars("PROFILE_ZERO"),
+        strategy=ProfileCaptureStrategy,
+        symbols="PROFILE_ZERO",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        broker_profile="cn_stock_miniqmt",
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        show_progress=False,
+    )
+
+    strategy = cast(ProfileCaptureStrategy, result.strategy)
+    assert strategy.snapshot["stamp_tax_rate"] == pytest.approx(0.0, rel=1e-12)
+    assert strategy.snapshot["transfer_fee_rate"] == pytest.approx(0.0, rel=1e-12)
+    assert strategy.snapshot["min_commission"] == pytest.approx(0.0, rel=1e-12)
+
+
 def test_run_backtest_broker_profile_rejects_unknown_profile() -> None:
     """Unknown broker_profile should raise a validation error."""
     with pytest.raises(ValueError, match="Unknown broker_profile"):
         akquant.run_backtest(
             data=_build_regression_bars("PROFILE_BAD"),
             strategy=NoopStrategy,
-            symbol="PROFILE_BAD",
+            symbols="PROFILE_BAD",
             broker_profile="does_not_exist",
             show_progress=False,
         )
@@ -3055,8 +3389,8 @@ def test_run_backtest_broker_profile_additional_templates(
     result = akquant.run_backtest(
         data=_build_regression_bars("PROFILE_EXTRA"),
         strategy=ProfileCaptureStrategy,
-        symbol="PROFILE_EXTRA",
-        execution_mode="current_close",
+        symbols="PROFILE_EXTRA",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         broker_profile=profile,
         show_progress=False,
     )
@@ -3075,7 +3409,7 @@ def test_backtest_result_get_event_stats_from_finished_payload() -> None:
     result = akquant.run_backtest(
         data=_build_benchmark_data(n=120, symbol="EVENT_STATS"),
         strategy=NoopStrategy,
-        symbol="EVENT_STATS",
+        symbols="EVENT_STATS",
         show_progress=False,
         on_event=lambda _event: None,
         stream_mode="audit",
@@ -3123,8 +3457,8 @@ def test_run_backtest_analyzer_plugins_lifecycle_and_output() -> None:
     result = akquant.run_backtest(
         data=_build_regression_bars("ANALYZER"),
         strategy=RegressionStrategy,
-        symbol="ANALYZER",
-        execution_mode="current_close",
+        symbols="ANALYZER",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         analyzer_plugins=[analyzer],
     )
@@ -3171,8 +3505,8 @@ def test_run_backtest_analyzer_plugins_multi_slot_owner_context() -> None:
     result = akquant.run_backtest(
         data=_build_regression_bars("ANALYZER_SLOT"),
         strategy=RegressionStrategy,
-        symbol="ANALYZER_SLOT",
-        execution_mode="current_close",
+        symbols="ANALYZER_SLOT",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         strategy_id="alpha",
         strategies_by_slot={"beta": RegressionStrategy},
@@ -3218,14 +3552,15 @@ def test_run_backtest_china_futures_validation_prefix_override() -> None:
         china_futures=akquant.ChinaFuturesConfig(
             enforce_lot_size=True,
             enforce_tick_size=True,
+            enforce_sessions=False,
         ),
     )
     result_reject = akquant.run_backtest(
         data=bars,
         strategy=FractionalFuturesBuyStrategy,
-        symbol=symbol,
+        symbols=symbol,
         show_progress=False,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         config=config_reject,
     )
     reject_reasons = (
@@ -3247,6 +3582,7 @@ def test_run_backtest_china_futures_validation_prefix_override() -> None:
         china_futures=akquant.ChinaFuturesConfig(
             enforce_lot_size=True,
             enforce_tick_size=True,
+            enforce_sessions=False,
             validation_by_symbol_prefix=[
                 akquant.ChinaFuturesValidationConfig(
                     symbol_prefix="RB",
@@ -3258,9 +3594,9 @@ def test_run_backtest_china_futures_validation_prefix_override() -> None:
     result_accept = akquant.run_backtest(
         data=bars,
         strategy=FractionalFuturesBuyStrategy,
-        symbol=symbol,
+        symbols=symbol,
         show_progress=False,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         config=config_accept,
     )
     accept_reject_reasons = (
@@ -3310,13 +3646,68 @@ def test_run_backtest_china_futures_instrument_template_multiplier() -> None:
     result = akquant.run_backtest(
         data=bars,
         strategy=BuyAndHoldOnceStrategy,
-        symbol=symbol,
+        symbols=symbol,
         show_progress=False,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         config=config,
     )
     final_equity = float(result.equity_curve.iloc[-1])
     assert final_equity == pytest.approx(1_000_009.9977, rel=0.0, abs=1e-6)
+
+
+def test_run_backtest_instrument_lot_size_explicit_one_overrides_template() -> None:
+    """Explicit instrument lot_size=1 should override template lot_size."""
+
+    class LotProbeStrategy(akquant.Strategy):
+        def __init__(self) -> None:
+            super().__init__()
+            self.observed_lot_size: float = -1.0
+
+        def on_start(self) -> None:
+            snapshot = self.get_instrument("RB_TMPL_LOT_01")
+            self.observed_lot_size = float(snapshot.lot_size)
+
+    symbol = "RB_TMPL_LOT_01"
+    bars = _build_regression_bars(symbol)
+    config = akquant.BacktestConfig(
+        strategy_config=akquant.StrategyConfig(
+            initial_cash=1_000_000.0,
+            commission_rate=0.0,
+            slippage=0.0,
+            min_commission=0.0,
+            stamp_tax_rate=0.0,
+            transfer_fee_rate=0.0,
+        ),
+        instruments_config=[
+            akquant.InstrumentConfig(
+                symbol=symbol,
+                asset_type="FUTURES",
+                lot_size=1,
+            )
+        ],
+        china_futures=akquant.ChinaFuturesConfig(
+            enforce_sessions=False,
+            instrument_templates_by_symbol_prefix=[
+                akquant.ChinaFuturesInstrumentTemplateConfig(
+                    symbol_prefix="RB",
+                    multiplier=10.0,
+                    margin_ratio=0.1,
+                    tick_size=0.2,
+                    lot_size=5.0,
+                )
+            ],
+        ),
+    )
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=LotProbeStrategy,
+        symbols=symbol,
+        show_progress=False,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        config=config,
+    )
+    strategy = cast(LotProbeStrategy, result.strategy)
+    assert strategy.observed_lot_size == pytest.approx(1.0, rel=0.0, abs=1e-12)
 
 
 def test_run_backtest_china_futures_template_commission_prefix() -> None:
@@ -3386,17 +3777,17 @@ def test_run_backtest_china_futures_template_commission_prefix() -> None:
     result_base = akquant.run_backtest(
         data=bars,
         strategy=BuyAndHoldOnceStrategy,
-        symbol=symbol,
+        symbols=symbol,
         show_progress=False,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         config=base_config,
     )
     result_high_fee = akquant.run_backtest(
         data=bars,
         strategy=BuyAndHoldOnceStrategy,
-        symbol=symbol,
+        symbols=symbol,
         show_progress=False,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         config=high_fee_config,
     )
     assert float(result_high_fee.equity_curve.iloc[-1]) < float(
@@ -3416,7 +3807,7 @@ def test_run_backtest_china_futures_rejects_duplicate_template_prefix() -> None:
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="RB_DUP_TPL",
+            symbols="RB_DUP_TPL",
             show_progress=False,
             config=akquant.BacktestConfig(
                 strategy_config=akquant.StrategyConfig(),
@@ -3443,7 +3834,7 @@ def test_run_backtest_china_futures_rejects_negative_template_multiplier() -> No
         akquant.run_backtest(
             data=bars,
             strategy=NoopStrategy,
-            symbol="RB_BAD_MULT",
+            symbols="RB_BAD_MULT",
             show_progress=False,
             config=akquant.BacktestConfig(
                 strategy_config=akquant.StrategyConfig(),
@@ -3545,17 +3936,17 @@ def test_run_backtest_china_options_fee_prefix() -> None:
     result_base = akquant.run_backtest(
         data=bars,
         strategy=BuyAndHoldOnceStrategy,
-        symbol=symbol,
+        symbols=symbol,
         show_progress=False,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         config=base_config,
     )
     result_high_fee = akquant.run_backtest(
         data=bars,
         strategy=BuyAndHoldOnceStrategy,
-        symbol=symbol,
+        symbols=symbol,
         show_progress=False,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         config=high_fee_config,
     )
     assert float(result_high_fee.equity_curve.iloc[-1]) < float(
@@ -3609,8 +4000,8 @@ def test_china_futures_session_profile_accepts_cffex_presets() -> None:
     assert config_bond.session_profile == "CN_FUTURES_CFFEX_BOND_DAY"
 
 
-def test_run_grid_search_parallel_normalizes_execution_mode_enum() -> None:
-    """Parallel grid search should accept ExecutionMode enum via normalization."""
+def test_run_grid_search_parallel_accepts_fill_policy() -> None:
+    """Parallel grid search should accept fill_policy in kwargs."""
     data = _build_benchmark_data(n=40, symbol="OPT_EXEC_MODE_ENUM")
 
     results = akquant.run_grid_search(
@@ -3618,7 +4009,7 @@ def test_run_grid_search_parallel_normalizes_execution_mode_enum() -> None:
         param_grid={"dummy": [1, 2]},
         data=data,
         symbol="OPT_EXEC_MODE_ENUM",
-        execution_mode=akquant.ExecutionMode.CurrentClose,
+        fill_policy={"price_basis": "close", "bar_offset": 0, "temporal": "same_cycle"},
         max_workers=2,
         return_df=True,
         show_progress=False,
@@ -3793,7 +4184,7 @@ def test_run_backtest_strict_default_does_not_inject_time_kwargs() -> None:
 
 
 def test_run_backtest_accepts_camelcase_execution_mode_string() -> None:
-    """run_backtest should accept CamelCase execution mode aliases."""
+    """run_backtest should reject removed CamelCase execution mode aliases."""
     symbol = "EXEC_CAMELCASE"
     bars = [
         akquant.Bar(
@@ -3817,20 +4208,23 @@ def test_run_backtest_accepts_camelcase_execution_mode_string() -> None:
     ]
     strategy = BarOnlyCaptureStrategy()
 
-    _ = akquant.run_backtest(
-        data=bars,
-        strategy=strategy,
-        symbols=[symbol],
-        execution_mode="CurrentClose",
-        initial_cash=100000.0,
-        show_progress=False,
-    )
-
-    assert strategy.trade_price == pytest.approx(10.0)
+    with pytest.raises(
+        ValueError,
+        match="run_backtest no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "CurrentClose"}
+        _ = akquant.run_backtest(
+            data=bars,
+            strategy=strategy,
+            symbols=[symbol],
+            initial_cash=100000.0,
+            show_progress=False,
+            **legacy_kwargs,
+        )
 
 
 def test_run_grid_search_single_worker_accepts_camelcase_execution_mode() -> None:
-    """Single-worker grid search should honor CamelCase execution mode aliases."""
+    """Grid search should surface error for removed CamelCase execution mode."""
     symbol = "OPT_EXEC_CAMELCASE"
     data = pd.DataFrame(
         {
@@ -3844,29 +4238,27 @@ def test_run_grid_search_single_worker_accepts_camelcase_execution_mode() -> Non
         }
     )
 
-    results = akquant.run_grid_search(
-        strategy=SingleBuyStrategy,
-        param_grid={},
-        data=data,
-        symbols=[symbol],
-        execution_mode="CurrentClose",
-        initial_cash=15.0,
-        max_workers=1,
-        return_df=True,
-        show_progress=False,
-    )
-
-    assert isinstance(results, pd.DataFrame)
-    assert len(results) == 1
-    assert float(results.iloc[0]["end_market_value"]) > float(
-        results.iloc[0]["initial_market_value"]
-    )
+    with pytest.raises(
+        ValueError,
+        match="run_grid_search no longer accepts execution_mode/timer_execution_policy",
+    ):
+        _ = akquant.run_grid_search(
+            strategy=SingleBuyStrategy,
+            param_grid={},
+            data=data,
+            symbols=[symbol],
+            execution_mode="CurrentClose",
+            initial_cash=15.0,
+            max_workers=1,
+            return_df=True,
+            show_progress=False,
+        )
 
 
 def test_run_grid_search_external_strategy_current_close_effective(
     tmp_path: Path,
 ) -> None:
-    """External imported strategy should keep CurrentClose fill semantics."""
+    """External imported strategy should surface removed execution_mode error."""
     module_path = tmp_path / "external_strategy_module.py"
     module_path.write_text(
         "\n".join(
@@ -3908,22 +4300,21 @@ def test_run_grid_search_external_strategy_current_close_effective(
         }
     )
 
-    results = akquant.run_grid_search(
-        strategy=cast(type[akquant.Strategy], strategy_cls),
-        param_grid={"dummy": [1]},
-        data=data,
-        symbols=[symbol],
-        execution_mode="current_close",
-        initial_cash=15.0,
-        max_workers=1,
-        return_df=True,
-        show_progress=False,
-    )
-    assert isinstance(results, pd.DataFrame)
-    assert len(results) == 1
-    assert float(results.iloc[0]["end_market_value"]) > float(
-        results.iloc[0]["initial_market_value"]
-    )
+    with pytest.raises(
+        ValueError,
+        match="run_grid_search no longer accepts execution_mode/timer_execution_policy",
+    ):
+        _ = akquant.run_grid_search(
+            strategy=cast(type[akquant.Strategy], strategy_cls),
+            param_grid={"dummy": [1]},
+            data=data,
+            symbols=[symbol],
+            execution_mode="current_close",
+            initial_cash=15.0,
+            max_workers=1,
+            return_df=True,
+            show_progress=False,
+        )
 
 
 def test_run_grid_search_db_path_serializes_timestamp_metrics(

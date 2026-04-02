@@ -63,7 +63,7 @@ def run_example() -> None:
         strategy=MarginLiquidationAuditStrategy,
         symbols="LIQ",
         initial_cash=10000.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         lot_size=1,
         show_progress=False,
         risk_config=RiskConfig(

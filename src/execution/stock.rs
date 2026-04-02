@@ -18,7 +18,7 @@ impl ExecutionMatcher for StockMatcher {
 mod tests {
     use super::*;
     use crate::model::{
-        ExecutionMode, Instrument, InstrumentEnum, OrderSide, OrderStatus, OrderType,
+        ExecutionPolicyCore, Instrument, InstrumentEnum, OrderSide, OrderStatus, OrderType,
         StockInstrument, TimeInForce,
     };
     use rust_decimal::Decimal;
@@ -30,30 +30,12 @@ mod tests {
         price: Option<Decimal>,
         stop: Option<Decimal>,
     ) -> Order {
-        Order {
-            id: "1".to_string(),
-            symbol: "AAPL".to_string(),
-            side,
-            order_type: type_,
-            quantity: dec!(100),
-            price,
-            trigger_price: stop,
-            trail_offset: None,
-            trail_reference_price: None,
-            graph_id: None,
-            parent_order_id: None,
-            order_role: crate::model::OrderRole::Standalone,
-            status: OrderStatus::New,
-            filled_quantity: Decimal::ZERO,
-            average_filled_price: None,
-            time_in_force: TimeInForce::Day,
-            created_at: 0,
-            updated_at: 0,
-            commission: Decimal::ZERO,
-            tag: "".to_string(),
-            reject_reason: "".to_string(),
-            owner_strategy_id: None,
-        }
+        let mut order = Order::test_new("1", "AAPL", side, type_, dec!(100));
+        order.price = price;
+        order.trigger_price = stop;
+        order.time_in_force = TimeInForce::Day;
+        order.status = OrderStatus::New;
+        order
     }
 
     fn create_instrument() -> Instrument {
@@ -77,6 +59,10 @@ mod tests {
         }
     }
 
+    fn default_policy_core() -> ExecutionPolicyCore {
+        ExecutionPolicyCore::default()
+    }
+
     #[test]
     fn test_buy_stop_in_bar() {
         let matcher = StockMatcher;
@@ -98,7 +84,7 @@ mod tests {
         let ctx = MatchContext {
             event: &event,
             instrument: &instr,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: default_policy_core(),
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,
             bar_index: 0,
@@ -137,7 +123,7 @@ mod tests {
         let ctx = MatchContext {
             event: &event,
             instrument: &instr,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: default_policy_core(),
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,
             bar_index: 0,
@@ -169,7 +155,7 @@ mod tests {
         let first_ctx = MatchContext {
             event: &first_event,
             instrument: &instr,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: default_policy_core(),
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,
             bar_index: 0,
@@ -194,7 +180,7 @@ mod tests {
         let second_ctx = MatchContext {
             event: &second_event,
             instrument: &instr,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: default_policy_core(),
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,
             bar_index: 1,
@@ -226,7 +212,7 @@ mod tests {
         let first_ctx = MatchContext {
             event: &first_tick_event,
             instrument: &instr,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: default_policy_core(),
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,
             bar_index: 0,
@@ -241,7 +227,7 @@ mod tests {
         let second_ctx = MatchContext {
             event: &second_tick_event,
             instrument: &instr,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: default_policy_core(),
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,
             bar_index: 1,
@@ -256,7 +242,7 @@ mod tests {
         let third_ctx = MatchContext {
             event: &third_tick_event,
             instrument: &instr,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: default_policy_core(),
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,
             bar_index: 2,

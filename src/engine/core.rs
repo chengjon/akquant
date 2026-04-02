@@ -19,7 +19,7 @@ use crate::execution::ExecutionClient;
 use crate::history::HistoryBuffer;
 use crate::market::corporate_action::CorporateActionManager;
 use crate::market::manager::MarketManager;
-use crate::model::{ExecutionMode, Instrument, Order, OrderSide, Timer, Trade};
+use crate::model::{ExecutionPolicyCore, Instrument, Order, OrderSide, Timer, Trade};
 use crate::pipeline::PipelineRunner;
 use crate::pipeline::stages::{
     ChannelProcessor, CleanupProcessor, DataProcessor, ExecutionPhase, ExecutionProcessor,
@@ -52,11 +52,10 @@ pub struct Engine {
     pub(crate) market_manager: MarketManager,
     pub(crate) corporate_action_manager: CorporateActionManager,
     pub(crate) execution_model: Box<dyn ExecutionClient>,
-    pub(crate) execution_mode: ExecutionMode,
+    pub(crate) execution_policy_core_state: ExecutionPolicyCore,
     pub(crate) clock: Clock,
     pub(crate) timers: BinaryHeap<Timer>, // Min-Heap via Timer's Ord implementation
     pub(crate) force_session_continuous: bool,
-    pub(crate) timer_execution_policy: String,
     #[pyo3(get, set)]
     pub risk_manager: RiskManager,
     pub(crate) timezone_offset: i32,
@@ -130,8 +129,19 @@ pub(crate) struct PendingStreamEvent {
 
 // Internal implementation of Engine (not exposed to Python)
 impl Engine {
+    pub(crate) fn execution_policy_core(&self) -> ExecutionPolicyCore {
+        self.execution_policy_core_state
+    }
+
+    pub(crate) fn set_execution_policy_core(&mut self, policy: ExecutionPolicyCore) {
+        self.execution_policy_core_state = policy;
+    }
+
     pub(crate) fn timer_same_cycle_enabled(&self) -> bool {
-        self.timer_execution_policy == "same_cycle"
+        matches!(
+            self.execution_policy_core_state.temporal,
+            crate::model::TemporalPolicy::SameCycle
+        )
     }
 
     pub(crate) fn normalized_order_strategy_id(order: &Order) -> Option<String> {
@@ -652,7 +662,18 @@ impl Engine {
 
         let mut payload = HashMap::new();
         payload.insert("total_events", total_events.unwrap_or(0).to_string());
-        payload.insert("execution_mode", format!("{:?}", self.execution_mode));
+        payload.insert(
+            "fill_policy_price_basis",
+            format!("{:?}", self.execution_policy_core_state.price_basis),
+        );
+        payload.insert(
+            "fill_policy_bar_offset",
+            self.execution_policy_core_state.bar_offset.to_string(),
+        );
+        payload.insert(
+            "fill_policy_temporal",
+            self.execution_policy_core_state.temporal_as_str().to_string(),
+        );
         self.emit_stream_event(py, "started", None, "info", payload);
     }
 
@@ -1031,7 +1052,7 @@ impl Engine {
         pipeline.add_processor(Box::new(DataProcessor::new()));
 
         // 3. Pre-Strategy Execution (Match Pending Orders)
-        // For NextOpen/NextAverage: Matches orders generated in previous bar against current bar.
+        // For NextOpen/NextClose/NextAverage: Matches orders generated in previous bar against current bar.
         pipeline.add_processor(Box::new(ExecutionProcessor::new(
             ExecutionPhase::PreStrategy,
         )));

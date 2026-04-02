@@ -17,7 +17,8 @@ use crate::history::HistoryBuffer;
 use crate::market::corporate_action::CorporateActionManager;
 use crate::market::manager::MarketManager;
 use crate::model::{
-    Bar, ExecutionMode, Instrument, Order, Trade, TradingSession, corporate_action::CorporateAction,
+    Bar, ExecutionPolicyCore, Instrument, Order, PriceBasis, TemporalPolicy, Trade,
+    TradingSession, corporate_action::CorporateAction,
 };
 use crate::portfolio::Portfolio;
 use crate::risk::{RiskConfig, RiskManager};
@@ -476,11 +477,10 @@ impl Engine {
             market_manager: MarketManager::new(),
             corporate_action_manager: CorporateActionManager::new(),
             execution_model: Box::new(SimulatedExecutionClient::new()),
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core_state: ExecutionPolicyCore::default(),
             clock: Clock::new(),
             timers: BinaryHeap::new(),
             force_session_continuous: false,
-            timer_execution_policy: "same_cycle".to_string(),
             risk_manager: RiskManager::new(),
             timezone_offset: 28800, // Default UTC+8
             history_buffer: Arc::new(RwLock::new(HistoryBuffer::new(10000))), // Default large capacity for MAE/MFE
@@ -685,30 +685,70 @@ impl Engine {
             .register_matcher(asset_type, py_matcher);
     }
 
-    /// 设置撮合模式
-    ///
-    /// :param mode: 撮合模式 (ExecutionMode.CurrentClose 或 ExecutionMode.NextOpen)
-    /// :type mode: ExecutionMode
-    fn set_execution_mode(&mut self, mode: ExecutionMode) {
-        self.execution_mode = mode;
+    fn set_fill_policy(
+        &mut self,
+        price_basis: &str,
+        bar_offset: u8,
+        temporal: &str,
+    ) -> PyResult<()> {
+        let normalized_basis = price_basis.trim().to_lowercase();
+        let basis = match normalized_basis.as_str() {
+            "open" => PriceBasis::Open,
+            "close" => PriceBasis::Close,
+            "ohlc4" => PriceBasis::Ohlc4,
+            "hl2" => PriceBasis::Hl2,
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown price_basis '{}', expected one of: open, close, ohlc4, hl2",
+                    price_basis
+                )));
+            }
+        };
+        if bar_offset > 1 {
+            return Err(PyValueError::new_err("bar_offset must be 0 or 1"));
+        }
+        let normalized_temporal = temporal.trim().to_lowercase();
+        let temporal_policy = match normalized_temporal.as_str() {
+            "same_cycle" => TemporalPolicy::SameCycle,
+            "next_event" => TemporalPolicy::NextEvent,
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown temporal '{}', expected one of: same_cycle, next_event",
+                    temporal
+                )));
+            }
+        };
+        match basis {
+            PriceBasis::Open | PriceBasis::Ohlc4 | PriceBasis::Hl2 if bar_offset != 1 => {
+                return Err(PyValueError::new_err(
+                    "price_basis=open|ohlc4|hl2 requires bar_offset=1",
+                ));
+            }
+            _ => {}
+        }
+        let policy = ExecutionPolicyCore {
+            price_basis: basis,
+            bar_offset,
+            temporal: temporal_policy,
+        };
+        self.set_execution_policy_core(policy);
+        Ok(())
     }
 
-    /// 设置定时器下单撮合策略.
-    ///
-    /// :param policy: "same_cycle" 表示在当前 timer 事件撮合;
-    ///                "next_event" 表示延后到下一条行情事件撮合.
-    fn set_timer_execution_policy(&mut self, policy: &str) -> PyResult<()> {
-        let normalized = policy.trim().to_lowercase();
-        match normalized.as_str() {
-            "same_cycle" | "next_event" => {
-                self.timer_execution_policy = normalized;
-                Ok(())
-            }
-            _ => Err(PyValueError::new_err(format!(
-                "Unknown timer execution policy '{}', expected one of: same_cycle, next_event",
-                policy
-            ))),
+    fn get_fill_policy(&self) -> (String, u8, String) {
+        let policy = self.execution_policy_core();
+        let basis = match policy.price_basis {
+            PriceBasis::Open => "open",
+            PriceBasis::Close => "close",
+            PriceBasis::Ohlc4 => "ohlc4",
+            PriceBasis::Hl2 => "hl2",
         }
+        .to_string();
+        (
+            basis,
+            policy.bar_offset,
+            policy.temporal_as_str().to_string(),
+        )
     }
 
     /// 启用 SimpleMarket (7x24小时, T+0, 无税, 简单佣金)

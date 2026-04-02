@@ -117,7 +117,7 @@ class InstrumentConfig:
     :param margin_ratio: Margin ratio (e.g., 0.1 for 10% margin).
                          Default 1.0 (No leverage).
     :param tick_size: Minimum price movement. Default 0.01.
-    :param lot_size: Minimum trading unit (round lot). Default 1.
+    :param lot_size: Minimum trading unit (round lot). Default None.
 
     **Cost & Execution Overrides:**
     These fields override the global settings in `StrategyConfig` for
@@ -142,7 +142,7 @@ class InstrumentConfig:
     multiplier: float = 1.0
     margin_ratio: float = 1.0
     tick_size: float = 0.01
-    lot_size: int = 1
+    lot_size: Optional[int] = None
 
     # Costs & Execution (Asset Specific)
     commission_rate: Optional[float] = None
@@ -192,6 +192,8 @@ class InstrumentConfig:
             )
             if self.settlement_type not in {"cash", "settlement_price", "force_close"}:
                 raise ValueError(f"Unsupported settlement_type: {self.settlement_type}")
+        if self.lot_size is not None and self.lot_size <= 0:
+            raise ValueError("lot_size must be > 0")
 
 
 @dataclass
@@ -540,6 +542,9 @@ class StrategyConfig:
     strategy_risk_cooldown_bars: Optional[Dict[str, int]] = None
     strategy_priority: Optional[Dict[str, int]] = None
     strategy_risk_budget: Optional[Dict[str, float]] = None
+    strategy_fill_policy: Optional[Dict[str, Dict[str, Any]]] = None
+    strategy_slippage: Optional[Dict[str, Dict[str, Any]]] = None
+    strategy_commission: Optional[Dict[str, Dict[str, Any]]] = None
     portfolio_risk_budget: Optional[float] = None
 
 

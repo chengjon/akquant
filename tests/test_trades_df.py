@@ -38,7 +38,7 @@ def test_trades_df() -> None:
 
     print("Running backtest...")
     result = run_backtest(
-        data=data, strategy=TradesTestStrategy, symbol="TEST", show_progress=False
+        data=data, strategy=TradesTestStrategy, symbols="TEST", show_progress=False
     )
 
     print("\nTrades DataFrame:")

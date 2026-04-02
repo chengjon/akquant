@@ -15,7 +15,7 @@ mod tests {
     use super::*;
     use crate::model::instrument::{FuturesInstrument, InstrumentEnum, StockInstrument};
     use crate::model::{
-        AssetType, ExecutionMode, Instrument, Order, OrderSide, OrderStatus, OrderType,
+        AssetType, ExecutionPolicyCore, Instrument, Order, OrderSide, OrderStatus, OrderType,
         TimeInForce, TradingSession,
     };
     use crate::portfolio::Portfolio;
@@ -25,30 +25,14 @@ mod tests {
     use std::sync::Arc;
 
     fn create_test_order(symbol: &str, quantity: Decimal, price: Option<Decimal>) -> Order {
-        Order {
-            id: "test_order".to_string(),
-            symbol: symbol.to_string(),
-            side: OrderSide::Buy,
-            order_type: OrderType::Limit,
-            quantity,
-            price,
-            status: OrderStatus::New,
-            time_in_force: TimeInForce::Day,
-            trigger_price: None,
-            trail_offset: None,
-            trail_reference_price: None,
-            graph_id: None,
-            parent_order_id: None,
-            order_role: crate::model::OrderRole::Standalone,
-            filled_quantity: Decimal::ZERO,
-            average_filled_price: None,
-            created_at: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
-            updated_at: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
-            commission: Decimal::ZERO,
-            tag: String::new(),
-            reject_reason: String::new(),
-            owner_strategy_id: None,
-        }
+        let mut order = Order::test_new("test_order", symbol, OrderSide::Buy, OrderType::Limit, quantity);
+        order.price = price;
+        order.status = OrderStatus::New;
+        order.time_in_force = TimeInForce::Day;
+        let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        order.created_at = now;
+        order.updated_at = now;
+        order
     }
 
     fn create_test_instrument(symbol: &str, asset_type: AssetType) -> Instrument {
@@ -149,7 +133,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &prices_high,
             market_model: &market_model,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 1,
             current_time: 1_700_000_000_000_000_000,
             session: TradingSession::Continuous,
@@ -165,7 +149,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &prices_low,
             market_model: &market_model,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 2,
             current_time: 1_700_000_100_000_000_000,
             session: TradingSession::Continuous,
@@ -210,7 +194,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &prices_day1_start,
             market_model: &market_model,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 1,
             current_time: day1_open,
             session: TradingSession::Continuous,
@@ -226,7 +210,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &prices_day1_drop,
             market_model: &market_model,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 2,
             current_time: day1_open + 10_000_000_000,
             session: TradingSession::Continuous,
@@ -246,7 +230,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &prices_day2_start,
             market_model: &market_model,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 3,
             current_time: day1_open + 86_400_000_000_000,
             session: TradingSession::Continuous,
@@ -286,7 +270,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &prices_start,
             market_model: &market_model,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 1,
             current_time: 1_700_000_000_000_000_000,
             session: TradingSession::Continuous,
@@ -302,7 +286,7 @@ mod tests {
             portfolio: &portfolio,
             last_prices: &prices_drop,
             market_model: &market_model,
-            execution_mode: ExecutionMode::NextOpen,
+            execution_policy_core: ExecutionPolicyCore::default(),
             bar_index: 2,
             current_time: 1_700_000_100_000_000_000,
             session: TradingSession::Continuous,

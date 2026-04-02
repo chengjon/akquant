@@ -167,7 +167,7 @@ if __name__ == "__main__":
         strategy=WalkForwardStrategy,
         symbols="TEST",
         lot_size=1,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         history_depth=60,  # Explicitly pass history depth to ensure engine enables it
     )
     print("Backtest finished.")

@@ -60,7 +60,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
-from akquant import Strategy, ExecutionMode, run_backtest
+from akquant import Strategy, run_backtest
 from akquant.ml import SklearnAdapter
 
 class WalkForwardStrategy(Strategy):
@@ -188,7 +188,7 @@ if __name__ == "__main__":
         strategy=WalkForwardStrategy,
         symbols="TEST",
         lot_size=1,
-        execution_mode=ExecutionMode.CurrentClose, # 在当根 bar 结束时撮合
+        fill_policy={"price_basis": "close", "bar_offset": 0, "temporal": "same_cycle"}, # 在当根 bar 结束时撮合
         history_depth=60,
         warmup_period=50,
     )

@@ -40,4 +40,4 @@ Windows note for parallel optimization (`max_workers > 1`):
 
 - Define strategy classes in an importable module, not in `__main__`.
 - Guard script entry with `if __name__ == "__main__":`.
-- This is caused by Windows multiprocessing `spawn`, not by `execution_mode` semantics.
+- This is caused by Windows multiprocessing `spawn`, not by fill-policy semantics.

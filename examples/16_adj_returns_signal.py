@@ -5,7 +5,7 @@ from akquant import Bar, Strategy, run_backtest
 
 class AdjSignal(Strategy):
     """
-    使用前复权收盘价作为信号、默认次日开盘撮合（NextOpen）的示例策略.
+    使用前复权收盘价作为信号、三轴默认策略（open + bar_offset=1）的示例策略.
 
     :ivar warmup_period: 暖启动所需的 Bar 数；在此期间仅更新历史，不执行交易
     """
@@ -16,7 +16,7 @@ class AdjSignal(Strategy):
         """
         每根 Bar 到来时触发，基于最近两根前复权收盘价计算信号.
 
-        :param bar: 当前的行情 Bar（估值使用真实收盘价 close；撮合采用默认 NextOpen）
+        :param bar: 当前的行情 Bar（估值使用真实收盘价 close；撮合采用三轴默认策略）
         :type bar: Bar
         """
         try:

@@ -33,7 +33,7 @@
 
 ### 2.2 事件驱动与仿真
 *   **Timer**: 支持 `schedule(timestamp, payload)` 注册定时事件，触发 `on_timer` 回调。支持每日定时任务 (`add_daily_timer`)。
-*   **ExecutionMode**: 支持 `CurrentClose` (信号当根K线收盘成交), `NextOpen` (次日开盘成交), `NextAverage` (次日均价成交) 等模式。
+*   **三轴执行语义**: 通过 `fill_policy` 的 `price_basis`、`bar_offset`、`temporal` 统一表达成交价格与撮合时序。
 *   **滑点模型 (Slippage)**: 支持 Fixed (固定金额) 和 Percent (百分比) 滑点模型。
 *   **成交量限制 (Volume Limit)**: 支持按 K 线成交量比例限制单笔撮合数量。
 

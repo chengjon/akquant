@@ -18,6 +18,7 @@ from .analyzer_plugin import AnalyzerManager, AnalyzerTemplate
 from .backtest import (  # type: ignore
     BacktestResult,
     BacktestStreamEvent,
+    make_fill_policy,
     run_backtest,
     run_warm_start,
 )
@@ -80,7 +81,7 @@ from .utils import (
 
 __doc__ = _akquant.__doc__
 if hasattr(_akquant, "__all__"):  # noqa: F405
-    __all__ = _akquant.__all__ + [  # noqa: F405
+    __all__ = [name for name in _akquant.__all__ if name != "ExecutionMode"] + [  # noqa: F405
         "load_bar_from_df",
         "prepare_dataframe",
         "fetch_akshare_symbol",
@@ -116,6 +117,7 @@ if hasattr(_akquant, "__all__"):  # noqa: F405
         "IndicatorSet",
         "run_backtest",
         "run_warm_start",
+        "make_fill_policy",
         "plot_result",
         "BacktestResult",
         "BacktestStreamEvent",
@@ -184,6 +186,7 @@ else:
         "IndicatorSet",
         "run_backtest",
         "run_warm_start",
+        "make_fill_policy",
         "plot_result",
         "BacktestResult",
         "BacktestStreamEvent",

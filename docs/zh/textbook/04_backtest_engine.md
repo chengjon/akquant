@@ -449,7 +449,7 @@ stateDiagram-v2
 对于每一根新的 Bar (或 Tick)，引擎会遍历所有活跃订单进行撮合：
 
 1.  **市价单 (Market Order)**:
-    *   **成交价**: 取决于 `ExecutionMode`（见下文）。
+    *   **成交价**: 取决于 `fill_policy` 三轴（见下文）。
     *   **成交量**: 尽可能全部成交，除非受限于当根 Bar 的成交量（Volume Limit）。
 
 2.  **限价单 (Limit Order)**:
@@ -462,18 +462,19 @@ stateDiagram-v2
     *   当市场价格突破触发价 (`Trigger Price`) 时，止损单会转化为市价单或限价单。
     *   `akquant` 支持**穿透检查 (Gap Detection)**：例如，昨日收盘 100，今日跳空低开 90，如果你有 95 的止损卖单，引擎会正确地在 90 成交（而不是 95），真实模拟跳空风险。
 
-### 4.10.2 撮合模式 (Execution Mode)
+### 4.10.2 三轴成交语义 (Three-Axis Fill Policy)
 
-为了平衡回测的严谨性和灵活性，`akquant` 提供了多种撮合模式：
+为了平衡回测的严谨性和灵活性，`akquant` 使用三轴成交策略：
 
-| 模式 | 描述 | 适用场景 | 备注 |
-| :--- | :--- | :--- | :--- |
-| **NextOpen** (默认) | 当前 Bar 的信号，在**下一根 Bar 的开盘价**成交。 | 日线/分钟线策略 | **最推荐**。完全避免未来函数。 |
-| **CurrentClose** | 当前 Bar 的信号，在**当前 Bar 的收盘价**成交。 | 收盘竞价策略 | 需小心使用，容易引入前视偏差。 |
+| 维度 | 取值 | 描述 |
+| :--- | :--- | :--- |
+| `price_basis` | `open` / `close` / `ohlc4` / `hl2` | 使用哪种价格基准 |
+| `bar_offset` | `0` / `1` | 使用当前 Bar 还是下一根 Bar |
+| `temporal` | `same_cycle` / `next_event` | timer 订单在当前周期或下一事件撮合 |
 
 ### 4.10.3 成交时序策略 (Temporal Policy)
 
-在 `execution_mode` 之外，AKQuant 还支持通过 `timer_execution_policy`（或统一写法 `fill_policy.temporal`）控制 `on_timer` 下单的撮合时点：
+AKQuant 通过 `fill_policy.temporal` 控制 `on_timer` 下单的撮合时点：
 
 | 时序策略 | 描述 | 典型场景 |
 | :--- | :--- | :--- |
@@ -486,7 +487,7 @@ stateDiagram-v2
 result = akquant.run_backtest(
     data=data,
     strategy=MyStrategy,
-    fill_policy={"price_basis": "current_close", "temporal": "next_event"},
+    fill_policy={"price_basis": "close", "bar_offset": 0, "temporal": "next_event"},
 )
 ```
 
@@ -500,6 +501,19 @@ $$ \text{Final Price} = \text{Execution Price} \times (1 \pm \text{Slippage Rate
 *   **卖出**: 价格向下滑动（卖得更便宜）。
 
 此外，你还可以设置 **Volume Limit**（例如 10%），限制策略在单根 Bar 上的成交量不超过市场总成交量的 10%，以模拟流动性限制。
+
+### 4.10.5 配置分层与覆盖优先级
+
+`akquant` 在成交相关参数上采用统一的四层覆盖模型（从高到低）：
+
+1.  **订单级**：`buy/sell/submit_order` 传入 `fill_policy/slippage/commission`。
+2.  **策略映射级**：`strategy_fill_policy/strategy_slippage/strategy_commission`（按 `strategy_id/slot`）。
+3.  **运行级**：`run_backtest(...)` 全局参数（例如 `fill_policy/slippage`）。
+4.  **市场默认**：market model 的内建默认规则（费率、制度等）。
+
+实务建议：
+*   单策略场景可先用运行级，局部例外再用订单级覆盖。
+*   多策略槽位场景优先使用 `strategy_*`，避免不同策略互相覆盖全局参数。
 
 ## 4.11 资金与风控管理 (Portfolio & Risk)
 
@@ -522,6 +536,10 @@ $$ \text{Final Price} = \text{Execution Price} \times (1 \pm \text{Slippage Rate
 *   **卖出检查**: 卖出时检查 `available_positions` 而非总持仓。
 
 这意味着如果你在 T 日买入，尝试在 T 日卖出，订单会被拒绝，错误信息提示 "Insufficient available position"。
+
+当前范围说明：
+*   `t_plus_one` 是**运行级/市场级**开关，不是按 `strategy_id` 的分层参数。
+*   即使启用了多策略槽位，不同策略仍共享同一市场制度与可用持仓结算口径。
 
 ## 4.12 多标的与时间流 (Time Flow & Multi-Asset)
 

@@ -1,6 +1,6 @@
 use crate::event::Event;
 use crate::execution::matcher::MatchContext;
-use crate::model::{ExecutionMode, Order, OrderSide, OrderStatus, OrderType, TimeInForce, Trade};
+use crate::model::{Order, OrderSide, OrderStatus, OrderType, PriceBasis, TimeInForce, Trade};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -8,6 +8,27 @@ use uuid::Uuid;
 pub struct CommonMatcher;
 
 impl CommonMatcher {
+    fn apply_slippage(order: &Order, base_price: Decimal, ctx: &MatchContext) -> Decimal {
+        let override_type = order
+            .slippage_type_override
+            .as_ref()
+            .map(|v| v.trim().to_ascii_lowercase());
+        let override_value = order.slippage_value_override;
+        match (override_type.as_deref(), override_value) {
+            (Some("fixed"), Some(delta)) => match order.side {
+                OrderSide::Buy => base_price + delta,
+                OrderSide::Sell => base_price - delta,
+            },
+            (Some("percent"), Some(rate)) => match order.side {
+                OrderSide::Buy => base_price * (Decimal::ONE + rate),
+                OrderSide::Sell => base_price * (Decimal::ONE - rate),
+            },
+            _ => ctx
+                .slippage
+                .calculate_price(base_price, order.quantity, order.side),
+        }
+    }
+
     fn update_trailing_trigger_with_bar(order: &mut Order, high: Decimal, low: Decimal) {
         let Some(offset) = order.trail_offset else {
             return;
@@ -74,8 +95,7 @@ impl CommonMatcher {
     ) -> Option<Event> {
         let event = ctx.event;
         let instrument = ctx.instrument;
-        let execution_mode = ctx.execution_mode;
-        let slippage = ctx.slippage;
+        let execution_policy = ctx.execution_policy_core;
         let volume_limit_pct = ctx.volume_limit_pct;
         let bar_index = ctx.bar_index;
 
@@ -155,13 +175,21 @@ impl CommonMatcher {
                 let mut execute_price: Option<Decimal> = None;
 
                 // Determine Market Base Price
-                let market_price = match execution_mode {
-                    ExecutionMode::NextOpen => bar.open,
-                    ExecutionMode::CurrentClose => bar.close,
-                    ExecutionMode::NextAverage => {
+                let market_price = match (execution_policy.price_basis, execution_policy.bar_offset)
+                {
+                    (PriceBasis::Open, 1) => bar.open,
+                    (PriceBasis::Close, 0) => bar.close,
+                    (PriceBasis::Close, 1) => bar.close,
+                    (PriceBasis::Ohlc4, 1) => {
                         (bar.open + bar.high + bar.low + bar.close) / Decimal::from(4)
                     }
-                    ExecutionMode::NextHighLowMid => (bar.high + bar.low) / Decimal::from(2),
+                    (PriceBasis::Hl2, 1) => (bar.high + bar.low) / Decimal::from(2),
+                    (PriceBasis::Open, _) => bar.open,
+                    (PriceBasis::Close, _) => bar.close,
+                    (PriceBasis::Ohlc4, _) => {
+                        (bar.open + bar.high + bar.low + bar.close) / Decimal::from(4)
+                    }
+                    (PriceBasis::Hl2, _) => (bar.high + bar.low) / Decimal::from(2),
                 };
 
                 match order.order_type {
@@ -254,7 +282,7 @@ impl CommonMatcher {
                 // 4. Create Trade if executed
                 if let Some(price) = execute_price {
                     // Apply Slippage
-                    let final_price = slippage.calculate_price(price, order.quantity, order.side);
+                    let final_price = Self::apply_slippage(order, price, ctx);
 
                     // Check Volume Limit
                     let max_qty = if volume_limit_pct > Decimal::ZERO {
@@ -359,7 +387,7 @@ impl CommonMatcher {
                 }
 
                 if let Some(price) = execute_price {
-                    let final_price = slippage.calculate_price(price, order.quantity, order.side);
+                    let final_price = Self::apply_slippage(order, price, ctx);
 
                     let trade_qty = order.quantity - order.filled_quantity;
 
@@ -385,7 +413,10 @@ impl CommonMatcher {
                 }
             }
             Event::Timer(timer) => {
-                if execution_mode != ExecutionMode::CurrentClose {
+                if !matches!(
+                    (execution_policy.price_basis, execution_policy.bar_offset),
+                    (PriceBasis::Close, 0)
+                ) {
                     return None;
                 }
                 let Some(reference_price) = ctx.last_price else {
@@ -429,7 +460,7 @@ impl CommonMatcher {
                 }
 
                 if let Some(price) = execute_price {
-                    let final_price = slippage.calculate_price(price, order.quantity, order.side);
+                    let final_price = Self::apply_slippage(order, price, ctx);
                     let trade_qty = order.quantity - order.filled_quantity;
                     if trade_qty > Decimal::ZERO {
                         order.status = OrderStatus::Filled;

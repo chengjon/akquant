@@ -16,8 +16,7 @@ The most commonly used backtest entry function, encapsulating the initialization
 def run_backtest(
     data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]]] = None,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
-    symbol: Union[str, List[str]] = "BENCHMARK",
-    symbols: Optional[Union[str, List[str]]] = None,
+    symbols: Union[str, List[str], Tuple[str, ...], set[str]] = "BENCHMARK",
     initial_cash: Optional[float] = None,
     commission_rate: Optional[float] = None,
     stamp_tax_rate: float = 0.0,
@@ -25,7 +24,6 @@ def run_backtest(
     min_commission: float = 0.0,
     slippage: Optional[float] = None,
     volume_limit_pct: Optional[float] = None,
-    execution_mode: Union[ExecutionMode, str] = ExecutionMode.NextOpen,
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
     initialize: Optional[Callable[[Any], None]] = None,
@@ -58,8 +56,7 @@ def run_backtest(
     risk_budget_reset_daily: bool = False,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     broker_profile: Optional[str] = None,
-    timer_execution_policy: Literal["same_cycle", "next_event"] = "same_cycle",
-    fill_policy: Optional[Dict[str, str]] = None,
+    fill_policy: Optional[Dict[str, Any]] = None,
     strict_strategy_params: bool = True,
     **kwargs: Any,
 ) -> BacktestResult
@@ -71,18 +68,16 @@ def run_backtest(
 *   `strategy`: Strategy class or instance. Also supports passing an `on_bar` function (functional style).
 *   `initialize` / `on_start` / `on_stop`: Functional-strategy lifecycle callbacks for initialization, start, and stop stages.
 *   `symbols`: Preferred parameter. Symbol or list of symbols.
-*   `symbol`: Compatibility parameter. Used only when `symbols` is not provided.
 *   `initial_cash`: Initial cash (default 1,000,000.0).
-*   `execution_mode`: Execution mode.
-    *   `ExecutionMode.NextOpen`: Match at next Bar Open (Default).
-    *   `ExecutionMode.CurrentClose`: Match at current Bar Close.
-*   `timer_execution_policy`: Temporal matching policy for timer-triggered orders (mainly under `CurrentClose`).
-    *   `"same_cycle"`: Match within the current timer event cycle.
-    *   `"next_event"`: Defer matching to the next market event.
-*   `fill_policy`: Unified fill semantics (higher priority than `execution_mode` and `timer_execution_policy`).
-    *   `price_basis`: `next_open`, `current_close`, `ohlc4` (OHLC average), or `hl2` (high-low midpoint).
+*   Legacy price-basis parameter: Removed.
+*   Legacy timer-temporal parameter: Removed.
+*   `fill_policy`: Unified fill semantics.
+    *   `price_basis`: `open`, `close`, `ohlc4` (OHLC average), or `hl2` (high-low midpoint).
+    *   `bar_offset`: `0` or `1`. Required for full three-axis semantics.
     *   Reserved (not implemented yet): `mid_quote`, `vwap_window`, `twap_window` (currently raises `NotImplementedError`).
     *   `temporal`: `same_cycle` or `next_event`.
+*   `legacy_execution_policy_compat` (via `**kwargs`): Removed.
+*   Migration hint: legacy execution parameters are no longer accepted; use `fill_policy`.
 *   `strict_strategy_params`: Whether to strictly validate strategy constructor parameters (default `True`).
     *   Raises immediately if unsupported constructor parameters are provided.
     *   Recommended to keep enabled to avoid silent parameter mismatch and distorted backtest results.
@@ -101,20 +96,57 @@ def run_backtest(
 *   `strategy_max_daily_loss` / `strategy_max_drawdown`: Optional strategy-level stop maps keyed by strategy id.
 *   `strategy_reduce_only_after_risk` / `strategy_risk_cooldown_bars`: Optional post-risk behavior maps keyed by strategy id.
 *   `strategy_priority` / `strategy_risk_budget` / `portfolio_risk_budget`: Optional scheduling/budget controls.
+*   `strategy_fill_policy`: Optional strategy-level default fill policy map keyed by strategy id.
+    Resolution order at submit time: order-level `fill_policy` > `strategy_fill_policy[strategy_id]` > run-level `fill_policy`.
+*   `strategy_slippage`: Optional strategy-level default slippage map keyed by strategy id.
+    Resolution order at submit time: order-level `slippage` > `strategy_slippage[strategy_id]` > run-level `slippage`.
+*   `strategy_commission`: Optional strategy-level default commission map keyed by strategy id.
+    Resolution order at submit time: order-level `commission` > `strategy_commission[strategy_id]` > run-level commission model.
+*   Configuration layers (recommended mental model):
+    1) order-level (`buy/sell/submit_order` args);
+    2) strategy-map level (`strategy_*`, keyed by `strategy_id/slot`);
+    3) run-level (`run_backtest` args);
+    4) market defaults (built-in market-model defaults).
+*   T+1 scope note: `t_plus_one` is currently a run/market-level switch, not a per-`strategy_id` layered setting.
 *   `risk_budget_mode` / `risk_budget_reset_daily`: Risk budget accounting mode and reset policy.
 *   `analyzer_plugins`: Optional analyzer plugin list. Plugins receive `on_start/on_bar/on_trade/on_finish` callbacks and final outputs are stored in `result.analyzer_outputs`.
 *   `on_event`: Optional stream callback. When omitted, an internal no-op callback keeps legacy blocking return semantics; when provided, runtime events are emitted.
 *   `broker_profile`: Optional broker template preset for quick defaults (fees/slippage/lot size). Built-ins: `cn_stock_miniqmt`, `cn_stock_t1_low_fee`, `cn_stock_sim_high_slippage`.
 
-**Execution semantics migration map:**
+**Recommended fill_policy examples (primary path):**
 
-| Legacy parameters | New style |
+```python
+# Next bar close fill
+result = aq.run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    symbols="000001",
+    fill_policy={"price_basis": "close", "bar_offset": 1, "temporal": "same_cycle"},
+)
+
+# Current-close price with next-event temporal matching
+result = aq.run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    symbols="000001",
+    fill_policy={"price_basis": "close", "bar_offset": 0, "temporal": "next_event"},
+)
+```
+
+**Execution semantics quick map (three-axis only):**
+
+| Scenario | `fill_policy` |
 | :--- | :--- |
-| `execution_mode="next_open"` | `fill_policy={"price_basis":"next_open","temporal":"same_cycle"}` |
-| `execution_mode="current_close", timer_execution_policy="same_cycle"` | `fill_policy={"price_basis":"current_close","temporal":"same_cycle"}` |
-| `execution_mode="current_close", timer_execution_policy="next_event"` | `fill_policy={"price_basis":"current_close","temporal":"next_event"}` |
-| `execution_mode="next_average"` | `fill_policy={"price_basis":"ohlc4","temporal":"same_cycle"}` |
-| `execution_mode="next_high_low_mid"` | `fill_policy={"price_basis":"hl2","temporal":"same_cycle"}` |
+| Next-open style fill | `{"price_basis":"open","bar_offset":1,"temporal":"same_cycle"}` |
+| Current-close style fill | `{"price_basis":"close","bar_offset":0,"temporal":"same_cycle"}` |
+| Next-bar close fill | `{"price_basis":"close","bar_offset":1,"temporal":"same_cycle"}` |
+| Next-bar OHLC average fill | `{"price_basis":"ohlc4","bar_offset":1,"temporal":"same_cycle"}` |
+| Next-bar HL2 fill | `{"price_basis":"hl2","bar_offset":1,"temporal":"same_cycle"}` |
+
+Notes:
+* For `open/ohlc4/hl2`, `bar_offset` is fixed to `1` (`0` is not supported).
+* For `close + bar_offset=1` (next-bar close), the primary time-shift semantics come from `bar_offset`; keep `temporal="same_cycle"` to avoid confusion.
+* `temporal` differences are mainly meaningful for `close + bar_offset=0` (current-close) scenarios.
 
 ### `akquant.run_grid_search`
 
@@ -189,8 +221,7 @@ def run_warm_start(
     checkpoint_path: str,
     data: Optional[BacktestDataInput] = None,
     show_progress: bool = True,
-    symbol: Union[str, List[str]] = "BENCHMARK",
-    symbols: Optional[Union[str, List[str]]] = None,
+    symbols: Union[str, List[str], Tuple[str, ...], set[str]] = "BENCHMARK",
     strategy_runtime_config: Optional[Union[StrategyRuntimeConfig, Dict[str, Any]]] = None,
     runtime_config_override: bool = True,
     strategy_id: Optional[str] = None,
@@ -247,13 +278,17 @@ result = aq.run_backtest(
 *   `align="session"`: Partition by trading day, optionally with `session_windows`.
 *   `align="day"`: Partition by day without `session_windows`; `day_mode` supports `trading/calendar`.
 *   `align="global"`: Aggregate on the full timeline without day partitioning.
-*   Parameter recommendation: prefer `symbols`. If both `symbol` and `symbols` are provided, compatibility is allowed only when `symbol="BENCHMARK"`; otherwise a validation error is raised.
-*   Deprecation timeline: in current versions, using only `symbol` emits `DeprecationWarning`; a later minor release will remove `symbol`, so migrate to `symbols` early.
+*   Parameter recommendation: always use `symbols`. `run_backtest`/`run_warm_start` no longer accept `symbol`.
+*   Migration status: `symbol` has been removed from `run_backtest`/`run_warm_start`; migrate all calls to `symbols`.
 
 **Compatibility & Migration Notes:**
 
 *   Prefer migrating realtime UI/logging/alerting to `run_backtest(..., on_event=...)`.
 *   Stream use cases are unified under `run_backtest(..., on_event=...)`.
+*   Legacy execution policy compatibility gate has been removed.
+*   Legacy execution parameters and `legacy_execution_policy_compat` are no longer accepted.
+*   Use `fill_policy` for all public execution configuration.
+*   Cutover playbook: [Execution Policy Cutover Checklist](../advanced/execution_policy_cutover.md).
 *   Since Phase 5, runtime rollback flags are removed; use release-level rollback when needed.
 *   Phase-4 observation window and go/no-go gates are documented in [Unified Stream Core Checklist](../advanced/stream_observability.md).
 
@@ -262,13 +297,13 @@ result = aq.run_backtest(
 *   Is `run_backtest` renamed? No, the public entry name stays unchanged.
 *   Can `run_backtest` still be called without `on_event`? Yes, and result-return semantics stay the same.
 *   How do we roll back in production? Use release-level rollback; `_engine_mode` runtime fallback is removed.
-*   Can we still use `symbol`? Yes for compatibility, but it is deprecated and emits `DeprecationWarning`; migrate to `symbols`.
+*   Can we still use `symbol`? No. Migrate to `symbols`.
 
 ### Stream Parameters & Events (`run_backtest`)
 
 **Key Parameters:**
 
-*   `on_event`: Stream callback receiving `BacktestStreamEvent` (required).
+*   `on_event`: Optional stream callback receiving `BacktestStreamEvent`; if omitted, an internal no-op callback is used.
 *   `stream_progress_interval`: Sampling interval for `progress` events (positive int).
 *   `stream_equity_interval`: Sampling interval for `equity` events (positive int).
 *   `stream_batch_size`: Flush threshold for buffered events (positive int).
@@ -719,7 +754,8 @@ The main entry point for the backtesting engine (usually used implicitly via `ru
 
 *   `set_timezone(offset: int)`: Set timezone offset.
 *   `use_simulated_execution()` / `use_realtime_execution()`: Set execution environment.
-*   `set_execution_mode(mode)`: Set matching mode.
+*   `set_fill_policy(price_basis, bar_offset, temporal)`: Set unified three-axis execution policy (recommended).
+*   `get_fill_policy()`: Get current three-axis execution policy.
 *   `set_history_depth(depth)`: Set history data cache length.
 
 **Market & Fee Configuration:**

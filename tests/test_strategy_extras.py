@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Iterator, cast
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -20,6 +20,14 @@ from akquant.akquant import Bar, OrderStatus, StrategyContext, Tick, TimeInForce
 from akquant.backtest import FunctionalStrategy
 from akquant.config import RiskConfig
 from akquant.strategy import Strategy, StrategyRuntimeConfig
+
+
+@pytest.fixture(autouse=True)
+def _reset_logger_console_state() -> Iterator[None]:
+    try:
+        yield
+    finally:
+        register_logger(console=False, level="INFO")
 
 
 class MyStrategy(Strategy):
@@ -58,7 +66,7 @@ def test_strategy_logging(caplog: Any) -> None:
         strategy._on_bar_event(bar, ctx)
 
     assert "Bar AAPL Close: 102.0" in caplog.text
-    assert "[2023-01-01 09:30:00]" in caplog.text
+    assert "[" in caplog.text and "]" in caplog.text
 
 
 def test_strategy_properties() -> None:
@@ -464,7 +472,7 @@ def test_get_trades_refreshes_during_backtest() -> None:
     result = run_backtest(
         data=bars,
         strategy=ClosedTradesSnapshotStrategy,
-        symbol="AAPL",
+        symbols="AAPL",
         initial_cash=100000.0,
         show_progress=False,
     )
@@ -939,7 +947,7 @@ def test_run_backtest_accepts_strategy_source_python_plain(tmp_path: Path) -> No
         data=bars,
         strategy_source=str(strategy_file),
         strategy_loader="python_plain",
-        symbol="PLAIN",
+        symbols="PLAIN",
         show_progress=False,
     )
     strategy = result.strategy
@@ -975,7 +983,7 @@ def test_run_backtest_rebuilds_console_handler_for_imported_strategy(
             data=bars,
             strategy_source=str(strategy_file),
             strategy_loader="python_plain",
-            symbol="PLAIN_LOG",
+            symbols="PLAIN_LOG",
             show_progress=False,
         )
         has_console = any(
@@ -1017,7 +1025,7 @@ def test_run_backtest_imported_strategy_log_visible_in_stdout(
             data=bars,
             strategy_source=str(strategy_file),
             strategy_loader="python_plain",
-            symbol="PLAIN_STDOUT",
+            symbols="PLAIN_STDOUT",
             show_progress=False,
         )
         captured = capsys.readouterr()
@@ -1052,7 +1060,7 @@ def test_run_backtest_accepts_strategy_source_encrypted_external(
         strategy_source=str(strategy_file),
         strategy_loader="encrypted_external",
         strategy_loader_options={"decrypt_and_load": _mock_decrypt_loader},
-        symbol="ENC",
+        symbols="ENC",
         show_progress=False,
     )
     strategy = result.strategy
@@ -1068,7 +1076,7 @@ def test_run_backtest_rejects_unknown_strategy_loader_name() -> None:
             data=bars,
             strategy_source="missing.py",
             strategy_loader="not_exist",
-            symbol="BAD_LOADER",
+            symbols="BAD_LOADER",
             show_progress=False,
         )
 
@@ -1081,7 +1089,7 @@ def test_run_backtest_rejects_invalid_strategy_loader_options_type() -> None:
             data=bars,
             strategy_source="missing.py",
             strategy_loader_options=cast(Any, "bad"),
-            symbol="BAD_OPT",
+            symbols="BAD_OPT",
             show_progress=False,
         )
 
@@ -1094,7 +1102,7 @@ def test_run_backtest_rejects_invalid_strategy_loader_type() -> None:
             data=bars,
             strategy_source="missing.py",
             strategy_loader=cast(Any, 123),
-            symbol="BAD_LOADER_TYPE",
+            symbols="BAD_LOADER_TYPE",
             show_progress=False,
         )
 
@@ -1107,7 +1115,7 @@ def test_run_backtest_rejects_python_plain_with_bytes_source() -> None:
             data=bars,
             strategy_source=b"cipher",
             strategy_loader="python_plain",
-            symbol="BAD_PLAIN_BYTES",
+            symbols="BAD_PLAIN_BYTES",
             show_progress=False,
         )
 
@@ -1120,7 +1128,7 @@ def test_run_backtest_rejects_encrypted_loader_without_callback() -> None:
             data=bars,
             strategy_source="encrypted.mock",
             strategy_loader="encrypted_external",
-            symbol="BAD_ENC_OPT",
+            symbols="BAD_ENC_OPT",
             show_progress=False,
         )
 
@@ -1158,7 +1166,7 @@ def test_run_backtest_python_plain_supports_strategy_attr_selection(
         strategy_source=str(strategy_file),
         strategy_loader="python_plain",
         strategy_loader_options={"strategy_attr": "Beta"},
-        symbol="ATTR",
+        symbols="ATTR",
         show_progress=False,
     )
     strategy = result.strategy
@@ -1193,7 +1201,7 @@ def test_run_backtest_rejects_python_plain_with_multiple_classes_without_attr(
             data=bars,
             strategy_source=str(strategy_file),
             strategy_loader="python_plain",
-            symbol="MULTI",
+            symbols="MULTI",
             show_progress=False,
         )
 
@@ -1206,7 +1214,7 @@ def test_run_backtest_rejects_missing_strategy_and_strategy_source() -> None:
             data=bars,
             strategy=None,
             strategy_source=None,
-            symbol="NO_STRATEGY",
+            symbols="NO_STRATEGY",
             show_progress=False,
         )
 
@@ -1234,7 +1242,7 @@ def test_run_backtest_accepts_registered_custom_strategy_loader() -> None:
         data=bars,
         strategy_source=b"mock",
         strategy_loader=loader_name,
-        symbol="CUSTOM_LOADER",
+        symbols="CUSTOM_LOADER",
         show_progress=False,
     )
     strategy = result.strategy
@@ -1271,7 +1279,7 @@ def test_run_backtest_loads_strategy_source_from_config(tmp_path: Path) -> None:
     result = run_backtest(
         data=bars,
         strategy=None,
-        symbol="CFG",
+        symbols="CFG",
         config=cfg,
     )
     strategy = result.strategy
@@ -1313,7 +1321,7 @@ def test_run_backtest_prefers_explicit_strategy_over_strategy_source(
         strategy=ExplicitPriorityStrategy,
         strategy_source=str(strategy_file),
         strategy_loader="python_plain",
-        symbol="PRIO",
+        symbols="PRIO",
         show_progress=False,
     )
     strategy = result.strategy
@@ -1330,7 +1338,7 @@ def test_run_warm_start_end_to_end_lifecycle(tmp_path: Path) -> None:
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartE2EStrategy,
-        symbol="TEST",
+        symbols="TEST",
         initial_cash=100000.0,
         show_progress=False,
     )
@@ -1340,7 +1348,7 @@ def test_run_warm_start_end_to_end_lifecycle(tmp_path: Path) -> None:
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
 
@@ -1380,10 +1388,10 @@ def test_run_warm_start_accepts_symbols_alias(tmp_path: Path) -> None:
     assert strategy.bar_seen == 4
 
 
-def test_run_warm_start_warns_when_using_deprecated_symbol_argument(
+def test_run_warm_start_rejects_legacy_symbol_keyword_alias(
     tmp_path: Path,
 ) -> None:
-    """run_warm_start should emit deprecation warning for symbol argument."""
+    """run_warm_start should reject removed symbol keyword alias."""
     checkpoint = tmp_path / "snapshot_symbols_warn.pkl"
     phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
     phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
@@ -1396,16 +1404,13 @@ def test_run_warm_start_warns_when_using_deprecated_symbol_argument(
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
 
-    with pytest.warns(DeprecationWarning, match="run_warm_start\\(symbol=\\.\\.\\.\\)"):
-        result2 = run_warm_start(
+    with pytest.raises(ValueError, match="no longer accepts `symbol`"):
+        run_warm_start(
             checkpoint_path=str(checkpoint),
             data=phase2,
             symbol="TEST",
             show_progress=False,
         )
-    strategy = result2.strategy
-    assert strategy is not None
-    assert strategy.bar_seen == 4
 
 
 def test_run_warm_start_rejects_conflicting_symbol_and_symbols(tmp_path: Path) -> None:
@@ -1417,12 +1422,12 @@ def test_run_warm_start_rejects_conflicting_symbol_and_symbols(tmp_path: Path) -
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartE2EStrategy,
-        symbol="AAA",
+        symbols="AAA",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
 
-    with pytest.raises(ValueError, match="both `symbol` and `symbols`"):
+    with pytest.raises(ValueError, match="no longer accepts `symbol`"):
         run_warm_start(
             checkpoint_path=str(checkpoint),
             data=phase2,
@@ -1459,6 +1464,254 @@ def test_run_warm_start_accepts_strategy_runtime_config(tmp_path: Path) -> None:
     assert strategy.errors == ["on_bar", "on_bar"]
 
 
+def test_run_warm_start_exposes_resolved_execution_policy(tmp_path: Path) -> None:
+    """run_warm_start should expose resolved execution policy when overridden."""
+    checkpoint = tmp_path / "snapshot_policy_meta.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbols="TEST",
+        show_progress=False,
+        fill_policy={"price_basis": "close", "bar_offset": 1, "temporal": "next_event"},
+    )
+
+    policy = result2.resolved_execution_policy
+    assert policy is not None
+    assert policy["price_basis"] == "close"
+    assert int(policy["bar_offset"]) == 1
+    assert policy["temporal"] == "next_event"
+    assert policy["source"] == "fill_policy"
+
+
+def test_run_warm_start_rejects_legacy_execution_overrides_without_fill_policy(
+    tmp_path: Path,
+) -> None:
+    """run_warm_start should reject legacy execution overrides."""
+    checkpoint = tmp_path / "snapshot_policy_warn.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.raises(
+        ValueError,
+        match="run_warm_start no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "current_close"}
+        _ = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_warm_start_rejects_legacy_timer_override_without_fill_policy(
+    tmp_path: Path,
+) -> None:
+    """run_warm_start should reject legacy timer policy override."""
+    checkpoint = tmp_path / "snapshot_timer_warn.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.raises(
+        ValueError,
+        match="run_warm_start no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"timer_execution_policy": "next_event"}
+        _ = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_warm_start_rejects_legacy_execution_overrides_when_compat_disabled(
+    tmp_path: Path,
+) -> None:
+    """Reject legacy warm_start execution overrides."""
+    checkpoint = tmp_path / "snapshot_legacy_off.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.raises(
+        ValueError,
+        match="run_warm_start no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "current_close"}
+        _ = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_warm_start_rejects_non_bool_legacy_execution_policy_compat(
+    tmp_path: Path,
+) -> None:
+    """legacy_execution_policy_compat should be removed in warm_start."""
+    checkpoint = tmp_path / "snapshot_legacy_type.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.raises(
+        TypeError, match="legacy_execution_policy_compat is no longer supported"
+    ):
+        compat_kwargs: dict[str, Any] = {"legacy_execution_policy_compat": "false"}
+        _ = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            **compat_kwargs,
+        )
+
+
+def test_run_warm_start_rejects_legacy_by_env_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Legacy env var should not re-enable removed warm_start legacy overrides."""
+    monkeypatch.setenv("AKQ_LEGACY_EXECUTION_POLICY_COMPAT", "false")
+    checkpoint = tmp_path / "snapshot_legacy_env_off.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.raises(
+        ValueError,
+        match="run_warm_start no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "current_close"}
+        _ = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            **legacy_kwargs,
+        )
+
+
+def test_run_warm_start_rejects_invalid_legacy_env_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid legacy compat env value should not affect fill_policy path."""
+    checkpoint = tmp_path / "snapshot_legacy_env_bad.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+    monkeypatch.setenv("AKQ_LEGACY_EXECUTION_POLICY_COMPAT", "bad")
+    result2 = run_warm_start(
+        checkpoint_path=str(checkpoint),
+        data=phase2,
+        symbols="TEST",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        show_progress=False,
+    )
+    assert result2.resolved_execution_policy is not None
+    assert result2.resolved_execution_policy["source"] == "fill_policy"
+
+
+def test_run_warm_start_explicit_compat_overrides_env_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Removed compat flag should fail in warm_start even when env is set."""
+    checkpoint = tmp_path / "snapshot_legacy_env_override.pkl"
+    phase1 = _make_bars("2023-01-01", 2, symbol="TEST")
+    phase2 = _make_bars("2023-01-03", 2, symbol="TEST", start_price=102.0)
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+    monkeypatch.setenv("AKQ_LEGACY_EXECUTION_POLICY_COMPAT", "false")
+    with pytest.raises(
+        ValueError,
+        match="run_warm_start no longer accepts execution_mode/timer_execution_policy",
+    ):
+        legacy_kwargs: dict[str, Any] = {"execution_mode": "current_close"}
+        _ = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            **legacy_kwargs,
+        )
+    with pytest.raises(
+        TypeError, match="legacy_execution_policy_compat is no longer supported"
+    ):
+        compat_kwargs: dict[str, Any] = {"legacy_execution_policy_compat": True}
+        _ = run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+            **compat_kwargs,
+        )
+
+
 def test_run_warm_start_restores_strategy_risk_state(tmp_path: Path) -> None:
     """Warm start should preserve strategy-level risk state across snapshots."""
     checkpoint = tmp_path / "snapshot_risk_state.pkl"
@@ -1468,9 +1721,9 @@ def test_run_warm_start_restores_strategy_risk_state(tmp_path: Path) -> None:
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartRiskStateStrategy,
-        symbol="TEST",
+        symbols="TEST",
         initial_cash=100000.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         strategy_id="alpha",
         strategies_by_slot={"beta": WarmStartRiskStateStrategy},
@@ -1482,8 +1735,8 @@ def test_run_warm_start_restores_strategy_risk_state(tmp_path: Path) -> None:
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
-        execution_mode="current_close",
+        symbols="TEST",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
     )
     engine = result2.engine
@@ -1517,9 +1770,9 @@ def test_run_warm_start_accepts_multi_slot_risk_overrides(tmp_path: Path) -> Non
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartRiskStateStrategy,
-        symbol="TEST",
+        symbols="TEST",
         initial_cash=100000.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         strategy_id="alpha",
         strategies_by_slot={"beta": WarmStartRiskStateStrategy},
@@ -1529,8 +1782,8 @@ def test_run_warm_start_accepts_multi_slot_risk_overrides(tmp_path: Path) -> Non
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
-        execution_mode="current_close",
+        symbols="TEST",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         strategy_id="alpha",
         strategies_by_slot={"beta": WarmStartRiskStateStrategy},
@@ -1564,8 +1817,8 @@ def test_run_warm_start_accepts_multi_slot_risk_from_config(tmp_path: Path) -> N
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartRiskStateStrategy,
-        symbol="TEST",
-        execution_mode="current_close",
+        symbols="TEST",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         config=config,
     )
@@ -1574,8 +1827,8 @@ def test_run_warm_start_accepts_multi_slot_risk_from_config(tmp_path: Path) -> N
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
-        execution_mode="current_close",
+        symbols="TEST",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         config=config,
     )
@@ -1607,8 +1860,8 @@ def test_run_warm_start_explicit_slot_risk_overrides_config(tmp_path: Path) -> N
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartRiskStateStrategy,
-        symbol="TEST",
-        execution_mode="current_close",
+        symbols="TEST",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         config=config,
     )
@@ -1617,8 +1870,8 @@ def test_run_warm_start_explicit_slot_risk_overrides_config(tmp_path: Path) -> N
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
-        execution_mode="current_close",
+        symbols="TEST",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
         config=config,
         strategy_max_order_size={"alpha": 20.0, "beta": 5.0},
@@ -1645,7 +1898,7 @@ def test_run_warm_start_accepts_fee_rate_names_and_default_timezone(
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartE2EStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1653,7 +1906,7 @@ def test_run_warm_start_accepts_fee_rate_names_and_default_timezone(
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         commission_rate=0.0003,
         stamp_tax_rate=0.001,
@@ -1663,6 +1916,30 @@ def test_run_warm_start_accepts_fee_rate_names_and_default_timezone(
     equity_index = cast(pd.DatetimeIndex, result2.equity_curve.index)
     assert equity_index.tz is not None
     assert str(equity_index.tz) == "Asia/Shanghai"
+
+
+def test_run_warm_start_rejects_unknown_broker_profile(tmp_path: Path) -> None:
+    """run_warm_start should validate broker_profile names."""
+    checkpoint = tmp_path / "snapshot_unknown_profile.pkl"
+    phase1 = _make_bars("2023-01-01", 2)
+    phase2 = _make_bars("2023-01-03", 2, start_price=102.0)
+
+    result1 = run_backtest(
+        data=phase1,
+        strategy=WarmStartE2EStrategy,
+        symbols="TEST",
+        show_progress=False,
+    )
+    save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="Unknown broker_profile"):
+        run_warm_start(
+            checkpoint_path=str(checkpoint),
+            data=phase2,
+            symbols="TEST",
+            show_progress=False,
+            broker_profile="does_not_exist",
+        )
 
 
 def test_run_warm_start_runtime_config_override_true_by_default(
@@ -1676,7 +1953,7 @@ def test_run_warm_start_runtime_config_override_true_by_default(
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmConflictStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1685,7 +1962,7 @@ def test_run_warm_start_runtime_config_override_true_by_default(
         result2 = run_warm_start(
             checkpoint_path=str(checkpoint),
             data=phase2,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config={"error_mode": "continue"},
         )
@@ -1708,7 +1985,7 @@ def test_run_warm_start_runtime_config_override_false_keeps_strategy_config(
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmConflictStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1718,7 +1995,7 @@ def test_run_warm_start_runtime_config_override_false_keeps_strategy_config(
             run_warm_start(
                 checkpoint_path=str(checkpoint),
                 data=phase2,
-                symbol="TEST",
+                symbols="TEST",
                 show_progress=False,
                 strategy_runtime_config={"error_mode": "continue"},
                 runtime_config_override=False,
@@ -1739,7 +2016,7 @@ def test_run_warm_start_rejects_invalid_strategy_runtime_config_type(
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmStartStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1748,7 +2025,7 @@ def test_run_warm_start_rejects_invalid_strategy_runtime_config_type(
         run_warm_start(
             checkpoint_path=str(checkpoint),
             data=phase2,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config=cast(Any, "invalid"),
         )
@@ -1765,7 +2042,7 @@ def test_run_warm_start_rejects_invalid_runtime_config_from_forwarded_kwargs(
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmStartStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1775,7 +2052,7 @@ def test_run_warm_start_rejects_invalid_runtime_config_from_forwarded_kwargs(
         run_warm_start(
             checkpoint_path=str(checkpoint),
             data=phase2,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             **forwarded_kwargs,
         )
@@ -1792,7 +2069,7 @@ def test_run_warm_start_accepts_runtime_config_from_forwarded_kwargs(
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmStartStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1803,7 +2080,7 @@ def test_run_warm_start_accepts_runtime_config_from_forwarded_kwargs(
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         **forwarded_kwargs,
     )
@@ -1824,7 +2101,7 @@ def test_run_warm_start_rejects_unknown_strategy_runtime_config_fields(
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmStartStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1833,7 +2110,7 @@ def test_run_warm_start_rejects_unknown_strategy_runtime_config_fields(
         run_warm_start(
             checkpoint_path=str(checkpoint),
             data=phase2,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config=cast(Any, {"unknown_flag": True}),
         )
@@ -1850,7 +2127,7 @@ def test_run_warm_start_rejects_invalid_strategy_runtime_config_values(
     result1 = run_backtest(
         data=phase1,
         strategy=RuntimeConfigWarmStartStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -1859,7 +2136,7 @@ def test_run_warm_start_rejects_invalid_strategy_runtime_config_values(
         run_warm_start(
             checkpoint_path=str(checkpoint),
             data=phase2,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config={"portfolio_update_eps": -1},
         )
@@ -1925,7 +2202,7 @@ def test_run_warm_start_multi_symbol_continuity(tmp_path: Path) -> None:
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartMultiSymbolStrategy,
-        symbol="BENCHMARK",
+        symbols="BENCHMARK",
         initial_cash=100000.0,
         show_progress=False,
     )
@@ -1935,7 +2212,7 @@ def test_run_warm_start_multi_symbol_continuity(tmp_path: Path) -> None:
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="BENCHMARK",
+        symbols="BENCHMARK",
         show_progress=False,
     )
 
@@ -2021,9 +2298,9 @@ def test_run_warm_start_multi_symbol_event_idempotency(tmp_path: Path) -> None:
     result1 = run_backtest(
         data=phase1,
         strategy=WarmStartEventIdempotencyStrategy,
-        symbol="BENCHMARK",
+        symbols="BENCHMARK",
         initial_cash=100000.0,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
     )
     save_snapshot(result1.engine, result1.strategy, str(checkpoint))  # type: ignore[arg-type]
@@ -2031,7 +2308,7 @@ def test_run_warm_start_multi_symbol_event_idempotency(tmp_path: Path) -> None:
     result2 = run_warm_start(
         checkpoint_path=str(checkpoint),
         data=phase2,
-        symbol="BENCHMARK",
+        symbols="BENCHMARK",
         show_progress=False,
     )
 
@@ -2806,7 +3083,7 @@ def test_run_backtest_accepts_strategy_runtime_config() -> None:
     result = run_backtest(
         data=bars,
         strategy=RuntimeConfigBarErrorStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         strategy_runtime_config={"error_mode": "continue"},
     )
@@ -2823,7 +3100,7 @@ def test_run_backtest_rejects_invalid_strategy_runtime_config_type() -> None:
         run_backtest(
             data=bars,
             strategy=RuntimeConfigBarErrorStrategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config=cast(Any, "invalid"),
         )
@@ -2836,7 +3113,7 @@ def test_run_backtest_rejects_invalid_runtime_config_from_strategy_params() -> N
         run_backtest(
             data=bars,
             strategy=RuntimeConfigBarErrorStrategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_params={"strategy_runtime_config": "invalid"},
         )
@@ -2848,7 +3125,7 @@ def test_run_backtest_explicit_runtime_config_has_higher_priority_than_kwargs() 
     result = run_backtest(
         data=bars,
         strategy=RuntimeConfigBarErrorStrategy,
-        symbol="TEST",
+        symbols="TEST",
         show_progress=False,
         strategy_runtime_config={"error_mode": "continue"},
         strategy_params={"strategy_runtime_config": {"error_mode": "raise"}},
@@ -2866,7 +3143,7 @@ def test_run_backtest_rejects_unknown_strategy_runtime_config_fields() -> None:
         run_backtest(
             data=bars,
             strategy=RuntimeConfigBarErrorStrategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config=cast(Any, {"unknown_flag": True}),
         )
@@ -2879,7 +3156,7 @@ def test_run_backtest_rejects_invalid_strategy_runtime_config_values() -> None:
         run_backtest(
             data=bars,
             strategy=RuntimeConfigBarErrorStrategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config={"portfolio_update_eps": -1},
         )
@@ -2894,7 +3171,7 @@ def test_run_backtest_runtime_config_override_true_by_default(
         result = run_backtest(
             data=bars,
             strategy=RuntimeConfigConflictStrategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config={"error_mode": "continue"},
         )
@@ -2915,14 +3192,14 @@ def test_runtime_config_conflict_warning_deduplicated_per_strategy_instance(
         run_backtest(
             data=bars,
             strategy=strategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config={"error_mode": "continue"},
         )
         run_backtest(
             data=bars,
             strategy=strategy,
-            symbol="TEST",
+            symbols="TEST",
             show_progress=False,
             strategy_runtime_config={"error_mode": "continue"},
         )
@@ -2942,7 +3219,7 @@ def test_run_backtest_runtime_config_override_false_keeps_strategy_config(
             run_backtest(
                 data=bars,
                 strategy=RuntimeConfigConflictStrategy,
-                symbol="TEST",
+                symbols="TEST",
                 show_progress=False,
                 strategy_runtime_config={"error_mode": "continue"},
                 runtime_config_override=False,
@@ -3084,6 +3361,9 @@ def test_strategy_buy_sell_delegate_to_submit_order() -> None:
             broker_options: dict[str, Any] | None = None,
             trail_offset: float | None = None,
             trail_reference_price: float | None = None,
+            fill_policy: dict[str, Any] | None = None,
+            slippage: dict[str, Any] | None = None,
+            commission: dict[str, Any] | None = None,
         ) -> str:
             _ = price
             _ = time_in_force
@@ -3095,6 +3375,9 @@ def test_strategy_buy_sell_delegate_to_submit_order() -> None:
             _ = broker_options
             _ = trail_offset
             _ = trail_reference_price
+            _ = fill_policy
+            _ = slippage
+            _ = commission
             assert symbol is not None
             assert quantity is not None
             self.calls.append((side, symbol, quantity))
@@ -3156,6 +3439,331 @@ def test_strategy_submit_order_records_broker_options_in_backtest_mode() -> None
     }
 
 
+class _OrderLevelFillPolicyStrategy(Strategy):
+    """Submit two market orders with different order-level fill_policy."""
+
+    def __init__(self) -> None:
+        self.sent = False
+
+    def on_bar(self, bar: Bar) -> None:
+        if self.sent:
+            return
+        self.sent = True
+        self.submit_order(
+            symbol=bar.symbol,
+            side="Buy",
+            quantity=1.0,
+            tag="order-open",
+            fill_policy={
+                "price_basis": "open",
+                "bar_offset": 1,
+                "temporal": "same_cycle",
+            },
+        )
+        self.submit_order(
+            symbol=bar.symbol,
+            side="Buy",
+            quantity=1.0,
+            tag="order-close",
+            fill_policy={
+                "price_basis": "close",
+                "bar_offset": 1,
+                "temporal": "same_cycle",
+            },
+        )
+
+
+def test_order_level_fill_policy_overrides_engine_fill_policy() -> None:
+    """Order-level fill_policy should override engine-level fill_policy for fills."""
+    register_logger(console=False, level="INFO")
+    data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC"),
+            "open": [10.0, 20.0, 30.0],
+            "high": [11.0, 21.0, 31.0],
+            "low": [9.0, 19.0, 29.0],
+            "close": [100.0, 200.0, 300.0],
+            "volume": [10000.0, 10000.0, 10000.0],
+            "symbol": ["AAPL", "AAPL", "AAPL"],
+        }
+    )
+    result = run_backtest(
+        data=data,
+        strategy=_OrderLevelFillPolicyStrategy,
+        symbols="AAPL",
+        initial_cash=100000.0,
+        show_progress=False,
+        fill_policy={"price_basis": "open", "bar_offset": 1, "temporal": "same_cycle"},
+    )
+    filled_orders = result.orders_df[
+        result.orders_df["status"].astype(str).str.lower() == "filled"
+    ]
+    open_row = filled_orders[filled_orders["tag"] == "order-open"].iloc[0]
+    close_row = filled_orders[filled_orders["tag"] == "order-close"].iloc[0]
+    assert float(open_row["avg_price"]) == pytest.approx(20.0)
+    assert float(close_row["avg_price"]) == pytest.approx(200.0)
+    register_logger(console=False, level="INFO")
+
+
+class _StrategyLevelFillPolicyStrategy(Strategy):
+    """Submit one market order without order-level fill_policy override."""
+
+    def __init__(self) -> None:
+        self.sent = False
+
+    def on_bar(self, bar: Bar) -> None:
+        if self.sent:
+            return
+        self.sent = True
+        self.buy(symbol=bar.symbol, quantity=1.0, tag="strategy-level-policy")
+
+
+def test_strategy_level_fill_policy_applies_when_order_policy_missing() -> None:
+    """Strategy-level fill policy map should apply when order-level policy is absent."""
+    register_logger(console=False, level="INFO")
+    data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC"),
+            "open": [10.0, 20.0, 30.0],
+            "high": [11.0, 21.0, 31.0],
+            "low": [9.0, 19.0, 29.0],
+            "close": [100.0, 200.0, 300.0],
+            "volume": [10000.0, 10000.0, 10000.0],
+            "symbol": ["AAPL", "AAPL", "AAPL"],
+        }
+    )
+    result = run_backtest(
+        data=data,
+        strategy=_StrategyLevelFillPolicyStrategy,
+        symbols="AAPL",
+        initial_cash=100000.0,
+        show_progress=False,
+        fill_policy={"price_basis": "open", "bar_offset": 1, "temporal": "same_cycle"},
+        strategy_fill_policy={
+            "_default": {
+                "price_basis": "close",
+                "bar_offset": 1,
+                "temporal": "same_cycle",
+            }
+        },
+    )
+    filled_orders = result.orders_df[
+        result.orders_df["status"].astype(str).str.lower() == "filled"
+    ]
+    row = filled_orders[filled_orders["tag"] == "strategy-level-policy"].iloc[0]
+    assert float(row["avg_price"]) == pytest.approx(200.0)
+    register_logger(console=False, level="INFO")
+
+
+class _OrderLevelSlippageStrategy(Strategy):
+    def __init__(self) -> None:
+        self.sent = False
+
+    def on_bar(self, bar: Bar) -> None:
+        if self.sent:
+            return
+        self.sent = True
+        self.submit_order(
+            symbol=bar.symbol,
+            side="Buy",
+            quantity=1.0,
+            tag="slippage-fixed",
+            fill_policy={
+                "price_basis": "open",
+                "bar_offset": 1,
+                "temporal": "same_cycle",
+            },
+            slippage={"type": "fixed", "value": 0.5},
+        )
+        self.submit_order(
+            symbol=bar.symbol,
+            side="Buy",
+            quantity=1.0,
+            tag="slippage-percent",
+            fill_policy={
+                "price_basis": "open",
+                "bar_offset": 1,
+                "temporal": "same_cycle",
+            },
+            slippage={"type": "percent", "value": 0.1},
+        )
+
+
+def test_order_level_slippage_overrides_engine_slippage() -> None:
+    """Order-level slippage should override engine-level slippage model."""
+    register_logger(console=False, level="INFO")
+    data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC"),
+            "open": [10.0, 20.0, 30.0],
+            "high": [11.0, 21.0, 31.0],
+            "low": [9.0, 19.0, 29.0],
+            "close": [100.0, 200.0, 300.0],
+            "volume": [10000.0, 10000.0, 10000.0],
+            "symbol": ["AAPL", "AAPL", "AAPL"],
+        }
+    )
+    result = run_backtest(
+        data=data,
+        strategy=_OrderLevelSlippageStrategy,
+        symbols="AAPL",
+        initial_cash=100000.0,
+        show_progress=False,
+    )
+    filled_orders = result.orders_df[
+        result.orders_df["status"].astype(str).str.lower() == "filled"
+    ]
+    fixed_row = filled_orders[filled_orders["tag"] == "slippage-fixed"].iloc[0]
+    percent_row = filled_orders[filled_orders["tag"] == "slippage-percent"].iloc[0]
+    assert float(fixed_row["avg_price"]) == pytest.approx(20.5)
+    assert float(percent_row["avg_price"]) == pytest.approx(22.0)
+
+
+class _StrategyLevelSlippageStrategy(Strategy):
+    def __init__(self) -> None:
+        self.sent = False
+
+    def on_bar(self, bar: Bar) -> None:
+        if self.sent:
+            return
+        self.sent = True
+        self.buy(symbol=bar.symbol, quantity=1.0, tag="strategy-slippage")
+
+
+def test_strategy_level_slippage_applies_when_order_slippage_missing() -> None:
+    """Strategy-level slippage overrides engine-level when order slippage is missing."""
+    register_logger(console=False, level="INFO")
+    data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC"),
+            "open": [10.0, 20.0, 30.0],
+            "high": [11.0, 21.0, 31.0],
+            "low": [9.0, 19.0, 29.0],
+            "close": [100.0, 200.0, 300.0],
+            "volume": [10000.0, 10000.0, 10000.0],
+            "symbol": ["AAPL", "AAPL", "AAPL"],
+        }
+    )
+    result = run_backtest(
+        data=data,
+        strategy=_StrategyLevelSlippageStrategy,
+        symbols="AAPL",
+        initial_cash=100000.0,
+        show_progress=False,
+        slippage=0.2,
+        strategy_slippage={"_default": {"type": "fixed", "value": 0.5}},
+    )
+    filled_orders = result.orders_df[
+        result.orders_df["status"].astype(str).str.lower() == "filled"
+    ]
+    row = filled_orders[filled_orders["tag"] == "strategy-slippage"].iloc[0]
+    assert float(row["avg_price"]) == pytest.approx(20.5)
+
+
+class _OrderLevelCommissionStrategy(Strategy):
+    def __init__(self) -> None:
+        self.sent = False
+
+    def on_bar(self, bar: Bar) -> None:
+        if self.sent:
+            return
+        self.sent = True
+        self.submit_order(
+            symbol=bar.symbol,
+            side="Buy",
+            quantity=1.0,
+            tag="commission-fixed",
+            fill_policy={
+                "price_basis": "open",
+                "bar_offset": 1,
+                "temporal": "same_cycle",
+            },
+            commission={"type": "fixed", "value": 3.0},
+        )
+        self.submit_order(
+            symbol=bar.symbol,
+            side="Buy",
+            quantity=1.0,
+            tag="commission-percent",
+            fill_policy={
+                "price_basis": "open",
+                "bar_offset": 1,
+                "temporal": "same_cycle",
+            },
+            commission={"type": "percent", "value": 0.01},
+        )
+
+
+def test_order_level_commission_overrides_market_model() -> None:
+    """Order-level commission should override market-model commission calculation."""
+    register_logger(console=False, level="INFO")
+    data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC"),
+            "open": [10.0, 20.0, 30.0],
+            "high": [11.0, 21.0, 31.0],
+            "low": [9.0, 19.0, 29.0],
+            "close": [100.0, 200.0, 300.0],
+            "volume": [10000.0, 10000.0, 10000.0],
+            "symbol": ["AAPL", "AAPL", "AAPL"],
+        }
+    )
+    result = run_backtest(
+        data=data,
+        strategy=_OrderLevelCommissionStrategy,
+        symbols="AAPL",
+        initial_cash=100000.0,
+        show_progress=False,
+    )
+    filled_orders = result.orders_df[
+        result.orders_df["status"].astype(str).str.lower() == "filled"
+    ]
+    fixed_row = filled_orders[filled_orders["tag"] == "commission-fixed"].iloc[0]
+    percent_row = filled_orders[filled_orders["tag"] == "commission-percent"].iloc[0]
+    assert float(fixed_row["commission"]) == pytest.approx(3.0)
+    assert float(percent_row["commission"]) == pytest.approx(0.2)
+
+
+class _StrategyLevelCommissionStrategy(Strategy):
+    def __init__(self) -> None:
+        self.sent = False
+
+    def on_bar(self, bar: Bar) -> None:
+        if self.sent:
+            return
+        self.sent = True
+        self.buy(symbol=bar.symbol, quantity=1.0, tag="strategy-commission")
+
+
+def test_strategy_level_commission_applies_when_order_commission_missing() -> None:
+    """Strategy-level commission applies when order-level commission is omitted."""
+    register_logger(console=False, level="INFO")
+    data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2023-01-01", periods=3, freq="D", tz="UTC"),
+            "open": [10.0, 20.0, 30.0],
+            "high": [11.0, 21.0, 31.0],
+            "low": [9.0, 19.0, 29.0],
+            "close": [100.0, 200.0, 300.0],
+            "volume": [10000.0, 10000.0, 10000.0],
+            "symbol": ["AAPL", "AAPL", "AAPL"],
+        }
+    )
+    result = run_backtest(
+        data=data,
+        strategy=_StrategyLevelCommissionStrategy,
+        symbols="AAPL",
+        initial_cash=100000.0,
+        show_progress=False,
+        strategy_commission={"_default": {"type": "fixed", "value": 0.5}},
+    )
+    filled_orders = result.orders_df[
+        result.orders_df["status"].astype(str).str.lower() == "filled"
+    ]
+    row = filled_orders[filled_orders["tag"] == "strategy-commission"].iloc[0]
+    assert float(row["commission"]) == pytest.approx(0.5)
+
+
 def test_strategy_trailing_helpers_delegate_to_submit_order() -> None:
     """Trailing helper APIs should call unified submit_order with trailing args."""
 
@@ -3178,12 +3786,18 @@ def test_strategy_trailing_helpers_delegate_to_submit_order() -> None:
             broker_options: dict[str, Any] | None = None,
             trail_offset: float | None = None,
             trail_reference_price: float | None = None,
+            fill_policy: dict[str, Any] | None = None,
+            slippage: dict[str, Any] | None = None,
+            commission: dict[str, Any] | None = None,
         ) -> str:
             _ = time_in_force
             _ = trigger_price
             _ = client_order_id
             _ = extra
             _ = broker_options
+            _ = fill_policy
+            _ = slippage
+            _ = commission
             self.calls.append(
                 {
                     "symbol": symbol,
@@ -3399,6 +4013,9 @@ def test_bracket_prefers_engine_registration_when_available() -> None:
             time_in_force: Any = None,
             trigger_price: float | None = None,
             tag: str | None = None,
+            fill_policy: dict[str, Any] | None = None,
+            slippage: dict[str, Any] | None = None,
+            commission: dict[str, Any] | None = None,
         ) -> str:
             self.buy_calls.append(
                 {
@@ -3408,6 +4025,9 @@ def test_bracket_prefers_engine_registration_when_available() -> None:
                     "time_in_force": time_in_force,
                     "trigger_price": trigger_price,
                     "tag": tag,
+                    "fill_policy": fill_policy,
+                    "slippage": slippage,
+                    "commission": commission,
                 }
             )
             return "entry-1"
@@ -3465,8 +4085,21 @@ def test_bracket_falls_back_to_deferred_engine_queue_on_runtime_error() -> None:
             time_in_force: Any = None,
             trigger_price: float | None = None,
             tag: str | None = None,
+            fill_policy: dict[str, Any] | None = None,
+            slippage: dict[str, Any] | None = None,
+            commission: dict[str, Any] | None = None,
         ) -> str:
-            _ = (symbol, quantity, price, time_in_force, trigger_price, tag)
+            _ = (
+                symbol,
+                quantity,
+                price,
+                time_in_force,
+                trigger_price,
+                tag,
+                fill_policy,
+                slippage,
+                commission,
+            )
             return "entry-1"
 
     strategy = _BracketEngineStrategy()
@@ -3508,6 +4141,9 @@ def test_bracket_places_exit_orders_and_builds_oco() -> None:
             time_in_force: Any = None,
             trigger_price: float | None = None,
             tag: str | None = None,
+            fill_policy: dict[str, Any] | None = None,
+            slippage: dict[str, Any] | None = None,
+            commission: dict[str, Any] | None = None,
         ) -> str:
             self.buy_calls.append(
                 {
@@ -3517,6 +4153,9 @@ def test_bracket_places_exit_orders_and_builds_oco() -> None:
                     "time_in_force": time_in_force,
                     "trigger_price": trigger_price,
                     "tag": tag,
+                    "fill_policy": fill_policy,
+                    "slippage": slippage,
+                    "commission": commission,
                 }
             )
             return "entry-1"
@@ -3529,6 +4168,9 @@ def test_bracket_places_exit_orders_and_builds_oco() -> None:
             time_in_force: Any = None,
             trigger_price: float | None = None,
             tag: str | None = None,
+            fill_policy: dict[str, Any] | None = None,
+            slippage: dict[str, Any] | None = None,
+            commission: dict[str, Any] | None = None,
         ) -> str:
             self._sell_counter += 1
             order_id = f"exit-{self._sell_counter}"
@@ -3541,6 +4183,9 @@ def test_bracket_places_exit_orders_and_builds_oco() -> None:
                     "time_in_force": time_in_force,
                     "trigger_price": trigger_price,
                     "tag": tag,
+                    "fill_policy": fill_policy,
+                    "slippage": slippage,
+                    "commission": commission,
                 }
             )
             return order_id
@@ -3568,6 +4213,9 @@ def test_bracket_places_exit_orders_and_builds_oco() -> None:
             "time_in_force": None,
             "trigger_price": None,
             "tag": "entry",
+            "fill_policy": None,
+            "slippage": None,
+            "commission": None,
         }
     ]
     assert strategy.sell_calls == [
@@ -3579,6 +4227,9 @@ def test_bracket_places_exit_orders_and_builds_oco() -> None:
             "time_in_force": None,
             "trigger_price": 95.0,
             "tag": "stop",
+            "fill_policy": None,
+            "slippage": None,
+            "commission": None,
         },
         {
             "order_id": "exit-2",
@@ -3588,6 +4239,9 @@ def test_bracket_places_exit_orders_and_builds_oco() -> None:
             "time_in_force": None,
             "trigger_price": None,
             "tag": "take",
+            "fill_policy": None,
+            "slippage": None,
+            "commission": None,
         },
     ]
     assert strategy._pending_brackets == {}

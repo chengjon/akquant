@@ -2,7 +2,7 @@ use crate::context::EngineContext;
 use crate::data::FeedAction;
 use crate::engine::Engine;
 use crate::event::Event;
-use crate::model::{Bar, ExecutionMode, Order, OrderStatus, TradingSession};
+use crate::model::{Bar, Order, OrderStatus, PriceBasis, TradingSession};
 use crate::pipeline::processor::{Processor, ProcessorResult};
 use pyo3::prelude::*;
 use rust_decimal::Decimal;
@@ -54,7 +54,7 @@ fn process_order_request(engine: &mut Engine, py: Python<'_>, mut order: Order) 
             portfolio: &engine.state.portfolio,
             last_prices: &engine.last_prices,
             market_model: engine.market_manager.model.as_ref(),
-            execution_mode: engine.execution_mode,
+            execution_policy_core: engine.execution_policy_core(),
             bar_index: engine.bar_count,
             current_time: engine.clock.timestamp().unwrap_or(0),
             session: engine.clock.session,
@@ -110,7 +110,8 @@ fn process_order_request(engine: &mut Engine, py: Python<'_>, mut order: Order) 
 }
 
 fn should_run_post_strategy_match_now(engine: &Engine) -> bool {
-    if !matches!(engine.execution_mode, ExecutionMode::CurrentClose) {
+    let policy = engine.execution_policy_core();
+    if !(policy.price_basis == PriceBasis::Close && policy.bar_offset == 0) {
         return false;
     }
     match engine.current_event.as_ref() {
@@ -134,7 +135,7 @@ fn emit_execution_reports_for_current_event(engine: &mut Engine) {
         portfolio: &engine.state.portfolio,
         last_prices: &engine.last_prices,
         market_model: engine.market_manager.model.as_ref(),
-        execution_mode: engine.execution_mode,
+        execution_policy_core: engine.execution_policy_core(),
         bar_index: engine.bar_count,
         current_time: engine.clock.timestamp().unwrap_or(0),
         session: engine.clock.session,
@@ -818,14 +819,10 @@ impl Processor for ExecutionProcessor {
         _strategy: &Bound<'_, PyAny>,
     ) -> PyResult<ProcessorResult> {
         let should_run = match self.phase {
-            ExecutionPhase::PreStrategy => matches!(
-                engine.execution_mode,
-                ExecutionMode::NextOpen
-                    | ExecutionMode::NextAverage
-                    | ExecutionMode::NextHighLowMid
-            ),
+            ExecutionPhase::PreStrategy => engine.execution_policy_core().bar_offset == 1,
             ExecutionPhase::PostStrategy => {
-                matches!(engine.execution_mode, ExecutionMode::CurrentClose)
+                let policy = engine.execution_policy_core();
+                policy.price_basis == PriceBasis::Close && policy.bar_offset == 0
             }
         };
 
@@ -845,7 +842,7 @@ impl Processor for ExecutionProcessor {
                         portfolio: &engine.state.portfolio,
                         last_prices: &engine.last_prices,
                         market_model: engine.market_manager.model.as_ref(),
-                        execution_mode: engine.execution_mode,
+                        execution_policy_core: engine.execution_policy_core(),
                         bar_index: engine.bar_count,
                         current_time: engine.clock.timestamp().unwrap_or(0),
                         session: engine.clock.session,

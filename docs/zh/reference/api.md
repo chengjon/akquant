@@ -16,8 +16,7 @@
 def run_backtest(
     data: Optional[Union[pd.DataFrame, Dict[str, pd.DataFrame], List[Bar]]] = None,
     strategy: Union[Type[Strategy], Strategy, Callable[[Any, Bar], None], None] = None,
-    symbol: Union[str, List[str]] = "BENCHMARK",
-    symbols: Optional[Union[str, List[str]]] = None,
+    symbols: Union[str, List[str], Tuple[str, ...], set[str]] = "BENCHMARK",
     initial_cash: Optional[float] = None,
     commission_rate: Optional[float] = None,
     stamp_tax_rate: float = 0.0,
@@ -25,7 +24,6 @@ def run_backtest(
     min_commission: float = 0.0,
     slippage: Optional[float] = None,
     volume_limit_pct: Optional[float] = None,
-    execution_mode: Union[ExecutionMode, str] = ExecutionMode.NextOpen,
     timezone: Optional[str] = None,
     t_plus_one: bool = False,
     initialize: Optional[Callable[[Any], None]] = None,
@@ -45,8 +43,7 @@ def run_backtest(
     strategies_by_slot: Optional[Dict[str, Union[Type[Strategy], Strategy, Callable[[Any, Bar], None]]]] = None,
     on_event: Optional[Callable[[BacktestStreamEvent], None]] = None,
     broker_profile: Optional[str] = None,
-    timer_execution_policy: Literal["same_cycle", "next_event"] = "same_cycle",
-    fill_policy: Optional[Dict[str, str]] = None,
+    fill_policy: Optional[Dict[str, Any]] = None,
     strict_strategy_params: bool = True,
     **kwargs: Any,
 ) -> BacktestResult
@@ -125,8 +122,7 @@ def run_warm_start(
     checkpoint_path: str,
     data: Optional[BacktestDataInput] = None,
     show_progress: bool = True,
-    symbol: Union[str, List[str]] = "BENCHMARK",
-    symbols: Optional[Union[str, List[str]]] = None,
+    symbols: Union[str, List[str], Tuple[str, ...], set[str]] = "BENCHMARK",
     strategy_runtime_config: Optional[Union[StrategyRuntimeConfig, Dict[str, Any]]] = None,
     runtime_config_override: bool = True,
     strategy_id: Optional[str] = None,
@@ -154,19 +150,17 @@ def run_warm_start(
 *   `data`: 回测数据。支持单个 DataFrame，`{symbol: DataFrame}` 字典，`List[Bar]`，或实现 `DataFeedAdapter.load(request)` 的对象。
 *   `strategy`: 策略类、策略实例，或 `on_bar` 函数（函数式编程风格）。
 *   `initialize` / `on_start` / `on_stop`: 函数式策略生命周期回调，分别对应初始化、启动、停止阶段。
-*   `symbols`: 推荐参数。标的代码或代码列表。
-*   `symbol`: 兼容参数。仅在未传 `symbols` 时生效。
-*   `initial_cash`: 初始资金 (默认 1,000,000.0)。
-*   `execution_mode`: 执行模式。
-    *   `ExecutionMode.NextOpen`: 下一 Bar 开盘价成交 (默认)。
-    *   `ExecutionMode.CurrentClose`: 当前 Bar 收盘价成交。
-*   `timer_execution_policy`: 定时器事件成交时序策略（主要用于 `CurrentClose`）。
-    *   `"same_cycle"`: 在当前 `timer` 事件周期内撮合。
-    *   `"next_event"`: 延后到下一条行情事件再撮合。
-*   `fill_policy`: 统一成交语义配置（优先级高于 `execution_mode` 与 `timer_execution_policy`）。
-    *   `price_basis`: `next_open`、`current_close`、`ohlc4`（OHLC 平均价）或 `hl2`（高低中价）。
+*   `symbols`: 标的代码或代码列表。
+*   `initial_cash`: 初始资金 (默认 100,000.0)。
+*   legacy 价格基准参数：已移除。
+*   legacy 时序参数：已移除。
+*   `fill_policy`: 统一成交语义配置。
+    *   `price_basis`: `open`、`close`、`ohlc4`（OHLC 平均价）或 `hl2`（高低中价）。
+    *   `bar_offset`: `0` 或 `1`，用于完整三轴语义。
     *   预留（暂未实现）: `mid_quote`、`vwap_window`、`twap_window`（当前会抛出 `NotImplementedError`）。
     *   `temporal`: `same_cycle` 或 `next_event`。
+*   `legacy_execution_policy_compat`（通过 `**kwargs`）: 已移除。
+*   迁移建议：legacy 执行参数已不再接受，统一使用 `fill_policy`。
 *   `strict_strategy_params`: 是否严格校验策略构造参数（默认 `True`）。
     *   当传入策略不接受的参数时会立即抛错；
     *   推荐保持默认值，避免参数错配被静默忽略导致回测结果偏差。
@@ -181,19 +175,56 @@ def run_warm_start(
 *   `custom_matchers`: 自定义撮合器字典。
 *   `risk_config`: 风控配置。支持字典 (e.g., `{"max_position_pct": 0.1}`) 或 `RiskConfig` 对象。如果同时提供了 `config.strategy_config.risk`，此参数将覆盖其中的同名字段。
 *   `strategies_by_slot`: 可选多策略映射。键为 slot id，值为策略类/实例/函数式 on_bar 回调；用于启用 slot 迭代执行。
+*   `strategy_fill_policy`: 可选策略级默认成交策略映射（`strategy_id -> fill_policy`）。
+    下单时优先级：订单级 `fill_policy` > `strategy_fill_policy[strategy_id]` > 运行级 `fill_policy`。
+*   `strategy_slippage`: 可选策略级默认滑点映射（`strategy_id -> slippage`）。
+    下单时优先级：订单级 `slippage` > `strategy_slippage[strategy_id]` > 运行级 `slippage`。
+*   `strategy_commission`: 可选策略级默认佣金映射（`strategy_id -> commission`）。
+    下单时优先级：订单级 `commission` > `strategy_commission[strategy_id]` > 运行级佣金模型。
+*   配置分层（推荐心智模型）：
+    1) 订单级（`buy/sell/submit_order` 传参）；
+    2) 策略映射级（`strategy_*`，按 `strategy_id/slot`）；
+    3) 运行级（`run_backtest` 参数）；
+    4) 市场默认（market model 内建默认规则）。
+*   T+1 范围说明：当前 `t_plus_one` 仍是运行级/市场级开关，不支持按 `strategy_id` 分层配置。
 *   `analyzer_plugins`: 可选 Analyzer 插件列表。插件接收 `on_start/on_bar/on_trade/on_finish` 生命周期回调，结果汇总到 `result.analyzer_outputs`。
 *   `on_event`: 可选事件回调。不传时内部使用 no-op 回调并保持阻塞返回语义；传入时可实时消费事件。
 *   `broker_profile`: 可选 broker 参数模板，用于快速注入费率/滑点/最小手数等默认值。内置模板：`cn_stock_miniqmt`、`cn_stock_t1_low_fee`、`cn_stock_sim_high_slippage`。
 
-**执行语义迁移映射：**
+**fill_policy 推荐示例（主路径）：**
 
-| 旧参数组合 | 新参数写法 |
+```python
+# 下一根 K 线收盘价成交
+result = aq.run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    symbols="000001",
+    fill_policy={"price_basis": "close", "bar_offset": 1, "temporal": "same_cycle"},
+)
+
+# 当前收盘价 + next_event 时序
+result = aq.run_backtest(
+    data=data,
+    strategy=MyStrategy,
+    symbols="000001",
+    fill_policy={"price_basis": "close", "bar_offset": 0, "temporal": "next_event"},
+)
+```
+
+**执行语义速查（三轴主路径）：**
+
+| 场景 | `fill_policy` |
 | :--- | :--- |
-| `execution_mode="next_open"` | `fill_policy={"price_basis":"next_open","temporal":"same_cycle"}` |
-| `execution_mode="current_close", timer_execution_policy="same_cycle"` | `fill_policy={"price_basis":"current_close","temporal":"same_cycle"}` |
-| `execution_mode="current_close", timer_execution_policy="next_event"` | `fill_policy={"price_basis":"current_close","temporal":"next_event"}` |
-| `execution_mode="next_average"` | `fill_policy={"price_basis":"ohlc4","temporal":"same_cycle"}` |
-| `execution_mode="next_high_low_mid"` | `fill_policy={"price_basis":"hl2","temporal":"same_cycle"}` |
+| next-open 风格成交 | `{"price_basis":"open","bar_offset":1,"temporal":"same_cycle"}` |
+| current-close 风格成交 | `{"price_basis":"close","bar_offset":0,"temporal":"same_cycle"}` |
+| 下一根收盘价成交 | `{"price_basis":"close","bar_offset":1,"temporal":"same_cycle"}` |
+| 下一根 OHLC 均价成交 | `{"price_basis":"ohlc4","bar_offset":1,"temporal":"same_cycle"}` |
+| 下一根 HL2 成交 | `{"price_basis":"hl2","bar_offset":1,"temporal":"same_cycle"}` |
+
+说明：
+* 对 `open/ohlc4/hl2` 这三种 `price_basis`，`bar_offset` 固定为 `1`（不支持 `0`）。
+* 对 `close + bar_offset=1`（下一根收盘价）场景，核心时间位移语义由 `bar_offset` 决定；`temporal` 建议固定写 `same_cycle` 以减少歧义。
+* `temporal` 的差异主要体现在 `close + bar_offset=0`（当前收盘价）场景。
 
 **DataFeedAdapter 用法（多时间框）:**
 
@@ -222,13 +253,16 @@ result = aq.run_backtest(
 *   `align="session"`: 按交易日分区，可叠加 `session_windows`。
 *   `align="day"`: 按日分区，不接收 `session_windows`；`day_mode` 支持 `trading/calendar`。
 *   `align="global"`: 按全局时间轴聚合，不按交易日切段。
-*   参数建议：优先使用 `symbols`。若同时传入 `symbol` 和 `symbols`，仅当 `symbol="BENCHMARK"` 时视作兼容写法，其它情况会报错。
-*   弃用进度：当前版本中，仅传 `symbol` 会触发 `DeprecationWarning`；后续小版本将移除 `symbol` 参数，请提前迁移到 `symbols`。
+*   参数建议：统一使用 `symbols`。`run_backtest`/`run_warm_start` 已不再接受 `symbol` 参数。
 
 **兼容与迁移说明:**
 
 *   推荐逐步将实时 UI / 日志 / 告警接入迁移到 `run_backtest(..., on_event=...)`。
 *   流式场景统一使用 `run_backtest(..., on_event=...)`。
+*   legacy 执行语义兼容开关已移除。
+*   legacy 执行参数与 `legacy_execution_policy_compat` 不再接受。
+*   公开执行配置全量统一使用 `fill_policy`。
+*   切换执行清单：见[执行语义切换清单](../advanced/execution_policy_cutover.md)。
 *   在 PyCharm 中若未开启终端仿真，原生进度条可能不可见；可开启 `Emulate terminal in output console` 或改用 `on_event` 的 `progress` 事件输出文本进度。
 *   阶段 5 后不再提供运行时参数级回滚开关；如需回滚请使用版本级回滚策略。
 *   阶段 4 观察窗口与推进门槛请参考：[流式统一内核观察清单](../advanced/stream_observability.md)。
@@ -239,13 +273,13 @@ result = aq.run_backtest(
 *   `run_backtest` 是否仍可不传 `on_event`？可以，不传时仍返回同样的结果对象语义。
 *   PyCharm 看不到进度条怎么办？先确认 `show_progress=True`，并在 Run 配置中开启 `Emulate terminal in output console`；若仍不可见，使用 `on_event` 消费 `progress` 事件打印文本进度。
 *   线上出现问题如何回退？使用版本级回滚，不再支持 `_engine_mode` 参数级回切。
-*   还可以继续用 `symbol` 吗？可以但已进入弃用阶段，会有 `DeprecationWarning`，建议尽快替换为 `symbols`。
+*   还可以继续用 `symbol` 吗？不可以。请统一迁移到 `symbols`。
 
 ### 流式参数与事件 (`run_backtest`)
 
 **关键参数:**
 
-*   `on_event`: 流式事件回调函数（必传），参数为 `BacktestStreamEvent`。
+*   `on_event`: 流式事件回调函数（可选），参数为 `BacktestStreamEvent`；不传时内部使用 no-op 回调。
 *   `stream_progress_interval`: `progress` 事件采样间隔（正整数）。
 *   `stream_equity_interval`: `equity` 事件采样间隔（正整数）。
 *   `stream_batch_size`: 事件批量刷新阈值（正整数）。
@@ -757,7 +791,8 @@ runner = LiveRunner(
 
 *   `set_timezone(offset: int)`: 设置时区偏移。
 *   `use_simulated_execution()` / `use_realtime_execution()`: 设置执行环境。
-*   `set_execution_mode(mode)`: 设置撮合模式。
+*   `set_fill_policy(price_basis, bar_offset, temporal)`: 设置统一三轴执行策略（推荐）。
+*   `get_fill_policy()`: 获取当前三轴执行策略。
 *   `set_history_depth(depth)`: 设置历史数据缓存长度。
 
 **市场与费率配置:**

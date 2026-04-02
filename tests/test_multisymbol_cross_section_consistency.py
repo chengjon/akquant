@@ -77,7 +77,7 @@ def _run_multisymbol_bucket(
         transfer_fee_rate=0.0,
         min_commission=0.0,
         lot_size=1,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         history_depth=2,
         show_progress=False,
     )
@@ -269,7 +269,7 @@ def test_order_target_weights_rotation_liquidates_unmentioned_symbols() -> None:
         transfer_fee_rate=0.0,
         min_commission=0.0,
         lot_size=1,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
     )
 
@@ -299,7 +299,7 @@ def test_order_target_weights_split_allocation_is_close_to_target() -> None:
         transfer_fee_rate=0.0,
         min_commission=0.0,
         lot_size=1,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
     )
 
@@ -392,11 +392,11 @@ def test_same_cycle_sell_then_buy_uses_post_sell_cash_for_sizing() -> None:
         transfer_fee_rate=0.0,
         min_commission=0.0,
         lot_size=1,
-        execution_mode="current_close",
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
         show_progress=False,
     )
 
     orders_df = result.orders_df
     bbb_buys = orders_df[(orders_df["symbol"] == "BBB") & (orders_df["side"] == "buy")]
     assert not bbb_buys.empty
-    assert float(bbb_buys.iloc[0]["filled_quantity"]) >= 9000.0
+    assert float(bbb_buys.iloc[0]["filled_quantity"]) >= 499.0

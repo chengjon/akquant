@@ -4,13 +4,14 @@ use crate::history::HistoryBuffer;
 use crate::market::MarketModel;
 use crate::model::market_data::extract_decimal;
 use crate::model::{
-    ExecutionMode, Instrument, Order, OrderSide, OrderType, TimeInForce, Timer, Trade,
-    TradingSession,
+    ExecutionPolicyCore, Instrument, Order, OrderSide, OrderType, PriceBasis, TemporalPolicy,
+    TimeInForce, Timer, Trade, TradingSession,
 };
 use crate::portfolio::Portfolio;
 use crate::risk::RiskConfig;
 use crossbeam_channel::Sender;
 use numpy::PyArray1;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 use rust_decimal::Decimal;
@@ -26,7 +27,7 @@ pub struct EngineContext<'a> {
     pub portfolio: &'a Portfolio,
     pub last_prices: &'a HashMap<String, Decimal>,
     pub market_model: &'a dyn MarketModel,
-    pub execution_mode: ExecutionMode,
+    pub execution_policy_core: ExecutionPolicyCore,
     pub bar_index: usize,
     pub current_time: i64,
     pub session: TradingSession,
@@ -64,6 +65,119 @@ pub struct ContextUpdate {
     pub recent_rejected_orders: Vec<Order>,
     pub margin_accrued_interest: f64,
     pub margin_daily_interest: f64,
+}
+
+fn parse_order_fill_policy_override(
+    fill_price_basis: Option<String>,
+    fill_bar_offset: Option<u8>,
+    fill_temporal: Option<String>,
+) -> PyResult<Option<ExecutionPolicyCore>> {
+    if fill_price_basis.is_none() && fill_bar_offset.is_none() && fill_temporal.is_none() {
+        return Ok(None);
+    }
+    let raw_basis = fill_price_basis.unwrap_or_else(|| "open".to_string());
+    let raw_basis = raw_basis.trim().to_ascii_lowercase();
+    let basis = match raw_basis.as_str() {
+        "open" => PriceBasis::Open,
+        "close" => PriceBasis::Close,
+        "ohlc4" => PriceBasis::Ohlc4,
+        "hl2" => PriceBasis::Hl2,
+        _ => {
+            return Err(PyValueError::new_err(
+                "fill_policy.price_basis must be one of: open, close, ohlc4, hl2",
+            ));
+        }
+    };
+    let temporal = match fill_temporal
+        .unwrap_or_else(|| "same_cycle".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "same_cycle" => TemporalPolicy::SameCycle,
+        "next_event" => TemporalPolicy::NextEvent,
+        _ => {
+            return Err(PyValueError::new_err(
+                "fill_policy.temporal must be one of: same_cycle, next_event",
+            ));
+        }
+    };
+    let bar_offset = fill_bar_offset.unwrap_or(match basis {
+        PriceBasis::Close => 0,
+        _ => 1,
+    });
+    if bar_offset > 1 {
+        return Err(PyValueError::new_err("fill_policy.bar_offset must be 0 or 1"));
+    }
+    match basis {
+        PriceBasis::Open if bar_offset != 1 => {
+            return Err(PyValueError::new_err("fill_policy(open) requires bar_offset=1"));
+        }
+        PriceBasis::Ohlc4 if bar_offset != 1 => {
+            return Err(PyValueError::new_err("fill_policy(ohlc4) requires bar_offset=1"));
+        }
+        PriceBasis::Hl2 if bar_offset != 1 => {
+            return Err(PyValueError::new_err("fill_policy(hl2) requires bar_offset=1"));
+        }
+        _ => {}
+    }
+    Ok(Some(ExecutionPolicyCore {
+        price_basis: basis,
+        bar_offset,
+        temporal,
+    }))
+}
+
+fn parse_order_slippage_override(
+    slippage_type: Option<String>,
+    slippage_value: Option<&Bound<'_, PyAny>>,
+) -> PyResult<(Option<String>, Option<Decimal>)> {
+    if slippage_type.is_none() && slippage_value.is_none() {
+        return Ok((None, None));
+    }
+    let raw_type = slippage_type
+        .unwrap_or_else(|| "percent".to_string())
+        .trim()
+        .to_ascii_lowercase();
+    if raw_type != "percent" && raw_type != "fixed" {
+        return Err(PyValueError::new_err(
+            "slippage.type must be one of: percent, fixed",
+        ));
+    }
+    let value = match slippage_value {
+        Some(v) => extract_decimal(v)?,
+        None => Decimal::ZERO,
+    };
+    if value < Decimal::ZERO {
+        return Err(PyValueError::new_err("slippage.value must be >= 0"));
+    }
+    Ok((Some(raw_type), Some(value)))
+}
+
+fn parse_order_commission_override(
+    commission_type: Option<String>,
+    commission_value: Option<&Bound<'_, PyAny>>,
+) -> PyResult<(Option<String>, Option<Decimal>)> {
+    if commission_type.is_none() && commission_value.is_none() {
+        return Ok((None, None));
+    }
+    let raw_type = commission_type
+        .unwrap_or_else(|| "percent".to_string())
+        .trim()
+        .to_ascii_lowercase();
+    if raw_type != "percent" && raw_type != "fixed" {
+        return Err(PyValueError::new_err(
+            "commission.type must be one of: percent, fixed",
+        ));
+    }
+    let value = match commission_value {
+        Some(v) => extract_decimal(v)?,
+        None => Decimal::ZERO,
+    };
+    if value < Decimal::ZERO {
+        return Err(PyValueError::new_err("commission.value must be >= 0"));
+    }
+    Ok((Some(raw_type), Some(value)))
 }
 
 impl StrategyContext {
@@ -383,7 +497,7 @@ impl StrategyContext {
     /// :param trigger_price: 触发价格 (可选, 用于止损/止盈单)
     /// :param tag: 订单标签 (可选)
     /// :return: 订单 ID
-    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None))]
+    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None, fill_price_basis=None, fill_bar_offset=None, fill_temporal=None, fill_slippage_type=None, fill_slippage_value=None, fill_commission_type=None, fill_commission_value=None))]
     #[allow(clippy::too_many_arguments)]
     fn buy(
         &mut self,
@@ -396,6 +510,13 @@ impl StrategyContext {
         order_type: Option<OrderType>,
         trail_offset: Option<&Bound<'_, PyAny>>,
         trail_reference_price: Option<&Bound<'_, PyAny>>,
+        fill_price_basis: Option<String>,
+        fill_bar_offset: Option<u8>,
+        fill_temporal: Option<String>,
+        fill_slippage_type: Option<String>,
+        fill_slippage_value: Option<&Bound<'_, PyAny>>,
+        fill_commission_type: Option<String>,
+        fill_commission_value: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<String> {
         let qty_decimal = extract_decimal(quantity)?;
         let price_decimal = if let Some(p) = price {
@@ -425,6 +546,15 @@ impl StrategyContext {
                 (true, false) => OrderType::Limit,
                 (false, false) => OrderType::Market,
             });
+        let fill_policy_override = parse_order_fill_policy_override(
+            fill_price_basis,
+            fill_bar_offset,
+            fill_temporal,
+        )?;
+        let (slippage_type_override, slippage_value_override) =
+            parse_order_slippage_override(fill_slippage_type, fill_slippage_value)?;
+        let (commission_type_override, commission_value_override) =
+            parse_order_commission_override(fill_commission_type, fill_commission_value)?;
 
         let id = Uuid::new_v4().to_string();
         let order = Order {
@@ -438,6 +568,11 @@ impl StrategyContext {
             trigger_price: trigger_decimal,
             trail_offset: trail_offset_decimal,
             trail_reference_price: trail_reference_decimal,
+            fill_policy_override,
+            slippage_type_override,
+            slippage_value_override,
+            commission_type_override,
+            commission_value_override,
             graph_id: None,
             parent_order_id: None,
             order_role: crate::model::OrderRole::Standalone,
@@ -468,7 +603,7 @@ impl StrategyContext {
     /// :param trigger_price: 触发价格 (可选, 用于止损/止盈单)
     /// :param tag: 订单标签 (可选)
     /// :return: 订单 ID
-    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None))]
+    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None, fill_price_basis=None, fill_bar_offset=None, fill_temporal=None, fill_slippage_type=None, fill_slippage_value=None, fill_commission_type=None, fill_commission_value=None))]
     #[allow(clippy::too_many_arguments)]
     fn sell(
         &mut self,
@@ -481,6 +616,13 @@ impl StrategyContext {
         order_type: Option<OrderType>,
         trail_offset: Option<&Bound<'_, PyAny>>,
         trail_reference_price: Option<&Bound<'_, PyAny>>,
+        fill_price_basis: Option<String>,
+        fill_bar_offset: Option<u8>,
+        fill_temporal: Option<String>,
+        fill_slippage_type: Option<String>,
+        fill_slippage_value: Option<&Bound<'_, PyAny>>,
+        fill_commission_type: Option<String>,
+        fill_commission_value: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<String> {
         let qty_decimal = extract_decimal(quantity)?;
         let price_decimal = if let Some(p) = price {
@@ -510,6 +652,15 @@ impl StrategyContext {
                 (true, false) => OrderType::Limit,
                 (false, false) => OrderType::Market,
             });
+        let fill_policy_override = parse_order_fill_policy_override(
+            fill_price_basis,
+            fill_bar_offset,
+            fill_temporal,
+        )?;
+        let (slippage_type_override, slippage_value_override) =
+            parse_order_slippage_override(fill_slippage_type, fill_slippage_value)?;
+        let (commission_type_override, commission_value_override) =
+            parse_order_commission_override(fill_commission_type, fill_commission_value)?;
 
         let id = Uuid::new_v4().to_string();
         let order = Order {
@@ -523,6 +674,11 @@ impl StrategyContext {
             trigger_price: trigger_decimal,
             trail_offset: trail_offset_decimal,
             trail_reference_price: trail_reference_decimal,
+            fill_policy_override,
+            slippage_type_override,
+            slippage_value_override,
+            commission_type_override,
+            commission_value_override,
             graph_id: None,
             parent_order_id: None,
             order_role: crate::model::OrderRole::Standalone,

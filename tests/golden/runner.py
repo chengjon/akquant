@@ -17,7 +17,6 @@ import pandas as pd
 from akquant import (
     BacktestConfig,
     BacktestStreamEvent,
-    ExecutionMode,
     InstrumentConfig,
     StrategyConfig,
     run_backtest,
@@ -252,7 +251,7 @@ def run_test(
             strategy=strategy_cls,
             config=bc_config,
             t_plus_one=t_plus_one,
-            execution_mode=ExecutionMode.NextOpen,  # Consistent execution
+            fill_policy={"price_basis": "open", "temporal": "same_cycle"},
             lot_size=config.get("lot_size", 1),
             commission_rate=config.get("commission_rate", 0.0),
             min_commission=config.get("min_commission", 0.0),
@@ -315,7 +314,7 @@ def run_stream_consistency_test(
         "strategy": strategy_cls,
         "config": bc_config,
         "t_plus_one": t_plus_one,
-        "execution_mode": ExecutionMode.NextOpen,
+        "fill_policy": {"price_basis": "open", "temporal": "same_cycle"},
         "lot_size": config.get("lot_size", 1),
         "commission_rate": config.get("commission_rate", 0.0),
         "min_commission": config.get("min_commission", 0.0),

@@ -20,12 +20,6 @@ class AssetType:
     Bond: typing.ClassVar["AssetType"]
     Unknown: typing.ClassVar["AssetType"]
 
-class ExecutionMode:
-    NextOpen: typing.ClassVar["ExecutionMode"]
-    CurrentClose: typing.ClassVar["ExecutionMode"]
-    NextAverage: typing.ClassVar["ExecutionMode"]
-    NextHighLowMid: typing.ClassVar["ExecutionMode"]
-
 class OrderStatus:
     New: typing.ClassVar["OrderStatus"]
     Submitted: typing.ClassVar["OrderStatus"]
@@ -221,6 +215,7 @@ class BacktestResult:
     executions: list[Trade]
     metrics_df: typing.Any
     orders_df: typing.Any
+    resolved_execution_policy: typing.Optional[dict[str, typing.Any]]
     def get_trades_ipc(self) -> bytes:
         r"""Get trades as Arrow IPC bytes (Zero-Copy-ish to Python)."""
         ...
@@ -492,24 +487,13 @@ class Engine:
         """
         ...
 
-    def set_execution_mode(self, mode: akquant.ExecutionMode) -> None:
-        r"""
-        设置撮合模式.
-
-        :param mode: 撮合模式 (ExecutionMode.CurrentClose 或 ExecutionMode.NextOpen)
-        :type mode: ExecutionMode
-        """
-        ...
-
-    def set_timer_execution_policy(self, policy: str) -> None:
-        r"""
-        设置定时器下单撮合策略.
-
-        :param policy: "same_cycle" 表示在当前 timer 事件撮合;
-                       "next_event" 表示延后到下一条行情事件撮合.
-        """
-        ...
-
+    def set_fill_policy(
+        self,
+        price_basis: typing.Literal["open", "close", "ohlc4", "hl2"],
+        bar_offset: int,
+        temporal: typing.Literal["same_cycle", "next_event"],
+    ) -> None: ...
+    def get_fill_policy(self) -> tuple[str, int, str]: ...
     def use_simple_market(self, commission_rate: float) -> None:
         r"""
         启用 SimpleMarket (7x24小时, T+0, 无税, 简单佣金).
@@ -2486,6 +2470,13 @@ class StrategyContext:
         order_type: typing.Optional[akquant.OrderType] = ...,
         trail_offset: typing.Optional[float] = ...,
         trail_reference_price: typing.Optional[float] = ...,
+        fill_price_basis: typing.Optional[str] = ...,
+        fill_bar_offset: typing.Optional[int] = ...,
+        fill_temporal: typing.Optional[str] = ...,
+        fill_slippage_type: typing.Optional[str] = ...,
+        fill_slippage_value: typing.Optional[float] = ...,
+        fill_commission_type: typing.Optional[str] = ...,
+        fill_commission_value: typing.Optional[float] = ...,
     ) -> str:
         r"""
         买入下单.
@@ -2511,6 +2502,13 @@ class StrategyContext:
         order_type: typing.Optional[akquant.OrderType] = ...,
         trail_offset: typing.Optional[float] = ...,
         trail_reference_price: typing.Optional[float] = ...,
+        fill_price_basis: typing.Optional[str] = ...,
+        fill_bar_offset: typing.Optional[int] = ...,
+        fill_temporal: typing.Optional[str] = ...,
+        fill_slippage_type: typing.Optional[str] = ...,
+        fill_slippage_value: typing.Optional[float] = ...,
+        fill_commission_type: typing.Optional[str] = ...,
+        fill_commission_value: typing.Optional[float] = ...,
     ) -> str:
         r"""
         卖出下单.

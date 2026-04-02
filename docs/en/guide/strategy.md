@@ -203,7 +203,7 @@ Recommendation: use Plan A by default; use Plan B only when a stable rebalance t
 
 *   **Suspensions / missing bars**: Plan B may not trigger if some symbols have no bar at a timestamp; add timeout fallback or minimum-valid-sample execution.
 *   **Universe drift**: If constituents change but your universe list is stale, weights and ranks diverge from target; refresh periodically and track effective date.
-*   **Rebalance time vs execution mode mismatch**: With `execution_mode="next_open"`, close-time signals are filled on the next bar; under `current_close`, also define `timer_execution_policy` (or `fill_policy.temporal`) to make timer fill timing explicit.
+*   **Rebalance time vs fill policy mismatch**: With `fill_policy={"price_basis":"open","bar_offset":1}`, close-time signals are filled on the next bar; use `fill_policy.temporal` to make timer fill timing explicit.
 *   **Insufficient history windows**: Newly listed or recently resumed symbols may fail window requirements; check `len(closes)` and skip invalid samples.
 *   **Position convergence lag**: Multi-asset sell-then-buy cycles can leave partial allocations in one event; use target-position APIs and converge again on next cycle.
 
@@ -343,12 +343,13 @@ In AKQuant, order status transitions are as follows:
     self.cancel_all_orders()    # Cancel all open orders
     ```
 
-### 5.3 Execution Modes
+### 5.3 Execution Policy (Three-Axis)
 
-Set via `engine.set_execution_mode(mode)` (or pass `execution_mode` parameter in `run_backtest`):
+Set via `engine.set_fill_policy(price_basis, bar_offset, temporal)`:
 
-*   **NextOpen (Default)**: Signals are matched at the Open of the *next* Bar. This is a more rigorous backtesting method, aligning with live trading logic (place order after today's close, match at tomorrow's open).
-*   **CurrentClose**: Signals are matched immediately at the Close of the *current* Bar. Suitable for special strategies using closing prices for settlement, or scenarios where next-day data is unavailable.
+*   `price_basis`: `open | close | ohlc4 | hl2`
+*   `bar_offset`: `0 | 1`
+*   `temporal`: `same_cycle | next_event` (timer order timing)
 
 ### 5.4 Event Callbacks {: #callbacks }
 

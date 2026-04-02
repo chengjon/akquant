@@ -1,6 +1,6 @@
 # AKQuant 设计与开发指南
 
-本文档详细介绍了 `AKQuant` 的内部设计原理、核心组件架构以及扩展开发指南。旨在帮助开发者深入理解项目结构，以便进行二次开发和功能扩展。
+本文档详细介绍了 `AKQuant` 的内部设计原理、核心组件架构以及扩展开发指南。旨在帮助开发者深入理解项目结构，以便进行二次开发和功能扩展。本文属于 internal 文档，面向实现细节，不作为公开 API 命名规范来源。
 
 ## 1. 项目概览
 
@@ -50,7 +50,7 @@ akquant/
 │       ├── instrument.rs   # 标的物信息 (Instrument)
 │       ├── market_data.rs  # 市场数据 (Bar, Tick)
 │       ├── timer.rs        # 定时器事件
-│       └── types.rs        # 基础枚举 (Side, Type, ExecutionMode)
+│       └── types.rs        # 基础枚举 (Side, Type, PriceBasis/TemporalPolicy)
 ├── python/
 │   └── akquant/            # Python 包源码 (用户接口)
 │       ├── __init__.py     # 导出公共 API
@@ -85,10 +85,10 @@ akquant/
 为了保证跨语言交互的性能与类型安全，核心数据结构均在 Rust 中定义并导出。
 
 *   **`types.rs`**:
-    *   `ExecutionMode`:
-        *   `CurrentClose`: 当前 Bar 收盘价成交 (Cheat-on-Close)。
-        *   `NextOpen`: 次日开盘价成交 (更真实)。
-        *   `NextAverage`: 次日均价成交 (TWAP/VWAP 模拟)。
+    *   `ExecutionPolicyCore`:
+        *   `price_basis`: `open` / `close` / `ohlc4` / `hl2`。
+        *   `bar_offset`: `0` / `1`。
+        *   `temporal`: `same_cycle` / `next_event`。
     *   `OrderSide`: `Buy` / `Sell`。
     *   `OrderType`: `Market` (市价), `Limit` (限价), `StopMarket` (止损市价), `StopLimit` (止损限价)。
     *   `TimeInForce`: `Day` (当日有效), `GTC` (撤前有效), `IOC`/`FOK`。
@@ -152,7 +152,7 @@ AKQuant 在数据处理阶段集成了高级的市场特性支持：
     *   **滑点模型 (`slippage.rs`)**: 支持 `FixedSlippage` (固定金额) 和 `PercentSlippage` (百分比)。
 *   **撮合机制 (`matcher.rs`)**:
     *   **限价单 (Limit)**: 买入需 `Low <= Price`，卖出需 `High >= Price`。
-    *   **市价单 (Market)**: 根据 `ExecutionMode` 决定按 `Close` 或 `Open` 成交。
+    *   **市价单 (Market)**: 根据三轴 `fill_policy` 决定成交价格与时序。
     *   **触发机制**: 支持 `trigger_price` (止损/止盈单)。
 
 ### 2.3 市场规则层 (`src/market/`)
@@ -238,13 +238,12 @@ AKQuant 在数据处理阶段集成了高级的市场特性支持：
 
 ## 3. 关键工作流详解
 
-### 3.1 回测主循环与执行模式
+### 3.1 回测主循环与三轴执行语义
 
-`Engine::run` 的流程依赖 `ExecutionMode`：
+`Engine::run` 的流程依赖三轴执行语义：
 
-*   **NextOpen**: 推荐模式。Bar Close 生成信号 -> Next Bar Open 成交。
-*   **CurrentClose**: 简化模式。Bar Close 生成信号 -> Current Bar Close 成交 (Cheat-on-Close)。
-*   **NextAverage**: Bar Close 生成信号 -> Next Bar VWAP/Average 成交。
+*   `price_basis + bar_offset`: 决定使用当前/下一根 Bar 的 `open/close/ohlc4/hl2` 价格基准。
+*   `temporal`: 控制 timer 订单在当前周期或下一事件撮合。
 
 ### 3.2 订单全生命周期
 

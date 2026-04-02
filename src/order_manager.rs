@@ -181,6 +181,11 @@ impl OrderManager {
                 trigger_price: Some(stop_trigger_price),
                 trail_offset: None,
                 trail_reference_price: None,
+                fill_policy_override: filled_order.fill_policy_override,
+                slippage_type_override: filled_order.slippage_type_override.clone(),
+                slippage_value_override: filled_order.slippage_value_override,
+                commission_type_override: filled_order.commission_type_override.clone(),
+                commission_value_override: filled_order.commission_value_override,
                 graph_id: Some(graph_id.clone()),
                 parent_order_id: Some(filled_order.id.clone()),
                 order_role: OrderRole::StopLoss,
@@ -208,6 +213,11 @@ impl OrderManager {
                 trigger_price: None,
                 trail_offset: None,
                 trail_reference_price: None,
+                fill_policy_override: filled_order.fill_policy_override,
+                slippage_type_override: filled_order.slippage_type_override.clone(),
+                slippage_value_override: filled_order.slippage_value_override,
+                commission_type_override: filled_order.commission_type_override.clone(),
+                commission_value_override: filled_order.commission_value_override,
                 graph_id: Some(graph_id.clone()),
                 parent_order_id: Some(filled_order.id.clone()),
                 order_role: OrderRole::TakeProfit,
@@ -319,12 +329,39 @@ impl OrderManager {
             // 2. Calculate Final Commission
             let instr_opt = instruments.get(&trade.symbol);
             if let Some(instr) = instr_opt {
-                trade.commission = market_model.calculate_commission(
-                    instr,
-                    trade.side,
-                    trade.price,
-                    trade.quantity,
-                );
+                let order_override = self
+                    .active_orders
+                    .iter()
+                    .find(|o| o.id == trade.order_id)
+                    .and_then(|order| {
+                        Some((
+                            order.commission_type_override.as_ref()?.trim().to_ascii_lowercase(),
+                            order.commission_value_override?,
+                        ))
+                    });
+                if let Some((override_type, override_value)) = order_override {
+                    trade.commission = match override_type.as_str() {
+                        "fixed" => override_value,
+                        "percent" => {
+                            let turnover =
+                                trade.price * trade.quantity * instr.multiplier();
+                            turnover * override_value
+                        }
+                        _ => market_model.calculate_commission(
+                            instr,
+                            trade.side,
+                            trade.price,
+                            trade.quantity,
+                        ),
+                    };
+                } else {
+                    trade.commission = market_model.calculate_commission(
+                        instr,
+                        trade.side,
+                        trade.price,
+                        trade.quantity,
+                    );
+                }
             }
 
             // 3. Update Portfolio
@@ -435,30 +472,12 @@ mod tests {
     use rust_decimal_macros::dec;
 
     fn make_order(id: &str, status: OrderStatus) -> Order {
-        Order {
-            id: id.to_string(),
-            symbol: "TEST".to_string(),
-            side: OrderSide::Buy,
-            order_type: OrderType::Limit,
-            quantity: dec!(10),
-            price: Some(dec!(100)),
-            time_in_force: TimeInForce::Day,
-            trigger_price: None,
-            trail_offset: None,
-            trail_reference_price: None,
-            graph_id: None,
-            parent_order_id: None,
-            order_role: OrderRole::Standalone,
-            status,
-            filled_quantity: Decimal::ZERO,
-            average_filled_price: None,
-            created_at: 0,
-            updated_at: 0,
-            commission: Decimal::ZERO,
-            tag: String::new(),
-            reject_reason: String::new(),
-            owner_strategy_id: None,
-        }
+        let mut order = Order::test_new(id, "TEST", OrderSide::Buy, OrderType::Limit, dec!(10));
+        order.price = Some(dec!(100));
+        order.time_in_force = TimeInForce::Day;
+        order.order_role = OrderRole::Standalone;
+        order.status = status;
+        order
     }
 
     #[test]
