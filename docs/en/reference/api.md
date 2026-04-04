@@ -288,9 +288,7 @@ result = aq.run_backtest(
 *   Legacy execution policy compatibility gate has been removed.
 *   Legacy execution parameters and `legacy_execution_policy_compat` are no longer accepted.
 *   Use `fill_policy` for all public execution configuration.
-*   Cutover playbook: [Execution Policy Cutover Checklist](../advanced/execution_policy_cutover.md).
 *   Since Phase 5, runtime rollback flags are removed; use release-level rollback when needed.
-*   Phase-4 observation window and go/no-go gates are documented in [Unified Stream Core Checklist](../advanced/stream_observability.md).
 
 **Phase-5 Migration FAQ:**
 

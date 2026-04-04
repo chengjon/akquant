@@ -172,4 +172,3 @@ run_backtest(strategy=MyStrategy, data=df, symbols="600000")
 ## 策略实战入口
 
 *   横截面策略实战清单：[横截面策略实战清单](guide/cross_section_checklist.md)
-*   能力补强路线图：[能力补强路线图（按收益排序）](advanced/capability_boost_plan.md)

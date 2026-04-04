@@ -295,7 +295,6 @@
 
 ## 相关资料
 
-- [能力补强路线图](../advanced/capability_boost_plan.md)
 - [指标组合实战手册](./talib_indicator_playbook.md)
 - [按策略场景选指标速查表（四象限）](./indicator_scenario_quickref.md)
 - [第 16 章：AKQuant 指标全景与工程化使用](../textbook/16_rust_indicators.md)

@@ -262,10 +262,8 @@ result = aq.run_backtest(
 *   legacy 执行语义兼容开关已移除。
 *   legacy 执行参数与 `legacy_execution_policy_compat` 不再接受。
 *   公开执行配置全量统一使用 `fill_policy`。
-*   切换执行清单：见[执行语义切换清单](../advanced/execution_policy_cutover.md)。
 *   在 PyCharm 中若未开启终端仿真，原生进度条可能不可见；可开启 `Emulate terminal in output console` 或改用 `on_event` 的 `progress` 事件输出文本进度。
 *   阶段 5 后不再提供运行时参数级回滚开关；如需回滚请使用版本级回滚策略。
-*   阶段 4 观察窗口与推进门槛请参考：[流式统一内核观察清单](../advanced/stream_observability.md)。
 
 **阶段 5 迁移 FAQ:**
 
