@@ -83,6 +83,5 @@ if not (macd[-1] == macd[-1] and signal[-1] == signal[-1]):
 4. 用固定样本建立最小回归测试。
 
 相关文档：
-- [能力补强路线图](../advanced/capability_boost_plan.md)
 - [第 5 章：策略开发实战](../textbook/05_strategy.md)
 - [可运行示例：45_talib_indicator_playbook_demo.py](https://github.com/akfamily/akquant/blob/main/examples/45_talib_indicator_playbook_demo.py)

@@ -63,6 +63,17 @@ class ExpressionParser:
         def _get_category(func_name: str) -> str:
             return OP_CATEGORY.get(func_name, "EL")
 
+        def _subtree_contains_category(node: ast.AST, category: str) -> bool:
+            """Return whether a subtree contains the target operator category."""
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Call):
+                    continue
+                if not isinstance(child.func, ast.Name):
+                    continue
+                if _get_category(child.func.id) == category:
+                    return True
+            return False
+
         # We need a custom transformer that populates 'steps'
         class PlanTransformer(ast.NodeTransformer):
             def visit_Call(self, node: ast.Call) -> ast.AST:
@@ -79,38 +90,24 @@ class ExpressionParser:
                 # Check arguments for mismatch
                 new_args: List[ast.expr] = []
                 for arg in node.args:
-                    # Only check calls (expressions)
-                    if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name):
-                        arg_cat = _get_category(arg.func.id)
+                    conflict = False
+                    if cat == "CS":
+                        conflict = _subtree_contains_category(arg, "TS")
+                    elif cat == "TS":
+                        conflict = _subtree_contains_category(arg, "CS")
 
-                        # Detect conflict: CS(TS) or TS(CS)
-                        conflict = False
-                        if cat == "CS" and arg_cat == "TS":
-                            conflict = True
-                        elif cat == "TS" and arg_cat == "CS":
-                            conflict = True
+                    if conflict:
+                        try:
+                            arg_str = ast.unparse(arg)
+                        except AttributeError:
+                            raise RuntimeError("Python 3.9+ required for ast.unparse")
 
-                        if conflict:
-                            # Extract argument to a step
-                            # Use ast.unparse (Python 3.9+)
-                            try:
-                                arg_str = ast.unparse(arg)
-                            except AttributeError:
-                                raise RuntimeError(
-                                    "Python 3.9+ required for ast.unparse"
-                                )
-
-                            step_var = f"_auto_var_{counter}"
-                            counter += 1
-                            steps.append((step_var, arg_str))
-
-                            # Replace arg with Name(id=step_var)
-                            # Use ast.Name for replacement
-                            new_args.append(ast.Name(id=step_var, ctx=ast.Load()))
-                        else:
-                            new_args.append(arg)
+                        step_var = f"_auto_var_{counter}"
+                        counter += 1
+                        steps.append((step_var, arg_str))
+                        new_args.append(ast.Name(id=step_var, ctx=ast.Load()))
                     else:
-                        new_args.append(arg)  # type: ignore
+                        new_args.append(arg)
 
                 node.args = new_args  # type: ignore
                 return node

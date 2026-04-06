@@ -4,7 +4,6 @@ import akquant as aq
 import akshare as ak
 import pandas as pd
 from akquant import Bar, Strategy
-from akquant.config import BacktestConfig, RiskConfig, StrategyConfig
 
 df_1 = ak.stock_zh_a_daily(
     symbol="sh600000", start_date="20000101", end_date="20261231"
@@ -82,13 +81,6 @@ class MyStrategy(Strategy):
                 self.close_position()
 
 
-# 配置风险参数：safety_margin
-risk_config = RiskConfig(safety_margin=0.0001)
-strategy_config = StrategyConfig(risk=risk_config)
-backtest_config = BacktestConfig(
-    strategy_config=strategy_config,
-)
-
 events: list[aq.BacktestStreamEvent] = []
 
 result = aq.run_backtest(
@@ -100,8 +92,6 @@ result = aq.run_backtest(
     transfer_fee_rate=0.0,
     min_commission=5.0,
     lot_size=1,
-    fill_policy={"price_basis": "ohlc4", "temporal": "same_cycle"},
-    config=backtest_config,
     start_time="20250101",
     end_time="20250105",
     symbols=["600000", "600004", "600006"],

@@ -10,4 +10,4 @@ This chapter is currently maintained in Chinese first.
 - Practice links:
   - Primary example: [examples/textbook/ch04_comparison.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch04_comparison.py)
   - Extended example: [examples/25_streaming_backtest_demo.py](https://github.com/akfamily/akquant/blob/main/examples/25_streaming_backtest_demo.py)
-  - Guide: [Stream Observability Guide](../advanced/stream_observability.md)
+  - Guide: [Data Guide](../guide/data.md)

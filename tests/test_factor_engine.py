@@ -142,6 +142,35 @@ class TestFactorEngineNewOps(unittest.TestCase):
         # Last is 5. Rank 2.5. (2.5-1)/2 = 0.75
         self.assertAlmostEqual(res_c[3], 0.75)
 
+    def test_rank_over_binary_expression_with_ts_operand(self) -> None:
+        """Test Rank on binary expressions containing time-series operators."""
+        df = pl.DataFrame(
+            {
+                "date": [
+                    "2023-01-01",
+                    "2023-01-01",
+                    "2023-01-02",
+                    "2023-01-02",
+                    "2023-01-03",
+                    "2023-01-03",
+                ],
+                "symbol": ["A", "B", "A", "B", "A", "B"],
+                "high": [10.0, 20.0, 11.0, 20.0, 15.0, 20.0],
+                "close": [9.0, 19.0, 10.0, 20.0, 11.0, 21.0],
+            }
+        )
+
+        result = self.engine.run_on_data(df, "Rank(High-Ts_Mean(Close,2))")
+        result = result.sort(["date", "symbol"])
+
+        values = result["factor_value"].to_list()
+        self.assertIsNone(values[0])
+        self.assertIsNone(values[1])
+        self.assertAlmostEqual(values[2], 1.0)
+        self.assertAlmostEqual(values[3], 0.5)
+        self.assertAlmostEqual(values[4], 1.0)
+        self.assertAlmostEqual(values[5], 0.5)
+
     def test_robustness_renaming(self) -> None:
         """Test robustness of date column renaming."""
         # Clear existing catalog to avoid schema mismatch

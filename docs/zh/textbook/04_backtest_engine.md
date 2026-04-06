@@ -6,7 +6,7 @@
 
 - 主示例：[examples/textbook/ch04_comparison.py](https://github.com/akfamily/akquant/blob/main/examples/textbook/ch04_comparison.py)
 - 进阶示例：[examples/25_streaming_backtest_demo.py](https://github.com/akfamily/akquant/blob/main/examples/25_streaming_backtest_demo.py)
-- 对应指南：[可观测性指南](../advanced/stream_observability.md)
+- 对应指南：[数据指南](../guide/data.md)
 
 ## 快速运行与验收
 

@@ -233,4 +233,3 @@ For more examples, please refer to the `examples/` directory.
 ## Strategy Playbook Entry
 
 *   Cross-section strategy checklist: [Cross-Section Strategy Playbook Checklist](guide/cross_section_checklist.md)
-*   Capability roadmap: [Capability Boost Plan](advanced/capability_boost_plan.md)
