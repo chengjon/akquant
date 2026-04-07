@@ -260,6 +260,7 @@ def _submit_buy_side(
     if ref_price is None:
         ref_price = strategy._last_prices.get(symbol, 0.0)
 
+    allow_quantity_auto_resize = quantity is None
     if quantity is None:
         quantity = strategy.sizer.get_size(
             ref_price, strategy.ctx.cash, strategy.ctx, symbol
@@ -289,7 +290,13 @@ def _submit_buy_side(
             return cast(
                 str,
                 strategy.ctx.buy(
-                    symbol, quantity, price, time_in_force, trigger_price, tag or ""
+                    symbol,
+                    quantity,
+                    price,
+                    time_in_force,
+                    trigger_price,
+                    tag or "",
+                    allow_quantity_auto_resize=allow_quantity_auto_resize,
                 ),
             )
         return cast(
@@ -311,6 +318,7 @@ def _submit_buy_side(
                 fill_slippage_value,
                 fill_commission_type,
                 fill_commission_value,
+                allow_quantity_auto_resize,
             ),
         )
     return ""
@@ -1019,6 +1027,26 @@ def order_target_weights(
 
     sell_legs = [item for item in planned if item[2] < 0]
     buy_legs = [item for item in planned if item[2] >= 0]
+    effective_fill_policy = _resolve_effective_order_fill_policy(
+        strategy,
+        cast(Optional[OrderFillPolicy], kwargs.get("fill_policy")),
+    )
+    if effective_fill_policy is None:
+        stored_fill_policy = cast(
+            Optional[OrderFillPolicy], getattr(strategy, "_default_fill_policy", None)
+        )
+        if stored_fill_policy is not None:
+            effective_fill_policy = dict(stored_fill_policy)
+    fill_price_basis, fill_bar_offset, fill_temporal = _normalize_order_fill_policy(
+        effective_fill_policy
+    )
+    defer_buy_legs = (
+        sell_legs
+        and buy_legs
+        and fill_price_basis == "close"
+        and fill_bar_offset == 0
+        and fill_temporal == "same_cycle"
+    )
 
     for symbol, target_value, _ in sorted(sell_legs, key=lambda item: item[2]):
         leg_price = price_map.get(symbol) if price_map else None
@@ -1028,6 +1056,14 @@ def order_target_weights(
         buy_legs, key=lambda item: item[2], reverse=True
     ):
         leg_price = price_map.get(symbol) if price_map else None
+        if defer_buy_legs:
+            deferred_orders = cast(
+                list[tuple[str, float, Optional[float], dict[str, Any]]],
+                getattr(strategy, "_deferred_target_value_orders", []),
+            )
+            deferred_orders.append((symbol, target_value, leg_price, dict(kwargs)))
+            setattr(strategy, "_deferred_target_value_orders", deferred_orders)
+            continue
         order_target_value(strategy, target_value, symbol, leg_price, **kwargs)
 
 

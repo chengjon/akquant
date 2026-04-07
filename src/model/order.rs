@@ -124,6 +124,8 @@ pub struct Order {
     #[pyo3(get)]
     #[serde(default)]
     pub owner_strategy_id: Option<String>,
+    #[serde(default)]
+    pub allow_quantity_auto_resize: bool,
 }
 
 #[gen_stub_pymethods]
@@ -215,6 +217,7 @@ impl Order {
             tag: tag.unwrap_or_default(),
             reject_reason: String::new(),
             owner_strategy_id,
+            allow_quantity_auto_resize: false,
         })
     }
 
@@ -380,6 +383,7 @@ impl Order {
             tag: String::new(),
             reject_reason: String::new(),
             owner_strategy_id: None,
+            allow_quantity_auto_resize: false,
         }
     }
 }

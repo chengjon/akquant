@@ -192,7 +192,9 @@ impl RiskManager {
             let err_msg = err.to_string();
             // Check for insufficient cash/margin to attempt auto-reduction
             // This logic was moved from OrderManager
-            if (err_msg.contains("Insufficient cash") || err_msg.contains("Insufficient margin"))
+            if order.allow_quantity_auto_resize
+                && (err_msg.contains("Insufficient cash")
+                    || err_msg.contains("Insufficient margin"))
                 && order.side == crate::model::OrderSide::Buy
                 && let Some(instr) = ctx.instruments.get(&order.symbol)
             {

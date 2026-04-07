@@ -198,6 +198,7 @@ impl OrderManager {
                 tag: plan.stop_tag.clone(),
                 reject_reason: String::new(),
                 owner_strategy_id: filled_order.owner_strategy_id.clone(),
+                allow_quantity_auto_resize: false,
             });
         }
 
@@ -230,6 +231,7 @@ impl OrderManager {
                 tag: plan.take_profit_tag.clone(),
                 reject_reason: String::new(),
                 owner_strategy_id: filled_order.owner_strategy_id.clone(),
+                allow_quantity_auto_resize: false,
             });
         }
 

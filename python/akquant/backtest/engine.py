@@ -2813,6 +2813,13 @@ def run_backtest(
         resolved_policy.bar_offset,
         resolved_policy.temporal,
     )
+    default_fill_policy: FillPolicy = {
+        "price_basis": resolved_policy.price_basis,
+        "bar_offset": resolved_policy.bar_offset,
+        "temporal": resolved_policy.temporal,
+    }
+    for current_strategy in all_strategy_instances:
+        setattr(current_strategy, "_default_fill_policy", dict(default_fill_policy))
     timer_policy = resolved_policy.temporal
     if (
         not (resolved_policy.price_basis == "close" and resolved_policy.bar_offset == 0)

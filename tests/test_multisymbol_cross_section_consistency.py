@@ -206,13 +206,13 @@ class TargetWeightsStrategy(Strategy):
 
         if self.rebalance_count == 0:
             self.order_target_weights(
-                {"AAA": 1.0},
+                {"AAA": 0.9},
                 liquidate_unmentioned=True,
                 rebalance_tolerance=0.0,
             )
         elif self.rebalance_count in (1, 2):
             self.order_target_weights(
-                {"BBB": 1.0},
+                {"BBB": 0.9},
                 liquidate_unmentioned=True,
                 rebalance_tolerance=0.0,
             )
@@ -246,6 +246,55 @@ class TargetWeightsSplitStrategy(Strategy):
             self.rebalanced = True
 
 
+class TargetWeightsSellThenBuyStrategy(Strategy):
+    """Strategy for validating same-cycle sell-then-buy cash release."""
+
+    def __init__(self, symbols: list[str]) -> None:
+        """Initialize staged rotation state."""
+        super().__init__()
+        self.symbols = symbols
+        self.pending: dict[int, set[str]] = defaultdict(set)
+        self.rebalance_count = 0
+
+    def on_bar(self, bar: Bar) -> None:
+        """Rotate from AAA to BBB on the second completed timestamp."""
+        bucket = self.pending[bar.timestamp]
+        bucket.add(bar.symbol)
+        if len(bucket) < len(self.symbols):
+            return
+        self.pending.pop(bar.timestamp, None)
+
+        if self.rebalance_count == 0:
+            self.order_target_weights(
+                {"AAA": 0.9},
+                liquidate_unmentioned=True,
+                rebalance_tolerance=0.0,
+            )
+        elif self.rebalance_count == 1:
+            self.order_target_weights(
+                {"BBB": 0.9},
+                liquidate_unmentioned=True,
+                rebalance_tolerance=0.0,
+            )
+        self.rebalance_count += 1
+
+
+class ExplicitQuantityRejectStrategy(Strategy):
+    """Strategy for validating explicit buy quantity rejects."""
+
+    def __init__(self) -> None:
+        """Initialize single-submit state."""
+        super().__init__()
+        self.submitted = False
+
+    def on_bar(self, bar: Bar) -> None:
+        """Submit one oversized explicit buy order."""
+        if self.submitted:
+            return
+        self.buy(symbol=bar.symbol, quantity=20_000.0)
+        self.submitted = True
+
+
 def test_order_target_weights_rotation_liquidates_unmentioned_symbols() -> None:
     """Target weights should support one-call rotation and clear old holdings."""
     timestamps = [
@@ -253,10 +302,11 @@ def test_order_target_weights_rotation_liquidates_unmentioned_symbols() -> None:
         pd.Timestamp("2023-01-03 10:00:00", tz="Asia/Shanghai"),
         pd.Timestamp("2023-01-04 10:00:00", tz="Asia/Shanghai"),
         pd.Timestamp("2023-01-05 10:00:00", tz="Asia/Shanghai"),
+        pd.Timestamp("2023-01-06 10:00:00", tz="Asia/Shanghai"),
     ]
     data_map = {
-        "AAA": _build_symbol_df("AAA", timestamps, [10.0, 10.0, 10.0, 10.0]),
-        "BBB": _build_symbol_df("BBB", timestamps, [10.0, 10.0, 10.0, 10.0]),
+        "AAA": _build_symbol_df("AAA", timestamps, [10.0, 10.0, 10.0, 10.0, 10.0]),
+        "BBB": _build_symbol_df("BBB", timestamps, [10.0, 10.0, 10.0, 10.0, 10.0]),
     }
 
     result = run_backtest(
@@ -276,6 +326,47 @@ def test_order_target_weights_rotation_liquidates_unmentioned_symbols() -> None:
     final_positions = result.positions.iloc[-1]
     assert float(final_positions.get("AAA", 0.0)) == 0.0
     assert float(final_positions.get("BBB", 0.0)) > 0.0
+
+
+def test_order_target_weights_uses_sell_proceeds_before_same_cycle_buy() -> None:
+    """Rotation should use pending sell proceeds instead of shrinking the buy leg."""
+    timestamps = [
+        pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai"),
+        pd.Timestamp("2023-01-03 10:00:00", tz="Asia/Shanghai"),
+        pd.Timestamp("2023-01-04 10:00:00", tz="Asia/Shanghai"),
+    ]
+    data_map = {
+        "AAA": _build_symbol_df("AAA", timestamps, [10.0, 10.0, 10.0]),
+        "BBB": _build_symbol_df("BBB", timestamps, [10.0, 10.0, 10.0]),
+    }
+
+    result = run_backtest(
+        data=data_map,
+        strategy=TargetWeightsSellThenBuyStrategy,
+        symbols=["AAA", "BBB"],
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        show_progress=False,
+    )
+
+    orders_df = result.orders_df.sort_values("created_at").reset_index(drop=True)
+    assert len(orders_df) == 3
+    assert sorted(orders_df["symbol"].astype(str).tolist()) == ["AAA", "AAA", "BBB"]
+    assert sorted(orders_df["side"].astype(str).tolist()) == ["buy", "buy", "sell"]
+    assert sorted(orders_df["quantity"].astype(float).tolist()) == [
+        9000.0,
+        9000.0,
+        9000.0,
+    ]
+    assert set(orders_df["status"].astype(str).str.lower()) == {"filled"}
+    final_positions = result.positions.iloc[-1]
+    assert float(final_positions.get("AAA", 0.0)) == 0.0
+    assert float(final_positions.get("BBB", 0.0)) == 9000.0
 
 
 def test_order_target_weights_split_allocation_is_close_to_target() -> None:
@@ -310,6 +401,36 @@ def test_order_target_weights_split_allocation_is_close_to_target() -> None:
 
     assert abs(aaa_value / total_value - 0.6) < 0.02
     assert abs(bbb_value / total_value - 0.3) < 0.02
+
+
+def test_explicit_buy_quantity_is_rejected_without_resizing() -> None:
+    """Explicit oversized buy quantity should reject and preserve the requested size."""
+    timestamps = [pd.Timestamp("2023-01-02 10:00:00", tz="Asia/Shanghai")]
+    data_map = {
+        "AAA": _build_symbol_df("AAA", timestamps, [10.0]),
+    }
+
+    result = run_backtest(
+        data=data_map,
+        strategy=ExplicitQuantityRejectStrategy,
+        symbols=["AAA"],
+        initial_cash=100000.0,
+        commission_rate=0.0,
+        stamp_tax_rate=0.0,
+        transfer_fee_rate=0.0,
+        min_commission=0.0,
+        lot_size=1,
+        fill_policy={"price_basis": "close", "temporal": "same_cycle"},
+        show_progress=False,
+    )
+
+    orders_df = result.orders_df
+    assert len(orders_df) == 1
+    row = orders_df.iloc[0]
+    assert str(row["symbol"]) == "AAA"
+    assert float(row["quantity"]) == 20_000.0
+    assert str(row["status"]).lower() == "rejected"
+    assert "insufficient" in str(row["reject_reason"]).lower()
 
 
 def _build_validation_strategy() -> Strategy:

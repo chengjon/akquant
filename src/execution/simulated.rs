@@ -177,17 +177,25 @@ impl ExecutionClient for SimulatedExecutionClient {
         }
 
         // Track available margin for this step (snapshot of portfolio + changes in this loop)
-        let mut current_free_margin = ctx
-            .portfolio
-            .calculate_free_margin(ctx.last_prices, ctx.instruments);
+        let mut projected_portfolio = ctx.portfolio.clone();
+        let mut current_free_margin =
+            projected_portfolio.calculate_free_margin(ctx.last_prices, ctx.instruments);
 
-        // Split borrows
-        let orders = &mut self.orders;
-        let queue = &self.order_queue;
+        let mut queue: Vec<String> = self.order_queue.clone();
+        queue.sort_by_key(|order_id| {
+            self.orders
+                .get(order_id)
+                .map(|order| match order.side {
+                    crate::model::OrderSide::Sell => 0_u8,
+                    crate::model::OrderSide::Buy => 1_u8,
+                })
+                .unwrap_or(2_u8)
+        });
+
         let matchers = &self.matchers;
 
-        for order_id in queue {
-            if let Some(order) = orders.get_mut(order_id) {
+        for order_id in &queue {
+            if let Some(order) = self.orders.get_mut(order_id) {
                 if order.status == OrderStatus::Cancelled
                     || order.status == OrderStatus::Filled
                     || order.status == OrderStatus::Rejected
@@ -214,9 +222,11 @@ impl ExecutionClient for SimulatedExecutionClient {
                         let report_opt = matcher.match_order(order, &match_ctx);
 
                         if let Some(mut report) = report_opt {
-                            // Check for dynamic position sizing (margin check)
-                            if let Event::ExecutionReport(ref mut _r_order, Some(ref mut trade)) =
-                                report
+                            let mut replacement_report: Option<Event> = None;
+                            if let Event::ExecutionReport(
+                                ref mut report_order,
+                                Some(ref mut trade),
+                            ) = report
                                 && trade.side == crate::model::OrderSide::Buy
                             {
                                 // Calculate estimated commission
@@ -243,70 +253,96 @@ impl ExecutionClient for SimulatedExecutionClient {
                                 let total_required = margin_required + commission;
 
                                 if total_required > current_free_margin {
-                                    // Insufficient margin, reduce quantity
-                                    let unit_margin = trade.price * multiplier * margin_ratio;
-                                    let mut max_qty = if unit_margin > Decimal::ZERO {
-                                        if current_free_margin <= Decimal::ZERO {
-                                            Decimal::ZERO
+                                    if report_order.allow_quantity_auto_resize {
+                                        let unit_margin = trade.price * multiplier * margin_ratio;
+                                        let mut max_qty = if unit_margin > Decimal::ZERO {
+                                            if current_free_margin <= Decimal::ZERO {
+                                                Decimal::ZERO
+                                            } else {
+                                                current_free_margin / unit_margin
+                                            }
                                         } else {
-                                            current_free_margin / unit_margin
-                                        }
-                                    } else {
-                                        Decimal::ZERO
-                                    };
+                                            Decimal::ZERO
+                                        };
 
-                                    // Apply safety factor (Default 0.9999 if risk manager not available)
-                                    let safety_margin = 0.0001;
-                                    let safety_factor = Decimal::from_f64(1.0 - safety_margin)
+                                        let safety_margin = 0.0001;
+                                        let safety_factor = Decimal::from_f64(1.0 - safety_margin)
                                             .unwrap_or_else(|| {
                                                 log::warn!("Invalid safety factor calculation, defaulting to 0.9999");
                                                 Decimal::from_f64(0.9999).unwrap_or(Decimal::ZERO)
                                             });
-                                    max_qty *= safety_factor;
+                                        max_qty *= safety_factor;
 
-                                    let lot_size = instrument.lot_size();
-                                    let mut new_qty = max_qty.floor();
-                                    if lot_size > Decimal::ZERO {
-                                        new_qty = new_qty - (new_qty % lot_size);
-                                    }
-
-                                    // Recalculate to ensure it fits
-                                    let new_comm = ctx.market_model.calculate_commission(
-                                        instrument,
-                                        trade.side,
-                                        trade.price,
-                                        new_qty,
-                                    );
-                                    let new_margin =
-                                        trade.price * new_qty * multiplier * margin_ratio;
-
-                                    if new_margin + new_comm > current_free_margin {
-                                        if new_qty >= lot_size {
-                                            new_qty -= lot_size;
-                                        } else {
-                                            new_qty = Decimal::ZERO;
+                                        let lot_size = instrument.lot_size();
+                                        let mut new_qty = max_qty.floor();
+                                        if lot_size > Decimal::ZERO {
+                                            new_qty = new_qty - (new_qty % lot_size);
                                         }
+
+                                        let new_comm = ctx.market_model.calculate_commission(
+                                            instrument,
+                                            trade.side,
+                                            trade.price,
+                                            new_qty,
+                                        );
+                                        let new_margin =
+                                            trade.price * new_qty * multiplier * margin_ratio;
+
+                                        if new_margin + new_comm > current_free_margin {
+                                            if new_qty >= lot_size {
+                                                new_qty -= lot_size;
+                                            } else {
+                                                new_qty = Decimal::ZERO;
+                                            }
+                                        }
+
+                                        trade.quantity = new_qty;
+                                    } else {
+                                        let mut rejected_order = report_order.clone();
+                                        rejected_order.status = crate::model::OrderStatus::Rejected;
+                                        rejected_order.updated_at = ctx.current_time;
+                                        rejected_order.reject_reason = format!(
+                                            "Risk: Insufficient margin at execution. Required: {total_required}, Available: {current_free_margin}"
+                                        );
+                                        replacement_report =
+                                            Some(Event::ExecutionReport(rejected_order, None));
                                     }
-
-                                    // Update trade quantity
-                                    trade.quantity = new_qty;
                                 }
 
-                                // Deduct cost from current_free_margin for next orders in this loop
-                                if trade.quantity > Decimal::ZERO {
-                                    let final_comm = ctx.market_model.calculate_commission(
-                                        instrument,
-                                        trade.side,
-                                        trade.price,
-                                        trade.quantity,
-                                    );
-                                    let final_margin =
-                                        trade.price * trade.quantity * multiplier * margin_ratio;
-                                    current_free_margin -= final_margin + final_comm;
-                                }
                             }
 
-                            // Filter out zero quantity trades
+                            if let Some(new_report) = replacement_report {
+                                report = new_report;
+                            }
+
+                            if let Event::ExecutionReport(_, Some(ref trade)) = report
+                                && trade.quantity > Decimal::ZERO
+                            {
+                                let commission = ctx.market_model.calculate_commission(
+                                    instrument,
+                                    trade.side,
+                                    trade.price,
+                                    trade.quantity,
+                                );
+                                let cost = trade.price * trade.quantity * instrument.multiplier();
+                                projected_portfolio.adjust_cash(-commission);
+                                if trade.side == crate::model::OrderSide::Buy {
+                                    projected_portfolio.adjust_cash(-cost);
+                                    projected_portfolio.adjust_position(
+                                        &trade.symbol,
+                                        trade.quantity,
+                                    );
+                                } else {
+                                    projected_portfolio.adjust_cash(cost);
+                                    projected_portfolio.adjust_position(
+                                        &trade.symbol,
+                                        -trade.quantity,
+                                    );
+                                }
+                                current_free_margin = projected_portfolio
+                                    .calculate_free_margin(ctx.last_prices, ctx.instruments);
+                            }
+
                             let mut keep_report = true;
                             if let Event::ExecutionReport(_, Some(ref trade)) = report
                                 && trade.quantity <= Decimal::ZERO

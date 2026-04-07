@@ -2477,6 +2477,7 @@ class StrategyContext:
         fill_slippage_value: typing.Optional[float] = ...,
         fill_commission_type: typing.Optional[str] = ...,
         fill_commission_value: typing.Optional[float] = ...,
+        allow_quantity_auto_resize: bool = ...,
     ) -> str:
         r"""
         买入下单.

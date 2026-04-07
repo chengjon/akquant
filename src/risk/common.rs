@@ -14,10 +14,6 @@ fn risk_overflow_error(symbol: &str, field: &str) -> AkQuantError {
     ))
 }
 
-fn checked_add_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
-    lhs.checked_add(rhs).unwrap_or(Decimal::MAX)
-}
-
 fn checked_sub_or_zero(lhs: Decimal, rhs: Decimal) -> Decimal {
     lhs.checked_sub(rhs).unwrap_or(Decimal::ZERO)
 }
@@ -183,15 +179,7 @@ impl RiskRule for CashMarginRule {
             let mut prices_for_order = ctx.current_prices.clone();
             prices_for_order.insert(order.symbol.clone(), order_price);
 
-            let required_margin =
-                calc_required_margin_delta(order, ctx, &prices_for_order, ctx.portfolio)?;
-
-            if required_margin.is_zero() {
-                return Ok(());
-            }
-
             let mut projected_portfolio = ctx.portfolio.clone();
-            let mut committed_margin = Decimal::ZERO;
             for o in ctx.active_orders {
                 if o.status != crate::model::OrderStatus::New {
                     continue;
@@ -203,38 +191,41 @@ impl RiskRule for CashMarginRule {
                 } else {
                     continue;
                 };
-                let mut prices_for_active = ctx.current_prices.clone();
-                prices_for_active.insert(o.symbol.clone(), active_price);
-                committed_margin = checked_add_or_cap(
-                    committed_margin,
-                    calc_required_margin_delta(o, ctx, &prices_for_active, &projected_portfolio)?,
-                );
-
-                let positions = std::sync::Arc::make_mut(&mut projected_portfolio.positions);
-                let entry = positions.entry(o.symbol.clone()).or_insert(Decimal::ZERO);
-                match o.side {
-                    OrderSide::Buy => *entry += o.quantity,
-                    OrderSide::Sell => *entry -= o.quantity,
+                if let Some(instr) = ctx.instruments.get(&o.symbol) {
+                    let cost = active_price * o.quantity * instr.multiplier();
+                    match o.side {
+                        OrderSide::Buy => {
+                            projected_portfolio.adjust_cash(-cost);
+                            projected_portfolio.adjust_position(&o.symbol, o.quantity);
+                        }
+                        OrderSide::Sell => {
+                            projected_portfolio.adjust_cash(cost);
+                            projected_portfolio.adjust_position(&o.symbol, -o.quantity);
+                        }
+                    }
                 }
             }
 
-            let free_margin = ctx
-                .portfolio
-                .calculate_free_margin(ctx.current_prices, ctx.instruments);
+            let required_margin =
+                calc_required_margin_delta(order, ctx, &prices_for_order, &projected_portfolio)?;
+
+            if required_margin.is_zero() {
+                return Ok(());
+            }
+
+            let free_margin =
+                projected_portfolio.calculate_free_margin(ctx.current_prices, ctx.instruments);
             let safety_margin = ctx.config.safety_margin;
             let safety_factor = Decimal::from_f64(1.0 - safety_margin)
                 .unwrap_or(Decimal::from_f64(0.9999).unwrap());
-            let available_margin = checked_sub_or_zero(
-                free_margin
-                    .checked_mul(safety_factor)
-                    .unwrap_or(Decimal::ZERO),
-                committed_margin,
-            )
-            .max(Decimal::ZERO);
+            let available_margin = free_margin
+                .checked_mul(safety_factor)
+                .unwrap_or(Decimal::ZERO)
+                .max(Decimal::ZERO);
 
             if required_margin > available_margin {
                 return Err(AkQuantError::OrderError(format!(
-                    "Risk: Insufficient margin. Required: {required_margin}, Available: {available_margin} (Free: {free_margin}, Committed: {committed_margin}, Safety: {safety_margin})",
+                    "Risk: Insufficient margin. Required: {required_margin}, Available: {available_margin} (Free: {free_margin}, Safety: {safety_margin})",
                 )));
             }
         }
