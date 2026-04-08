@@ -588,6 +588,7 @@ impl StrategyContext {
             owner_strategy_id: self.strategy_id.clone(),
             allow_quantity_auto_resize,
         };
+        self.orders.push(order.clone());
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(Event::OrderRequest(order));
         } else if let Ok(mut orders) = self.orders_arc.write() {
@@ -695,6 +696,7 @@ impl StrategyContext {
             owner_strategy_id: self.strategy_id.clone(),
             allow_quantity_auto_resize: false,
         };
+        self.orders.push(order.clone());
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(Event::OrderRequest(order));
         } else if let Ok(mut orders) = self.orders_arc.write() {

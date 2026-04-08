@@ -29,6 +29,7 @@ def _flush_deferred_target_value_orders(strategy: Any, event_symbol: str) -> Non
         else:
             remaining_orders.append((symbol, target_value, price, kwargs))
     setattr(strategy, "_deferred_target_value_orders", remaining_orders)
+    strategy._check_order_events()
 
 
 def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:

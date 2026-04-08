@@ -255,6 +255,8 @@ class TargetWeightsSellThenBuyStrategy(Strategy):
         self.symbols = symbols
         self.pending: dict[int, set[str]] = defaultdict(set)
         self.rebalance_count = 0
+        self.order_event_ids: list[str] = []
+        self.trade_order_ids: list[str] = []
 
     def on_bar(self, bar: Bar) -> None:
         """Rotate from AAA to BBB on the second completed timestamp."""
@@ -277,6 +279,14 @@ class TargetWeightsSellThenBuyStrategy(Strategy):
                 rebalance_tolerance=0.0,
             )
         self.rebalance_count += 1
+
+    def on_order(self, order: Any) -> None:
+        """Record order ids observed through callbacks."""
+        self.order_event_ids.append(str(order.id))
+
+    def on_trade(self, trade: Any) -> None:
+        """Record trade order ids observed through callbacks."""
+        self.trade_order_ids.append(str(trade.order_id))
 
 
 class ExplicitQuantityRejectStrategy(Strategy):
@@ -367,6 +377,9 @@ def test_order_target_weights_uses_sell_proceeds_before_same_cycle_buy() -> None
     final_positions = result.positions.iloc[-1]
     assert float(final_positions.get("AAA", 0.0)) == 0.0
     assert float(final_positions.get("BBB", 0.0)) == 9000.0
+    strategy = result.strategy
+    assert strategy is not None
+    assert set(strategy.trade_order_ids).issubset(set(strategy.order_event_ids))
 
 
 def test_order_target_weights_split_allocation_is_close_to_target() -> None:
