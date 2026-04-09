@@ -13,7 +13,13 @@ from .strategy_framework_hooks import (
     mark_portfolio_dirty,
     register_boundary_timers,
 )
-from .strategy_ml import consume_training_trigger, should_trigger_training
+from .strategy_ml import (
+    activate_pending_model,
+    begin_training_cycle,
+    consume_training_trigger,
+    finalize_training_cycle,
+    should_trigger_training,
+)
 from .strategy_scheduler import flush_pending_schedules
 
 
@@ -80,12 +86,17 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
     if strategy._bar_count < strategy.warmup_period:
         return
 
+    activate_pending_model(strategy)
     should_train = should_trigger_training(strategy)
 
     call_user_callback(strategy, "on_bar", bar, payload=bar)
     if should_train:
         consume_training_trigger(strategy)
-        call_user_callback(strategy, "on_train_signal", strategy, payload=strategy)
+        training_cycle = begin_training_cycle(strategy)
+        try:
+            call_user_callback(strategy, "on_train_signal", strategy, payload=strategy)
+        finally:
+            finalize_training_cycle(strategy, training_cycle)
     analyzer_manager = getattr(strategy, "_analyzer_manager", None)
     if analyzer_manager is not None:
         try:

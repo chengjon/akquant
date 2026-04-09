@@ -46,6 +46,17 @@ AKQuant 内置了一个高性能的机器学习训练框架，专为量化交易
 *   **隔离**: 在 Walk-forward 训练时，Pipeline 只会在当前的训练窗口数据上调用 `fit`（计算均值/方差），然后应用到验证集上。
 *   **一致性**: 在推理阶段，Pipeline 会自动应用训练好的统计量，无需用户手动维护。
 
+### 6. 当前兼容模式下的模型生命周期
+
+当前版本的 Walk-forward 采用“兼容式生命周期管理”：
+
+*   **训练窗口**: 在当前 bar 完成后，框架使用最近 `train_window` 根数据训练一个新模型副本。
+*   **延迟生效**: 新模型不会在当前 bar 立即参与预测，而是从下一根 bar 开始生效。
+*   **生效区间**: `test_window` 用于定义该模型计划覆盖的样本外区间。
+*   **滚动更新**: `rolling_step` 决定下一次重训触发点；若设置为 `0`，框架会回退使用 `test_window`。
+*   **显式状态**: 在 `on_bar` 中建议通过 `self.is_model_ready()` 和 `self.current_validation_window()` 判断模型是否已可用于推理，并读取当前窗口元数据。
+*   **模型克隆**: 框架会调用 `QuantModel.clone()` 为每个训练窗口创建待训练模型副本；如果自定义模型不适合 `deepcopy`，请重写该方法。
+
 ---
 
 ## 完整可运行示例
@@ -83,6 +94,7 @@ class WalkForwardStrategy(Strategy):
         self.model.set_validation(
             method='walk_forward',
             train_window=50,   # 使用过去 50 个 bar 训练
+            test_window=20,    # 每个模型默认覆盖 20 个样本外 bar
             rolling_step=10,   # 每 10 个 bar 重训一次
             frequency='1m',    # 数据频率
             incremental=False, # 是否增量训练 (Sklearn 支持 partial_fit)
@@ -92,6 +104,8 @@ class WalkForwardStrategy(Strategy):
         # 确保历史数据长度足够 (训练窗口 + 特征计算所需窗口)
         # 也可以使用 self.warmup_period = 60
         self.set_history_depth(60)
+        self._last_logged_window_index = 0
+        self._last_logged_pending_activation = 0
 
     def prepare_features(self, df: pd.DataFrame, mode: str = "training") -> Tuple[Any, Any]:
         """
@@ -131,6 +145,26 @@ class WalkForwardStrategy(Strategy):
 
     def on_bar(self, bar):
         # 3. 实时预测与交易
+        validation_window = self.current_validation_window()
+        if validation_window is None:
+            return
+
+        pending_activation = validation_window["pending_activation_bar"]
+        if (
+            not self.is_model_ready()
+            and pending_activation is not None
+            and pending_activation != self._last_logged_pending_activation
+        ):
+            print(
+                f"Bar {bar.timestamp}: "
+                f"Pending Window={validation_window['pending_window_index']} "
+                f"Activation Bar={pending_activation}"
+            )
+            self._last_logged_pending_activation = int(pending_activation)
+            return
+
+        if not self.is_model_ready():
+            return
 
         # 获取最近的数据进行特征提取
         # 注意：需要足够的历史长度来计算特征 (例如 pct_change(2) 需要至少3根bar)
@@ -148,9 +182,25 @@ class WalkForwardStrategy(Strategy):
             # 获取预测信号 (概率)
             # SklearnAdapter 对于二分类返回 Class 1 的概率
             signal = self.model.predict(X_curr)[0]
+            window_index = int(validation_window["window_index"])
+            active_start_bar = validation_window["active_start_bar"]
+            active_end_bar = validation_window["active_end_bar"]
+
+            if window_index != self._last_logged_window_index:
+                print(
+                    f"Bar {bar.timestamp}: "
+                    f"Activated Window={window_index} "
+                    f"ActiveRange=[{active_start_bar}, {active_end_bar}]"
+                )
+                self._last_logged_window_index = window_index
 
             # 打印信号方便观察
-            # print(f"Time: {bar.timestamp}, Signal: {signal:.4f}")
+            print(
+                f"Bar {bar.timestamp}: "
+                f"Window={window_index} "
+                f"ActiveRange=[{active_start_bar}, {active_end_bar}] "
+                f"Signal={signal:.4f}"
+            )
 
             # 结合风控规则下单
             # 使用 self.get_position(symbol) 获取持仓
@@ -162,7 +212,7 @@ class WalkForwardStrategy(Strategy):
                 self.sell(bar.symbol, pos)
 
         except Exception:
-            # 模型可能尚未初始化或训练失败
+            # 示例中仍然保留保护，避免推理异常中断回测
             pass
 
 if __name__ == "__main__":
@@ -306,11 +356,23 @@ def set_validation(
 
 *   `method`: 目前仅支持 `'walk_forward'`。
 *   `train_window`: 训练窗口长度。支持 `'1y'` (1年), `'6m'` (6个月), `'50d'` (50天) 或整数 (Bar数量)。
-*   `test_window`: 测试窗口长度 (在当前滚动训练模式下未严格使用，主要用于评估配置)。
-*   `rolling_step`: 滚动步长，即每隔多久重训一次模型。
+*   `test_window`: 模型计划生效的样本外窗口长度。在兼容模式下，新模型会从下一根 bar 开始生效，并默认覆盖该窗口长度。
+*   `rolling_step`: 滚动步长，即每隔多久重训一次模型。若为 `0`，框架会回退使用 `test_window`。
 *   `frequency`: 数据的频率，用于将时间字符串正确转换为 Bar 数量 (例如 '1d' 下 1y=252 bars)。
-*   `incremental`: 是否使用增量学习（在上次训练的基础上继续训练）还是从头重训。默认为 `False`。
+*   `incremental`: 是否使用增量学习（在上次活动模型基础上继续训练）还是从头重训。默认为 `False`。
 *   `verbose`: 是否打印训练日志，默认为 `False`。
+
+### `model.clone`
+
+为新的训练窗口创建模型副本。
+
+```python
+def clone(self) -> QuantModel
+```
+
+*   默认实现使用 `copy.deepcopy`。
+*   如果你的模型包含 GPU 句柄、线程锁、外部连接或不可拷贝状态，建议显式重写该方法。
+*   框架会在当前 bar 训练待生效模型，并在下一根 bar 激活它，因此 `clone()` 是隔离窗口生命周期的重要组成部分。
 
 ### `strategy.prepare_features`
 
@@ -327,3 +389,30 @@ def prepare_features(self, df: pd.DataFrame, mode: str = "training") -> Tuple[An
     *   `mode="training"`: 返回 `(X, y)`。
     *   `mode="inference"`: 返回 `X` (通常是最后一行)。
 *   **注意**: 这是一个纯函数，不应依赖外部状态。
+
+### `strategy.is_model_ready`
+
+判断当前是否已有可用于推理的活动模型。
+
+```python
+def is_model_ready(self) -> bool
+```
+
+*   返回 `True` 表示当前 bar 可以安全调用 `self.model.predict(...)`。
+*   在首个训练窗口完成前，通常会返回 `False`。
+
+### `strategy.current_validation_window`
+
+返回当前 Walk-forward 生命周期状态。
+
+```python
+def current_validation_window(self) -> dict[str, Any] | None
+```
+
+返回值可能包含：
+
+*   `window_index`: 当前活动窗口编号
+*   `active_start_bar` / `active_end_bar`: 当前活动模型的计划生效区间
+*   `pending_activation_bar`: 待生效模型将在第几根 bar 激活
+*   `pending_window_index`: 待生效窗口编号
+*   `next_train_bar`: 下一次计划重训的 bar 编号

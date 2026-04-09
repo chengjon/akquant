@@ -36,6 +36,8 @@ class WalkForwardStrategy(Strategy):
 
         # Ensure we have enough history for features + training
         self.set_history_depth(60)
+        self._last_logged_window_index = 0
+        self._last_logged_pending_activation = 0
 
         print("WalkForwardStrategy initialized")
 
@@ -88,33 +90,29 @@ class WalkForwardStrategy(Strategy):
         if self.model is None:
             return
 
-        # Check if model is trained
-        # A simple heuristic: check if we have passed the first training window
-        if self._bar_count < 50:
+        validation_window = self.current_validation_window()
+        if validation_window is None:
             return
 
-        # 3. Real-time Prediction
-        # Reuse logic: Get recent history -> Extract features
+        pending_activation = validation_window["pending_activation_bar"]
+        if (
+            not self.is_model_ready()
+            and pending_activation is not None
+            and pending_activation != self._last_logged_pending_activation
+        ):
+            pending_window_index = int(validation_window["pending_window_index"])
+            print(
+                f"Bar {bar.timestamp}: "
+                f"Pending Window={pending_window_index} "
+                f"Activation Bar={pending_activation}"
+            )
+            self._last_logged_pending_activation = int(pending_activation)
+            return
+
+        if not self.is_model_ready():
+            return
+
         hist_df = self.get_history_df(5)
-
-        # Manually calculate features for the last bar (or reuse prepare_features if
-        # designed carefully)
-        # Here we do it manually for efficiency/clarity or reuse prepare_features with
-        # a trick
-
-        # Reuse attempt:
-        # prepare_features drops the last row (because of shift(-1)).
-        # This means we can't use it directly to get the *current* feature vector for
-        # *next* prediction?
-        # Wait, to predict t+1, we need features at t.
-        # prepare_features(df) -> X[t], y[t] (where y[t] is return at t+1).
-        # We need X[t].
-        # But prepare_features does X.iloc[:-1]. It drops X[t] because y[t] is
-        # unknown!
-
-        # So we need a separate feature extraction or a mode.
-        # Let's stick to manual extraction for prediction in this demo,
-        # or implement a flexible prepare_features.
 
         current_ret1 = (bar.close - hist_df["close"].iloc[-2]) / hist_df["close"].iloc[
             -2
@@ -127,13 +125,27 @@ class WalkForwardStrategy(Strategy):
         X_curr = X_curr.fillna(0)
 
         try:
-            # Predict
             pred_prob = self.model.predict(X_curr)
             signal = (
                 pred_prob[0] if isinstance(pred_prob, (list, np.ndarray)) else pred_prob
             )
+            window_index = int(validation_window["window_index"])
+            active_start_bar = validation_window["active_start_bar"]
+            active_end_bar = validation_window["active_end_bar"]
+            if window_index != self._last_logged_window_index:
+                print(
+                    f"Bar {bar.timestamp}: "
+                    f"Activated Window={window_index} "
+                    f"ActiveRange=[{active_start_bar}, {active_end_bar}]"
+                )
+                self._last_logged_window_index = window_index
 
-            print(f"Bar {bar.timestamp}: Pred Signal = {signal:.4f}")
+            print(
+                f"Bar {bar.timestamp}: "
+                f"Window={window_index} "
+                f"ActiveRange=[{active_start_bar}, {active_end_bar}] "
+                f"Pred Signal = {signal:.4f}"
+            )
 
             if signal > 0.55:
                 self.buy(bar.symbol, 100)

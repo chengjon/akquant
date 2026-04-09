@@ -147,7 +147,9 @@ Use this template if the user needs to generate a machine learning strategy.
     *   **Configuration**: Call `self.model.set_validation(...)` to configure Walk-Forward Validation. This automatically sets up the rolling window and training triggers.
     *   **Feature Engineering**: Implement `prepare_features(self, df, mode)` method.
     *   **Training**: The framework automatically calls `on_train_signal` -> `prepare_features(mode='training')` -> `model.fit()` based on the validation config.
-    *   **Inference**: In `on_bar`, manually call `prepare_features(mode='inference')` and then `model.predict()`.
+    *   **Inference**: In `on_bar`, first check `self.is_model_ready()` and `self.current_validation_window()`, then call `prepare_features(mode='inference')` and `model.predict()`.
+    *   **Lifecycle**: Training happens on the current bar, but the newly trained model activates on the next bar. `test_window` defines the planned OOS range, and `rolling_step=0` falls back to `test_window`.
+    *   **Clone**: The framework calls `model.clone()` for each training window. Custom models should override it if `deepcopy` is unsafe.
 
 3.  **Data Handling**:
     *   `prepare_features(df, mode)`:
@@ -174,6 +176,7 @@ class MLStrategy(Strategy):
         self.model.set_validation(
             method='walk_forward',
             train_window='200d', # Train on last 200 days data
+            test_window='30d',   # Planned OOS window for the active model
             rolling_step='30d',  # Retrain every 30 days
             frequency='1d',
             verbose=True
@@ -204,6 +207,10 @@ class MLStrategy(Strategy):
 
     def on_bar(self, bar: Bar):
         # 3. Inference (Real-time)
+        window = self.current_validation_window()
+        if window is None or not self.is_model_ready():
+            return
+
         # Ensure enough history for feature calculation
         hist_df = self.get_history_df(30) # Small buffer for features
         if len(hist_df) < 10:
@@ -216,6 +223,9 @@ class MLStrategy(Strategy):
         try:
             pred = self.model.predict(X_curr)[0]
             pos = self.get_position(bar.symbol)
+            active_start = window['active_start_bar']
+            active_end = window['active_end_bar']
+            print(f"Window [{active_start}, {active_end}] | pred={pred}")
 
             if pred == 1 and pos == 0:
                 self.buy(bar.symbol, 1000)

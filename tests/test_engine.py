@@ -4596,6 +4596,8 @@ def test_ml_validation_training_schedule_uses_relative_rolling_step() -> None:
     class RecordingModel(QuantModel):
         """Minimal model stub that records fit calls."""
 
+        fit_sizes: list[int] = []
+
         def __init__(self) -> None:
             """Initialize validation config and fit recorder."""
             super().__init__()
@@ -4605,11 +4607,16 @@ def test_ml_validation_training_schedule_uses_relative_rolling_step() -> None:
                 rolling_step=3,
                 frequency="1m",
             )
-            self.fit_sizes: list[int] = []
+
+        def clone(self) -> "RecordingModel":
+            """Clone the test model while preserving validation config."""
+            cloned = RecordingModel()
+            cloned.validation_config = self.validation_config
+            return cloned
 
         def fit(self, X: Any, y: Any) -> None:
             """Record fit sample size."""
-            self.fit_sizes.append(int(len(X)))
+            RecordingModel.fit_sizes.append(int(len(X)))
 
         def predict(self, X: Any) -> np.ndarray:
             """Return a deterministic empty prediction vector."""
@@ -4629,8 +4636,7 @@ def test_ml_validation_training_schedule_uses_relative_rolling_step() -> None:
         def __init__(self) -> None:
             """Initialize model and training recorder."""
             super().__init__()
-            self.recording_model = RecordingModel()
-            self.model = self.recording_model
+            self.model = RecordingModel()
             self.train_bars: list[int] = []
 
         def prepare_features(
@@ -4662,7 +4668,7 @@ def test_ml_validation_training_schedule_uses_relative_rolling_step() -> None:
     )
 
     assert strategy.train_bars == [5, 8, 11]
-    assert strategy.recording_model.fit_sizes == [5, 5, 5]
+    assert RecordingModel.fit_sizes == [5, 5, 5]
 
 
 def test_ml_validation_uses_test_window_when_rolling_step_is_zero() -> None:
@@ -4671,6 +4677,8 @@ def test_ml_validation_uses_test_window_when_rolling_step_is_zero() -> None:
 
     class RecordingModel(QuantModel):
         """Minimal model stub that records fit calls."""
+
+        fit_sizes: list[int] = []
 
         def __init__(self) -> None:
             """Initialize validation config and fit recorder."""
@@ -4681,11 +4689,16 @@ def test_ml_validation_uses_test_window_when_rolling_step_is_zero() -> None:
                 rolling_step=0,
                 frequency="1m",
             )
-            self.fit_sizes: list[int] = []
+
+        def clone(self) -> "RecordingModel":
+            """Clone the test model while preserving validation config."""
+            cloned = RecordingModel()
+            cloned.validation_config = self.validation_config
+            return cloned
 
         def fit(self, X: Any, y: Any) -> None:
             """Record fit sample size."""
-            self.fit_sizes.append(int(len(X)))
+            RecordingModel.fit_sizes.append(int(len(X)))
 
         def predict(self, X: Any) -> np.ndarray:
             """Return a deterministic empty prediction vector."""
@@ -4705,8 +4718,7 @@ def test_ml_validation_uses_test_window_when_rolling_step_is_zero() -> None:
         def __init__(self) -> None:
             """Initialize model and training recorder."""
             super().__init__()
-            self.recording_model = RecordingModel()
-            self.model = self.recording_model
+            self.model = RecordingModel()
             self.train_bars: list[int] = []
 
         def prepare_features(
@@ -4738,7 +4750,107 @@ def test_ml_validation_uses_test_window_when_rolling_step_is_zero() -> None:
     )
 
     assert strategy.train_bars == [4, 6, 8]
-    assert strategy.recording_model.fit_sizes == [4, 4, 4]
+    assert RecordingModel.fit_sizes == [4, 4, 4]
+
+
+def test_ml_validation_activates_new_model_on_next_bar() -> None:
+    """Newly trained validation models should activate on the next bar."""
+    from akquant.ml.model import QuantModel, ValidationConfig
+
+    class VersionedModel(QuantModel):
+        """Model stub that exposes fitted version ids in predictions."""
+
+        next_version = 1
+
+        def __init__(self, version: int = 0) -> None:
+            """Initialize validation config and current version."""
+            super().__init__()
+            self.validation_config = ValidationConfig(
+                train_window=4,
+                test_window=2,
+                rolling_step=2,
+                frequency="1m",
+            )
+            self.version = version
+
+        def clone(self) -> "VersionedModel":
+            """Clone the model and preserve the current version state."""
+            cloned = VersionedModel(version=self.version)
+            cloned.validation_config = self.validation_config
+            return cloned
+
+        def fit(self, X: Any, y: Any) -> None:
+            """Assign a new model version when a training window completes."""
+            self.version = VersionedModel.next_version
+            VersionedModel.next_version += 1
+
+        def predict(self, X: Any) -> np.ndarray:
+            """Return the current model version as prediction."""
+            return np.full(len(X), self.version, dtype=float)
+
+        def save(self, path: str) -> None:
+            """Satisfy abstract model API for tests."""
+            return
+
+        def load(self, path: str) -> None:
+            """Satisfy abstract model API for tests."""
+            return
+
+    class LifecycleStrategy(akquant.Strategy):
+        """Capture active model versions and window metadata per bar."""
+
+        def __init__(self) -> None:
+            """Initialize model and lifecycle recorder."""
+            super().__init__()
+            self.model = VersionedModel()
+            self.events: list[tuple[int, bool, int | None, int | None, int | None]] = []
+
+        def prepare_features(
+            self, df: pd.DataFrame, mode: str = "training"
+        ) -> tuple[pd.DataFrame, pd.Series]:
+            """Return simple close-only features and aligned labels."""
+            features = pd.DataFrame({"close": df["close"].fillna(0.0)})
+            labels = pd.Series(np.zeros(len(features), dtype=int))
+            return features, labels
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            """Record the visible active model state for the current bar."""
+            window = self.current_validation_window()
+            version: int | None = None
+            if self.is_model_ready() and self.model is not None:
+                prediction = self.model.predict(pd.DataFrame({"close": [bar.close]}))
+                version = int(prediction[0])
+            self.events.append(
+                (
+                    int(self._bar_count),
+                    bool(self.is_model_ready()),
+                    version,
+                    None if window is None else window["active_start_bar"],
+                    None if window is None else window["active_end_bar"],
+                )
+            )
+
+    symbol = "ML_LIFECYCLE"
+    data = _build_benchmark_data(n=8, symbol=symbol)
+    strategy = LifecycleStrategy()
+
+    _ = akquant.run_backtest(
+        data=data,
+        strategy=strategy,
+        symbols=[symbol],
+        show_progress=False,
+    )
+
+    assert strategy.events == [
+        (1, False, None, None, None),
+        (2, False, None, None, None),
+        (3, False, None, None, None),
+        (4, False, None, None, None),
+        (5, True, 1, 5, 6),
+        (6, True, 1, 5, 6),
+        (7, True, 2, 7, 8),
+        (8, True, 2, 7, 8),
+    ]
 
 
 def test_run_backtest_expiry_date_str_is_rejected() -> None:

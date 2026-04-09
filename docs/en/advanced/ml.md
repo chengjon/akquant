@@ -46,6 +46,17 @@ Feature preprocessing (e.g., standardization, normalization) can also introduce 
 *   **Isolation**: During Walk-forward training, Pipeline calls `fit` (calculating mean/variance) only on the current training window data, then applies it to the validation set.
 *   **Consistency**: In the inference phase, Pipeline automatically applies the trained statistics without manual user maintenance.
 
+### 6. Model Lifecycle in the Current Compatibility Mode
+
+The current Walk-forward implementation uses a compatibility-oriented lifecycle:
+
+*   **Training Window**: After the current bar finishes, the framework trains a new model clone on the latest `train_window` bars.
+*   **Delayed Activation**: The newly trained model does not predict on the current bar. It becomes active on the next bar.
+*   **Effective Range**: `test_window` defines the intended out-of-sample range for the active model.
+*   **Rolling Updates**: `rolling_step` controls when the next retraining is triggered. If it is `0`, the framework falls back to `test_window`.
+*   **Explicit State Checks**: In `on_bar`, prefer `self.is_model_ready()` and `self.current_validation_window()` before calling `self.model.predict(...)`.
+*   **Model Cloning**: The framework calls `QuantModel.clone()` to create a pending model for each training window. Override it if your custom model cannot be deep-copied safely.
+
 ---
 
 ## Complete Runnable Example
@@ -83,6 +94,7 @@ class WalkForwardStrategy(Strategy):
         self.model.set_validation(
             method='walk_forward',
             train_window=50,   # Train on past 50 bars
+            test_window=20,    # Keep each fitted model active for 20 OOS bars
             rolling_step=10,   # Retrain every 10 bars
             frequency='1m',    # Data frequency
             incremental=False, # Whether to use incremental learning (Sklearn supports partial_fit)
@@ -92,6 +104,8 @@ class WalkForwardStrategy(Strategy):
         # Ensure history depth covers training window + feature calculation window
         # Alternatively use self.warmup_period = 60
         self.set_history_depth(60)
+        self._last_logged_window_index = 0
+        self._last_logged_pending_activation = 0
 
     def prepare_features(self, df: pd.DataFrame, mode: str = "training") -> Tuple[Any, Any]:
         """
@@ -131,6 +145,26 @@ class WalkForwardStrategy(Strategy):
 
     def on_bar(self, bar):
         # 3. Real-time Prediction & Trading
+        validation_window = self.current_validation_window()
+        if validation_window is None:
+            return
+
+        pending_activation = validation_window["pending_activation_bar"]
+        if (
+            not self.is_model_ready()
+            and pending_activation is not None
+            and pending_activation != self._last_logged_pending_activation
+        ):
+            print(
+                f"Bar {bar.timestamp}: "
+                f"Pending Window={validation_window['pending_window_index']} "
+                f"Activation Bar={pending_activation}"
+            )
+            self._last_logged_pending_activation = int(pending_activation)
+            return
+
+        if not self.is_model_ready():
+            return
 
         # Get recent history for feature extraction
         # Note: Need enough history to calculate features (e.g. pct_change(2) needs at least 3 bars)
@@ -148,9 +182,24 @@ class WalkForwardStrategy(Strategy):
             # Get prediction signal (probability)
             # SklearnAdapter returns probability of Class 1 for binary classification
             signal = self.model.predict(X_curr)[0]
+            window_index = int(validation_window["window_index"])
+            active_start_bar = validation_window["active_start_bar"]
+            active_end_bar = validation_window["active_end_bar"]
 
-            # Print signal for observation
-            # print(f"Time: {bar.timestamp}, Signal: {signal:.4f}")
+            if window_index != self._last_logged_window_index:
+                print(
+                    f"Bar {bar.timestamp}: "
+                    f"Activated Window={window_index} "
+                    f"ActiveRange=[{active_start_bar}, {active_end_bar}]"
+                )
+                self._last_logged_window_index = window_index
+
+            print(
+                f"Bar {bar.timestamp}: "
+                f"Window={window_index} "
+                f"ActiveRange=[{active_start_bar}, {active_end_bar}] "
+                f"Signal={signal:.4f}"
+            )
 
             # Combine with risk rules for ordering
             # Use self.get_position(symbol) to check position
@@ -162,7 +211,7 @@ class WalkForwardStrategy(Strategy):
                 self.sell(bar.symbol, pos)
 
         except Exception:
-            # Model might not be initialized or training failed
+            # Keep the example resilient to inference-time failures
             pass
 
 if __name__ == "__main__":
@@ -306,11 +355,23 @@ def set_validation(
 
 *   `method`: Currently only supports `'walk_forward'`.
 *   `train_window`: Length of training window. Supports `'1y'` (1 year), `'6m'` (6 months), `'50d'` (50 days), or integer (number of bars).
-*   `test_window`: Length of testing window (not strictly used in current rolling mode, mainly for evaluation configuration).
-*   `rolling_step`: Rolling step size, i.e., how often to retrain the model.
+*   `test_window`: Intended out-of-sample window length for the active model. In compatibility mode, the newly trained model activates on the next bar and covers this range by default.
+*   `rolling_step`: Rolling step size, i.e., how often to retrain the model. If it is `0`, the framework falls back to `test_window`.
 *   `frequency`: Data frequency, used to correctly convert time strings to bar counts (e.g., 1y = 252 bars under '1d').
-*   `incremental`: Whether to use incremental learning (continue training based on last model) or retrain from scratch. Default is `False`.
+*   `incremental`: Whether to use incremental learning (continue training from the last active model) or retrain from scratch. Default is `False`.
 *   `verbose`: Whether to print training logs. Default is `False`.
+
+### `model.clone`
+
+Create a model copy for a new training window.
+
+```python
+def clone(self) -> QuantModel
+```
+
+*   The default implementation uses `copy.deepcopy`.
+*   Override this method if your model owns GPU handles, locks, file descriptors, or any state that should not be copied blindly.
+*   The framework trains a pending model on the current bar and activates it on the next one, so `clone()` is central to window isolation.
 
 ### `strategy.prepare_features`
 
@@ -327,3 +388,30 @@ def prepare_features(self, df: pd.DataFrame, mode: str = "training") -> Tuple[An
     *   `mode="training"`: Return `(X, y)`.
     *   `mode="inference"`: Return `X` (usually the last row).
 *   **Note**: This is a pure function and should not rely on external state.
+
+### `strategy.is_model_ready`
+
+Check whether an active model is currently available for inference.
+
+```python
+def is_model_ready(self) -> bool
+```
+
+*   `True` means it is safe to call `self.model.predict(...)` on the current bar.
+*   Before the first training window completes, this typically returns `False`.
+
+### `strategy.current_validation_window`
+
+Return the current Walk-forward lifecycle state.
+
+```python
+def current_validation_window(self) -> dict[str, Any] | None
+```
+
+The returned dictionary may include:
+
+*   `window_index`: Current active window index
+*   `active_start_bar` / `active_end_bar`: Planned active range of the current model
+*   `pending_activation_bar`: Bar index where the pending model will become active
+*   `pending_window_index`: Pending window index
+*   `next_train_bar`: Next scheduled retraining bar index

@@ -51,6 +51,8 @@ from .strategy_history import set_history_depth as _set_history_depth_impl
 from .strategy_history import set_rolling_window as _set_rolling_window_impl
 from .strategy_logging import log as _log_impl
 from .strategy_ml import auto_configure_model as _auto_configure_model_impl
+from .strategy_ml import current_validation_window as _current_validation_window_impl
+from .strategy_ml import is_model_ready as _is_model_ready_impl
 from .strategy_ml import on_train_signal as _on_train_signal_impl
 from .strategy_order_events import (
     check_order_events as _check_order_events_impl,
@@ -239,6 +241,17 @@ class Strategy:
     _bar_count: int
     _model_configured: bool
     model: Optional["QuantModel"]
+    _ml_validation_lifecycle: bool
+    _ml_model_template: Optional["QuantModel"]
+    _ml_active_model: Optional["QuantModel"]
+    _ml_pending_model: Optional["QuantModel"]
+    _ml_pending_activation_bar: Optional[int]
+    _ml_active_window_index: int
+    _ml_active_window_start_bar: Optional[int]
+    _ml_active_window_end_bar: Optional[int]
+    _ml_pending_window_index: int
+    _ml_pending_window_start_bar: Optional[int]
+    _ml_pending_window_end_bar: Optional[int]
     _known_orders: Dict[str, Order]
     _seen_trade_keys: set[Tuple[Any, ...]]
     _seen_trade_key_order: Deque[Tuple[Any, ...]]
@@ -351,6 +364,17 @@ class Strategy:
         instance._bar_count = 0
         instance._model_configured = False
         instance._start_initialized = False
+        instance._ml_validation_lifecycle = False
+        instance._ml_model_template = None
+        instance._ml_active_model = None
+        instance._ml_pending_model = None
+        instance._ml_pending_activation_bar = None
+        instance._ml_active_window_index = 0
+        instance._ml_active_window_start_bar = None
+        instance._ml_active_window_end_bar = None
+        instance._ml_pending_window_index = 0
+        instance._ml_pending_window_start_bar = None
+        instance._ml_pending_window_end_bar = None
 
         # 初始化通常在 __init__ 中的属性，允许子类省略 super().__init__()
         instance.model = None
@@ -481,6 +505,28 @@ class Strategy:
             self._pending_daily_timers = []
         if not hasattr(self, "_instrument_snapshots"):
             self._instrument_snapshots = {}
+        if not hasattr(self, "_ml_validation_lifecycle"):
+            self._ml_validation_lifecycle = False
+        if not hasattr(self, "_ml_model_template"):
+            self._ml_model_template = None
+        if not hasattr(self, "_ml_active_model"):
+            self._ml_active_model = None
+        if not hasattr(self, "_ml_pending_model"):
+            self._ml_pending_model = None
+        if not hasattr(self, "_ml_pending_activation_bar"):
+            self._ml_pending_activation_bar = None
+        if not hasattr(self, "_ml_active_window_index"):
+            self._ml_active_window_index = 0
+        if not hasattr(self, "_ml_active_window_start_bar"):
+            self._ml_active_window_start_bar = None
+        if not hasattr(self, "_ml_active_window_end_bar"):
+            self._ml_active_window_end_bar = None
+        if not hasattr(self, "_ml_pending_window_index"):
+            self._ml_pending_window_index = 0
+        if not hasattr(self, "_ml_pending_window_start_bar"):
+            self._ml_pending_window_start_bar = None
+        if not hasattr(self, "_ml_pending_window_end_bar"):
+            self._ml_pending_window_end_bar = None
         _ensure_framework_state_impl(self)
 
     @property
@@ -931,6 +977,14 @@ class Strategy:
         :param context: 策略上下文 (通常是 self)
         """
         _on_train_signal_impl(self, context)
+
+    def is_model_ready(self) -> bool:
+        """返回当前是否已有可用于推理的模型."""
+        return _is_model_ready_impl(self)
+
+    def current_validation_window(self) -> Optional[Dict[str, Any]]:
+        """返回当前 walk-forward 验证窗口状态."""
+        return _current_validation_window_impl(self)
 
     def prepare_features(
         self, df: pd.DataFrame, mode: str = "training"

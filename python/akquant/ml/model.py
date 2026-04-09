@@ -70,6 +70,10 @@ class QuantModel(ABC):
             verbose=verbose,
         )
 
+    def clone(self) -> "QuantModel":
+        """Return a deep-copied model instance for a new validation window."""
+        return copy.deepcopy(self)
+
     @abstractmethod
     def fit(self, X: DataType, y: DataType) -> None:
         """
