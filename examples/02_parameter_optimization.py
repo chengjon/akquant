@@ -76,18 +76,21 @@ if __name__ == "__main__":
     # 1. 生成模拟数据
     print("Generating synthetic data...")
     dates = pd.date_range(start="2023-01-01", periods=500)
-    # 随机漫步
-    close_prices = 100 + np.cumsum(np.random.randn(500))
-    df = pd.DataFrame(
-        {
-            "open": close_prices,
-            "high": close_prices + 1,
-            "low": close_prices - 1,
-            "close": close_prices,
-            "volume": 1000,
-        },
-        index=dates,
-    )
+    symbols = ["OPT_A", "OPT_B"]
+    data_map: dict[str, pd.DataFrame] = {}
+    for index, symbol in enumerate(symbols):
+        close_prices = 100 + index * 5 + np.cumsum(np.random.randn(500))
+        data_map[symbol] = pd.DataFrame(
+            {
+                "open": close_prices,
+                "high": close_prices + 1,
+                "low": close_prices - 1,
+                "close": close_prices,
+                "volume": 1000,
+                "symbol": symbol,
+            },
+            index=dates,
+        )
 
     # 2. 运行优化
     print("Starting optimization...")
@@ -110,8 +113,8 @@ if __name__ == "__main__":
     results = run_grid_search(
         strategy=SMACrossStrategy,
         param_grid=param_grid,
-        data=df,
-        symbol="TEST",
+        data=data_map,
+        symbols=symbols,
         sort_by="total_return",  # 按总收益排序
         max_workers=2,
     )

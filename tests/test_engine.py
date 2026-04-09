@@ -4485,6 +4485,53 @@ def test_run_walk_forward_supports_multisymbol_dict_data() -> None:
     assert results["train_start"].iloc[0] < results["train_end"].iloc[0]
 
 
+def test_run_walk_forward_multisymbol_dataframe_uses_timestamp_windows() -> None:
+    """Walk-forward should slice multisymbol DataFrame input by unique timestamps."""
+    symbols = ["WFO_DF_A", "WFO_DF_B"]
+    data = _build_multisymbol_benchmark_data(n_timestamps=16, symbols=symbols)
+
+    results = akquant.run_walk_forward(
+        strategy=NoopStrategy,
+        param_grid={"dummy": [1]},
+        data=data,
+        train_period=5,
+        test_period=3,
+        initial_cash=100_000.0,
+        timezone="UTC",
+        show_progress=False,
+    )
+
+    assert isinstance(results, pd.DataFrame)
+    assert not results.empty
+    first_train_start = pd.Timestamp(results["train_start"].iloc[0])
+    first_train_end = pd.Timestamp(results["train_end"].iloc[0])
+    assert first_train_start == pd.Timestamp("2020-01-01 00:00:00", tz="UTC")
+    assert first_train_end == pd.Timestamp("2020-01-01 00:04:00", tz="UTC")
+
+
+def test_run_walk_forward_filters_warmup_period_from_oos_equity() -> None:
+    """Walk-forward output should exclude warmup timestamps from returned OOS curve."""
+    symbol = "WFO_WARMUP_BOUNDARY"
+    data = _build_benchmark_data(n=14, symbol=symbol)
+
+    results = akquant.run_walk_forward(
+        strategy=NoopStrategy,
+        param_grid={"dummy": [1]},
+        data=data,
+        train_period=6,
+        test_period=3,
+        warmup_period=2,
+        initial_cash=100_000.0,
+        timezone="UTC",
+        show_progress=False,
+    )
+
+    assert isinstance(results, pd.DataFrame)
+    assert not results.empty
+    first_result_time = pd.Timestamp(results.index.min())
+    assert first_result_time == pd.Timestamp("2020-01-01 00:06:00", tz="UTC")
+
+
 def test_on_train_signal_runs_after_on_bar_for_trigger_bar() -> None:
     """Rolling training should execute after the trigger bar callback."""
 

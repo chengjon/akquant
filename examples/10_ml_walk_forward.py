@@ -28,6 +28,7 @@ class WalkForwardStrategy(Strategy):
         self.model.set_validation(
             method="walk_forward",
             train_window=50,  # Use last 50 bars for training
+            test_window=20,  # Configure the out-of-sample horizon
             rolling_step=10,  # Retrain every 10 bars
             frequency="1m",
             verbose=True,  # Print training logs

@@ -70,24 +70,24 @@ if __name__ == "__main__":
     # 1. 生成模拟数据 (随机游走)
     np.random.seed(42)
     dates = pd.date_range(start="2020-01-01", end="2023-12-31", freq="D")
-    # 生成带趋势的随机游走
-    returns = np.random.normal(0.0002, 0.02, len(dates))  # 每日微涨，波动率2%
-    price = 100 * np.cumprod(1 + returns)
+    data_map: dict[str, pd.DataFrame] = {}
+    for index, symbol in enumerate(["DEMO_A", "DEMO_B"]):
+        returns = np.random.normal(0.0002 + index * 0.00005, 0.02, len(dates))
+        price = (100 + index * 10) * np.cumprod(1 + returns)
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "open": price,
+                "high": price * 1.01,
+                "low": price * 0.99,
+                "close": price,
+                "volume": 10000,
+                "symbol": symbol,
+            }
+        )
+        data_map[symbol] = df.set_index("date")
 
-    df = pd.DataFrame(
-        {
-            "date": dates,
-            "open": price,
-            "high": price * 1.01,
-            "low": price * 0.99,
-            "close": price,
-            "volume": 10000,
-            "symbol": "DEMO",
-        }
-    )
-    df.set_index("date", inplace=True)
-
-    print("Data loaded:", df.shape)
+    print("Data loaded:", {symbol: frame.shape for symbol, frame in data_map.items()})
 
     # 2. 定义参数网格
     param_grid = {
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     wfo_results = run_walk_forward(
         strategy=DualMovingAverageStrategy,
         param_grid=param_grid,
-        data=df,
+        data=data_map,
         train_period=250,
         test_period=60,
         metric="sharpe_ratio",  # 优化目标: 夏普比率
@@ -111,6 +111,7 @@ if __name__ == "__main__":
         warmup_calc=warmup_calc,
         constraint=param_constraint,
         compounding=False,  # 不使用复利拼接 (简单累加盈亏)
+        symbols=list(data_map.keys()),
     )
 
     if not wfo_results.empty:
