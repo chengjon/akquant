@@ -19,7 +19,7 @@ mod tests {
     use super::*;
     use crate::model::{
         ExecutionPolicyCore, Instrument, InstrumentEnum, OrderSide, OrderStatus, OrderType,
-        StockInstrument, TimeInForce,
+        PriceBasis, StockInstrument, TemporalPolicy, TimeInForce,
     };
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
@@ -132,6 +132,84 @@ mod tests {
         let res = matcher.match_order(&mut order, &ctx);
 
         assert!(res.is_none());
+    }
+
+    #[test]
+    fn test_sell_limit_uses_open_price_improvement_under_open_policy() {
+        let matcher = StockMatcher;
+        let mut order = create_order(OrderSide::Sell, OrderType::Limit, Some(dec!(108)), None);
+        let instr = create_instrument();
+
+        let bar = crate::model::Bar {
+            timestamp: 100,
+            symbol: "AAPL".to_string(),
+            open: dec!(110),
+            high: dec!(112),
+            low: dec!(105),
+            close: dec!(107),
+            volume: dec!(1000),
+            extra: Default::default(),
+        };
+
+        let event = Event::Bar(bar);
+        let ctx = MatchContext {
+            event: &event,
+            instrument: &instr,
+            execution_policy_core: default_policy_core(),
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 0,
+            last_price: None,
+        };
+        let res = matcher.match_order(&mut order, &ctx);
+
+        if let Some(Event::ExecutionReport(o, Some(t))) = res {
+            assert_eq!(o.status, OrderStatus::Filled);
+            assert_eq!(t.price, dec!(110));
+        } else {
+            panic!("Unexpected result");
+        }
+    }
+
+    #[test]
+    fn test_sell_limit_does_not_use_open_price_improvement_under_close_policy() {
+        let matcher = StockMatcher;
+        let mut order = create_order(OrderSide::Sell, OrderType::Limit, Some(dec!(108)), None);
+        let instr = create_instrument();
+
+        let bar = crate::model::Bar {
+            timestamp: 100,
+            symbol: "AAPL".to_string(),
+            open: dec!(110),
+            high: dec!(112),
+            low: dec!(105),
+            close: dec!(107),
+            volume: dec!(1000),
+            extra: Default::default(),
+        };
+
+        let event = Event::Bar(bar);
+        let ctx = MatchContext {
+            event: &event,
+            instrument: &instr,
+            execution_policy_core: ExecutionPolicyCore {
+                price_basis: PriceBasis::Close,
+                bar_offset: 0,
+                temporal: TemporalPolicy::NextEvent,
+            },
+            slippage: &crate::execution::slippage::ZeroSlippage,
+            volume_limit_pct: Decimal::ZERO,
+            bar_index: 0,
+            last_price: None,
+        };
+        let res = matcher.match_order(&mut order, &ctx);
+
+        if let Some(Event::ExecutionReport(o, Some(t))) = res {
+            assert_eq!(o.status, OrderStatus::Filled);
+            assert_eq!(t.price, dec!(108));
+        } else {
+            panic!("Unexpected result");
+        }
     }
 
     #[test]

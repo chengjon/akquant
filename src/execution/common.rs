@@ -229,16 +229,17 @@ impl CommonMatcher {
                                 // 3.2 Determine Fill Price
                                 let mut final_fill_price = limit_price;
 
-                                // Optimization: If Open is better, take Open
-                                match order.side {
-                                    OrderSide::Buy => {
-                                        if bar.open < limit_price {
-                                            final_fill_price = bar.open;
+                                if execution_policy.price_basis == PriceBasis::Open {
+                                    match order.side {
+                                        OrderSide::Buy => {
+                                            if bar.open < limit_price {
+                                                final_fill_price = bar.open;
+                                            }
                                         }
-                                    }
-                                    OrderSide::Sell => {
-                                        if bar.open > limit_price {
-                                            final_fill_price = bar.open;
+                                        OrderSide::Sell => {
+                                            if bar.open > limit_price {
+                                                final_fill_price = bar.open;
+                                            }
                                         }
                                     }
                                 }
