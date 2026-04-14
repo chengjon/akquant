@@ -486,14 +486,16 @@ impl Processor for DataProcessor {
                     self.fill_missing_bars(engine);
                     self.seen_symbols.clear();
 
-                    engine.bar_count += 1;
-                    if let Some(pb) = &engine.progress_bar {
-                        pb.inc(1);
+                    if engine.is_active_timestamp(timestamp) {
+                        engine.bar_count += 1;
+                        if let Some(pb) = &engine.progress_bar {
+                            pb.inc(1);
+                        }
+                        let mut progress_payload = HashMap::new();
+                        progress_payload.insert("processed", engine.bar_count.to_string());
+                        progress_payload.insert("total", engine.progress_total_steps.to_string());
+                        engine.emit_stream_event(py, "progress", None, "info", progress_payload);
                     }
-                    let mut progress_payload = HashMap::new();
-                    progress_payload.insert("processed", engine.bar_count.to_string());
-                    progress_payload.insert("total", engine.progress_total_steps.to_string());
-                    engine.emit_stream_event(py, "progress", None, "info", progress_payload);
                 }
                 self.last_timestamp = timestamp;
 
@@ -509,7 +511,7 @@ impl Processor for DataProcessor {
 
                 // Daily Snapshot & Settlement
                 let local_date = local_dt.date_naive();
-                if engine.current_date != Some(local_date) {
+                if engine.is_active_timestamp(timestamp) && engine.current_date != Some(local_date) {
                     if engine.current_date.is_some() {
                         engine.statistics_manager.record_snapshot(
                             timestamp,
@@ -604,7 +606,9 @@ impl Processor for DataProcessor {
                 }
 
                 engine.current_event = Some(event);
-                if let Some(current) = engine.current_event.clone() {
+                if engine.is_active_timestamp(timestamp)
+                    && let Some(current) = engine.current_event.clone()
+                {
                     match current {
                         Event::Bar(b) => {
                             let mut payload = HashMap::new();
@@ -830,6 +834,12 @@ impl Processor for ExecutionProcessor {
             return Ok(ProcessorResult::Next);
         }
 
+        if let Some(timestamp) = engine.current_event_timestamp()
+            && !engine.is_active_timestamp(timestamp)
+        {
+            return Ok(ProcessorResult::Next);
+        }
+
         if let Some(event) = engine.current_event.clone() {
             match event {
                 Event::Bar(_) | Event::Tick(_) | Event::Timer(_) => {
@@ -887,6 +897,7 @@ impl Processor for StatisticsProcessor {
     ) -> PyResult<ProcessorResult> {
         if let Some(Event::Bar(_) | Event::Tick(_)) = engine.current_event.clone()
             && let Some(timestamp) = engine.clock.timestamp()
+            && engine.is_active_timestamp(timestamp)
         {
             let equity = engine
                 .state

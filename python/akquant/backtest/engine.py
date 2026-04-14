@@ -1448,6 +1448,38 @@ def _should_prepare_precomputed_indicators(strategy_instance: Strategy) -> bool:
     return str(strategy_instance.indicator_mode).strip().lower() == "precompute"
 
 
+def _resolve_runtime_warmup_depth(
+    strategy_instance: Strategy,
+    history_depth: int,
+    warmup_period: int,
+    logger: Any,
+) -> tuple[int, int]:
+    """Resolve final warmup and effective history depth after strategy setup."""
+    strategy_warmup = getattr(strategy_instance, "warmup_period", 0)
+
+    inferred_warmup = 0
+    try:
+        inferred_warmup = infer_warmup_period(type(strategy_instance))
+        if inferred_warmup > 0:
+            logger.info(f"Auto-inferred warmup period: {inferred_warmup}")
+    except Exception as exc:
+        logger.debug(f"Failed to infer warmup period: {exc}")
+
+    final_warmup = max(strategy_warmup, inferred_warmup, warmup_period)
+    strategy_instance.warmup_period = final_warmup
+    effective_depth = max(final_warmup, history_depth)
+    return final_warmup, effective_depth
+
+
+def _to_active_start_time_ns(
+    start_time: Optional[Union[str, Any]],
+) -> Optional[int]:
+    """Normalize an optional active start time to UTC nanoseconds."""
+    if start_time is None:
+        return None
+    return int(pd.Timestamp(start_time).value)
+
+
 def _apply_strategy_runtime_config(
     strategy_instance: Strategy,
     incoming: Union[StrategyRuntimeConfig, Dict[str, Any]],
@@ -2223,6 +2255,25 @@ def run_backtest(
         elif hasattr(slot_strategy, "on_start"):
             slot_strategy.on_start()
 
+    _, effective_depth = _resolve_runtime_warmup_depth(
+        strategy_instance=strategy_instance,
+        history_depth=history_depth,
+        warmup_period=warmup_period,
+        logger=logger,
+    )
+    manual_history_depth = max(
+        int(getattr(current_strategy, "_history_depth", 0))
+        for current_strategy in all_strategy_instances
+    )
+    effective_depth = max(effective_depth, manual_history_depth)
+    preserve_pre_start_history = bool(start_time) and effective_depth > 0
+    load_start_time = None if preserve_pre_start_history else start_time
+    active_start_time_ns = (
+        _to_active_start_time_ns(start_time) if preserve_pre_start_history else None
+    )
+    for current_strategy in all_strategy_instances:
+        setattr(current_strategy, "_active_start_time_ns", active_start_time_ns)
+
     # 3. 准备数据源和 Symbol
     feed = DataFeed()
     symbols = []
@@ -2266,7 +2317,7 @@ def run_backtest(
             adapter_data_map = _load_data_map_from_adapter(
                 adapter=data,
                 symbols=symbols,
-                start_time=start_time,
+                start_time=load_start_time,
                 end_time=end_time,
                 timezone=timezone,
             )
@@ -2308,9 +2359,9 @@ def run_backtest(
                     pass
 
             # Filter by date if provided
-            if start_time:
+            if load_start_time:
                 # Handle potential mismatch between Timestamp and datetime.date
-                ts_start = pd.Timestamp(start_time)
+                ts_start = pd.Timestamp(load_start_time)
                 # If index is date objects, compare with date()
                 if (
                     len(df_input) > 0
@@ -2389,8 +2440,8 @@ def run_backtest(
                             pass
 
                 # Filter by date
-                if start_time:
-                    df = df[df.index >= pd.Timestamp(start_time)]
+                if load_start_time:
+                    df = df[df.index >= pd.Timestamp(load_start_time)]
                 if end_time:
                     df = df[df.index <= pd.Timestamp(end_time)]
 
@@ -2404,9 +2455,9 @@ def run_backtest(
         elif isinstance(data, list):
             if data:
                 # Filter by date
-                if start_time:
+                if load_start_time:
                     # Explicitly convert to int to satisfy mypy
-                    ts_start: int = int(pd.Timestamp(start_time).value)  # type: ignore
+                    ts_start: int = int(pd.Timestamp(load_start_time).value)  # type: ignore
                     data = [b for b in data if b.timestamp >= ts_start]  # type: ignore
                 if end_time:
                     ts_end: int = int(pd.Timestamp(end_time).value)  # type: ignore
@@ -2452,7 +2503,7 @@ def run_backtest(
         loaded_count = 0
         for sym in symbols:
             # Try Catalog
-            df = catalog.read(sym, start_time=start_time, end_time=end_time)
+            df = catalog.read(sym, start_time=load_start_time, end_time=end_time)
             if df.empty:
                 logger.warning(f"Data not found in catalog for {sym}")
                 continue
@@ -2512,6 +2563,7 @@ def run_backtest(
 
     # 4. 配置引擎
     engine = Engine()
+    cast(Any, engine).active_start_time_ns = active_start_time_ns
     for current_strategy in all_strategy_instances:
         setattr(current_strategy, "_engine", engine)
     if analyzer_manager.plugins:
@@ -3415,27 +3467,6 @@ def run_backtest(
 
     # 7. 运行回测
     logger.info("Running backtest via run_backtest()...")
-
-    # 设置自动历史数据维护
-    # Logic: effective_depth = max(strategy.warmup_period, inferred_warmup,
-    #                              run_backtest(history_depth))
-    strategy_warmup = getattr(strategy_instance, "warmup_period", 0)
-
-    # Auto-infer from AST
-    inferred_warmup = 0
-    try:
-        inferred_warmup = infer_warmup_period(type(strategy_instance))
-        if inferred_warmup > 0:
-            logger.info(f"Auto-inferred warmup period: {inferred_warmup}")
-    except Exception as e:
-        logger.debug(f"Failed to infer warmup period: {e}")
-
-    # Determine final warmup period
-    final_warmup = max(strategy_warmup, inferred_warmup, warmup_period)
-    # Update strategy instance with the determined warmup period
-    strategy_instance.warmup_period = final_warmup
-
-    effective_depth = max(final_warmup, history_depth)
 
     if effective_depth > 0:
         for current_strategy in all_strategy_instances:

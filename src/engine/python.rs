@@ -485,6 +485,7 @@ impl Engine {
             timezone_offset: 28800, // Default UTC+8
             history_buffer: Arc::new(RwLock::new(HistoryBuffer::new(10000))), // Default large capacity for MAE/MFE
             initial_cash,
+            active_start_time_ns: None,
             event_manager: EventManager::new(),
             statistics_manager: StatisticsManager::new(),
             settlement_manager: SettlementManager::new(),
