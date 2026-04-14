@@ -126,7 +126,10 @@ class IndicatorVisitor(ast.NodeVisitor):
             val = node.value
             if isinstance(val, int) and val > 0:
                 self.max_period = max(self.max_period, val)
-        elif isinstance(node, ast.Num):  # Python 3.7 及以下
+            return
+
+        legacy_num = getattr(ast, "Num", None)
+        if legacy_num is not None and isinstance(node, legacy_num):
             val = node.n
             if isinstance(val, int) and val > 0:
                 self.max_period = max(self.max_period, val)

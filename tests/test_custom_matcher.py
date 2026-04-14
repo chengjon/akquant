@@ -40,6 +40,7 @@ class CustomStockMatcher:
             timestamp=event.timestamp,
             commission=0.0,
             bar_index=bar_index,
+            owner_strategy_id=None,
         )
         print(
             f"[CustomMatcher] Filled order {order.id} at {fill_price}, "
@@ -48,23 +49,24 @@ class CustomStockMatcher:
         return trade
 
 
-# 2. Setup Data
-dates = pd.date_range("2024-01-01", periods=10, freq="D")
-data = pd.DataFrame(
-    {
-        "open": 100.0,
-        "high": 105.0,
-        "low": 95.0,
-        "close": 100.0,
-        "volume": 1000,
-        "symbol": "TEST",
-    },
-    index=dates,
-)
+def _make_data() -> pd.DataFrame:
+    """Build deterministic stock bars for matcher testing."""
+    dates = pd.date_range("2024-01-01", periods=10, freq="D")
+    return pd.DataFrame(
+        {
+            "open": 100.0,
+            "high": 105.0,
+            "low": 95.0,
+            "close": 100.0,
+            "volume": 1000,
+            "symbol": "TEST",
+        },
+        index=dates,
+    )
 
 
 # 3. Setup Strategy
-class TestStrategy(Strategy):
+class MatcherStrategy(Strategy):
     """Minimal strategy to trigger buy/sell for matcher testing."""
 
     def on_start(self) -> None:
@@ -88,33 +90,20 @@ class TestStrategy(Strategy):
         self.count += 1
 
 
-# 4. Run Backtest with custom matcher
-print("Running backtest with custom matcher...")
-custom_matchers = {AssetType.Stock: CustomStockMatcher()}
+def test_custom_matcher_generates_closed_trade() -> None:
+    """Custom matcher should fill orders and produce a closed trade."""
+    result = aq.run_backtest(
+        strategy=MatcherStrategy,
+        data=_make_data(),
+        symbols="TEST",
+        initial_cash=100000,
+        custom_matchers={AssetType.Stock: CustomStockMatcher()},
+        show_progress=False,
+    )
 
-result = aq.run_backtest(
-    strategy=TestStrategy,
-    data=data,
-    symbols="TEST",
-    initial_cash=100000,
-    custom_matchers=custom_matchers,
-    asset_type=AssetType.Stock,  # Ensure instrument is stock
-)
-
-print("-" * 20)
-print("Trades DF (Closed Trades):")
-print(result.trades_df)
-
-# Also check executions/orders
-print("-" * 20)
-print("Executions:")
-if hasattr(result, "executions"):
-    for exec in result.executions:
-        print(exec)
-
-if not result.trades_df.empty or (
-    hasattr(result, "executions") and len(result.executions) > 0
-):
-    print("SUCCESS: Trades/Executions generated.")
-else:
-    print("FAILURE: No trades generated.")
+    assert not result.trades_df.empty
+    trade = result.trades_df.iloc[0]
+    assert trade["symbol"] == "TEST"
+    assert trade["quantity"] == 100.0
+    assert trade["entry_price"] == 100.0
+    assert trade["exit_price"] == 100.0

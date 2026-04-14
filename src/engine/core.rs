@@ -61,6 +61,8 @@ pub struct Engine {
     pub(crate) timezone_offset: i32,
     pub(crate) history_buffer: Arc<RwLock<HistoryBuffer>>,
     pub(crate) initial_cash: Decimal,
+    #[pyo3(get, set)]
+    pub active_start_time_ns: Option<i64>,
     // Components
     pub(crate) event_manager: EventManager,
     pub(crate) statistics_manager: StatisticsManager,
@@ -129,6 +131,19 @@ pub(crate) struct PendingStreamEvent {
 
 // Internal implementation of Engine (not exposed to Python)
 impl Engine {
+    pub(crate) fn is_active_timestamp(&self, timestamp: i64) -> bool {
+        self.active_start_time_ns.is_none_or(|start_ns| timestamp >= start_ns)
+    }
+
+    pub(crate) fn current_event_timestamp(&self) -> Option<i64> {
+        match self.current_event.as_ref() {
+            Some(Event::Bar(bar)) => Some(bar.timestamp),
+            Some(Event::Tick(tick)) => Some(tick.timestamp),
+            Some(Event::Timer(timer)) => Some(timer.timestamp),
+            _ => None,
+        }
+    }
+
     pub(crate) fn execution_policy_core(&self) -> ExecutionPolicyCore {
         self.execution_policy_core_state
     }

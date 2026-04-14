@@ -4244,6 +4244,85 @@ def test_run_backtest_strict_default_does_not_inject_time_kwargs() -> None:
     assert result is not None
 
 
+def test_run_backtest_start_time_preserves_pre_start_history() -> None:
+    """start_time should not truncate preload bars needed by history APIs."""
+
+    class PreStartHistoryStrategy(akquant.Strategy):
+        def __init__(self) -> None:
+            """Initialize captured callback state."""
+            super().__init__()
+            self.seen_times: list[int] = []
+            self.first_history: np.ndarray | None = None
+
+        def on_start(self) -> None:
+            """Enable history tracking before active callbacks begin."""
+            self.set_history_depth(3)
+
+        def on_bar(self, bar: akquant.Bar) -> None:
+            """Capture active callbacks and the first available history window."""
+            self.seen_times.append(bar.timestamp)
+            if self.first_history is None:
+                self.first_history = self.get_history(count=3, symbol=bar.symbol)
+
+    symbol = "START_HISTORY"
+    bars = [
+        akquant.Bar(
+            _ns(datetime(2023, 1, 2, 15, 0, tzinfo=timezone.utc)),
+            10,
+            10,
+            10,
+            10,
+            1,
+            symbol,
+        ),
+        akquant.Bar(
+            _ns(datetime(2023, 1, 3, 15, 0, tzinfo=timezone.utc)),
+            11,
+            11,
+            11,
+            11,
+            1,
+            symbol,
+        ),
+        akquant.Bar(
+            _ns(datetime(2023, 1, 4, 15, 0, tzinfo=timezone.utc)),
+            12,
+            12,
+            12,
+            12,
+            1,
+            symbol,
+        ),
+        akquant.Bar(
+            _ns(datetime(2023, 1, 5, 15, 0, tzinfo=timezone.utc)),
+            13,
+            13,
+            13,
+            13,
+            1,
+            symbol,
+        ),
+    ]
+
+    result = akquant.run_backtest(
+        data=bars,
+        strategy=PreStartHistoryStrategy,
+        symbols=[symbol],
+        start_time="2023-01-04 00:00:00+00:00",
+        show_progress=False,
+    )
+
+    strategy = cast(PreStartHistoryStrategy, result.strategy)
+    expected_active_times = [bars[2].timestamp, bars[3].timestamp]
+    assert strategy.seen_times == expected_active_times
+    assert strategy.first_history is not None
+    assert np.allclose(strategy.first_history, np.array([10.0, 11.0, 12.0]))
+    expected_start_time = pd.Timestamp(
+        bars[2].timestamp, unit="ns", tz="UTC"
+    ).tz_convert("Asia/Shanghai")
+    assert result.metrics.start_time == expected_start_time
+
+
 def test_run_backtest_accepts_camelcase_execution_mode_string() -> None:
     """run_backtest should reject removed CamelCase execution mode aliases."""
     symbol = "EXEC_CAMELCASE"

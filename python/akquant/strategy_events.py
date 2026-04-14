@@ -23,6 +23,12 @@ from .strategy_ml import (
 from .strategy_scheduler import flush_pending_schedules
 
 
+def _is_before_active_start(strategy: Any, timestamp: int) -> bool:
+    """Return whether the event timestamp is still in the preload-only window."""
+    active_start_time = getattr(strategy, "_active_start_time_ns", None)
+    return active_start_time is not None and timestamp < int(active_start_time)
+
+
 def _flush_deferred_target_value_orders(strategy: Any, event_symbol: str) -> None:
     deferred_orders = getattr(strategy, "_deferred_target_value_orders", None)
     if not deferred_orders:
@@ -75,13 +81,16 @@ def on_bar_event(strategy: Any, bar: Bar, ctx: StrategyContext) -> None:
     if hasattr(strategy, "_update_incremental_indicators"):
         strategy._update_incremental_indicators(bar)
     strategy._last_prices[bar.symbol] = bar.close
+    strategy._bar_count += 1
+
+    if _is_before_active_start(strategy, int(bar.timestamp)):
+        return
+
     if current_pos != 0 and previous_price is not None and previous_price != bar.close:
         mark_portfolio_dirty(strategy)
     dispatch_time_hooks(strategy)
     dispatch_portfolio_update(strategy)
     _flush_deferred_target_value_orders(strategy, bar.symbol)
-
-    strategy._bar_count += 1
 
     if strategy._bar_count < strategy.warmup_period:
         return
@@ -128,6 +137,10 @@ def on_tick_event(strategy: Any, tick: Tick, ctx: StrategyContext) -> None:
     strategy.current_tick = tick
     strategy.current_bar = None
     strategy._last_prices[tick.symbol] = tick.price
+
+    if _is_before_active_start(strategy, int(tick.timestamp)):
+        return
+
     current_pos = ctx.get_position(tick.symbol)
     if current_pos != 0 and previous_price is not None and previous_price != tick.price:
         mark_portfolio_dirty(strategy)
@@ -144,6 +157,11 @@ def on_timer_event(strategy: Any, payload: str, ctx: StrategyContext) -> None:
     flush_pending_schedules(strategy)
     register_boundary_timers(strategy)
     strategy._check_order_events()
+
+    current_time = int(getattr(ctx, "current_time", 0))
+    if _is_before_active_start(strategy, current_time):
+        return
+
     dispatch_time_hooks(strategy)
     dispatch_portfolio_update(strategy)
 
