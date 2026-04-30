@@ -57,10 +57,17 @@ def create_gateway_bundle(
         return GatewayBundle(
             market_gateway=market_gateway,
             trader_gateway=trader_gateway,
-            metadata={"broker": "ctp"},
+            metadata={"broker": "ctp", "asset_class": "futures"},
         )
 
     if broker_key == "miniqmt":
+        bridge_url = kwargs.get("bridge_url")
+        if bridge_url:
+            raise NotImplementedError(
+                "HTTP bridge mode is not yet available. "
+                "Complete miniQMT Phase A first. "
+                "See docs/zh/reference/miniqmt-bridge-transfer-plan.md"
+            )
         market_gateway = MiniQMTMarketGateway(
             feed=feed,
             symbols=list(symbols),
@@ -83,7 +90,7 @@ def create_gateway_bundle(
         return GatewayBundle(
             market_gateway=market_gateway,
             trader_gateway=miniqmt_trader_gateway,
-            metadata={"broker": "miniqmt"},
+            metadata={"broker": "miniqmt", "asset_class": "stock"},
         )
 
     if broker_key == "ptrade":
@@ -96,7 +103,7 @@ def create_gateway_bundle(
         return GatewayBundle(
             market_gateway=market_gateway,
             trader_gateway=ptrade_trader_gateway,
-            metadata={"broker": "ptrade"},
+            metadata={"broker": "ptrade", "asset_class": "stock"},
         )
 
     builtins = ["ctp", "miniqmt", "ptrade"]

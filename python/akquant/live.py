@@ -4,6 +4,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
 from .akquant import Bar, DataFeed, Engine, Instrument
+from .gateway.base import GatewayBundle
 from .gateway.factory import create_gateway_bundle
 from .gateway.models import UnifiedOrderRequest
 from .strategy import Strategy
@@ -229,9 +230,6 @@ class LiveRunner:
         else:
             self.engine.use_simulated_execution()
 
-        self.engine.use_china_futures_market()
-        self.engine.set_force_session_continuous(True)
-
         symbols = [inst.symbol for inst in self.instruments]
         gateway_kwargs = self._build_gateway_kwargs()
         bundle = create_gateway_bundle(
@@ -241,6 +239,8 @@ class LiveRunner:
             use_aggregator=self.use_aggregator,
             **gateway_kwargs,
         )
+
+        self._select_market_model(bundle)
 
         print(f"[LiveRunner] Starting {self.broker} market gateway...")
         self._start_gateway_thread(bundle.market_gateway.start, f"{self.broker}-market")
@@ -571,6 +571,14 @@ class LiveRunner:
         if hasattr(self.engine, "set_risk_budget_reset_daily"):
             cast(Any, self.engine).set_risk_budget_reset_daily(risk_budget_reset_daily)
 
+    def _select_market_model(self, bundle: GatewayBundle) -> None:
+        asset_class = (bundle.metadata or {}).get("asset_class", "futures")
+        if asset_class == "stock":
+            self.engine.use_china_market()
+        else:
+            self.engine.use_china_futures_market()
+        self.engine.set_force_session_continuous(True)
+
     def _build_gateway_kwargs(self) -> Dict[str, Any]:
         kwargs = dict(self.gateway_options)
         if self.md_front:
@@ -646,11 +654,35 @@ class LiveRunner:
             trigger_price: float | None = None,
             tag: str | None = None,
             extra: dict[str, Any] | None = None,
+            broker_options: dict[str, Any] | None = None,
+            trail_offset: float | None = None,
+            trail_reference_price: float | None = None,
+            fill_policy: Any | None = None,
+            slippage: Any | None = None,
+            commission: Any | None = None,
         ) -> str:
-            _ = trigger_price
             _ = tag
             if extra:
-                raise RuntimeError("extra broker fields are not supported")
+                raise RuntimeError(
+                    "extra broker fields are not supported in current broker_live mode"
+                )
+            if trigger_price is not None:
+                raise RuntimeError(
+                    "trigger_price is not supported in current broker_live mode"
+                )
+            if trail_offset is not None or trail_reference_price is not None:
+                raise RuntimeError(
+                    "trailing orders are not supported in current broker_live mode"
+                )
+            if (
+                fill_policy is not None
+                or slippage is not None
+                or commission is not None
+            ):
+                raise RuntimeError(
+                    "fill_policy/slippage/commission are not supported "
+                    "in current broker_live mode"
+                )
             request_client_order_id = client_order_id or self._next_client_order_id()
             owner_strategy_id = str(getattr(strategy, "_owner_strategy_id", "_default"))
             if not self.can_submit_client_order(request_client_order_id):
@@ -677,6 +709,7 @@ class LiveRunner:
                 price=price,
                 order_type=order_type,
                 time_in_force=time_in_force,
+                broker_options=broker_options,
             )
             broker_order_id = str(trader_gateway.place_order(request))
             self._sync_order_id_mapping(request_client_order_id, broker_order_id)

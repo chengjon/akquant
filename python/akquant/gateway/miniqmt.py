@@ -137,6 +137,7 @@ class MiniQMTTraderGateway:
                 quantity=req.quantity,
                 price=req.price,
                 order_type=req.order_type,
+                broker_options=req.broker_options,
             )
             broker_order_id = f"miniqmt-{native_id}"
         else:

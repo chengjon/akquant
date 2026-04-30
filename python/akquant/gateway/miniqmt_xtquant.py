@@ -73,6 +73,15 @@ class QMTXtQuantBridge:
                 "xtquant is not installed. Install it via your QMT distribution "
                 "or run without qmt_path to use in-memory mode."
             )
+        import warnings
+        warnings.warn(
+            "QMTXtQuantBridge is scheduled for migration to the "
+            "miniQMT project. Once miniQMT Phase A is complete, "
+            "this module will be replaced by an HTTP bridge client. "
+            "See docs/zh/reference/miniqmt-bridge-transfer-plan.md.",
+            FutureWarning,
+            stacklevel=2,
+        )
         self.gateway = gateway
         self._qmt_path = qmt_path
         self._account_id = account_id
@@ -147,6 +156,7 @@ class QMTXtQuantBridge:
         quantity: float,
         price: float | None,
         order_type: str,
+        broker_options: dict[str, Any] | None = None,
     ) -> int:
         """Place order via xtquant. Returns native QMT order_id."""
         qmt_symbol = self.format_symbol(symbol)

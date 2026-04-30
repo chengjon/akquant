@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class UnifiedOrderStatus(str, Enum):
@@ -32,6 +33,7 @@ class UnifiedOrderRequest:
     price: float | None = None
     order_type: str = "Market"
     time_in_force: str = "GTC"
+    broker_options: dict[str, Any] | None = None
 
 
 @dataclass

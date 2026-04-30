@@ -164,6 +164,7 @@ class TestGatewayBridgeIntegration:
             quantity=100.0,
             price=10.0,
             order_type="limit",
+            broker_options=None,
         )
         assert broker_order_id == "miniqmt-12345"
 
