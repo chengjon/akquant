@@ -156,7 +156,7 @@ source .venv/bin/activate
 1.  **Rust 驱动的高性能**：底层撮合引擎、订单管理系统 (OMS) 和风控模块 (RMS) 均由 Rust 编写，彻底告别 Python 的 GIL 锁限制，回测速度比纯 Python 框架快 10-100 倍。
 2.  **事件驱动架构 (Event-Driven)**：不同于简单的向量化回测，`AKQuant` 采用严格的时间序列事件驱动模型，能够精确模拟限价单 (Limit Order)、止损单 (Stop Order) 以及复杂的成交撮合逻辑，杜绝“未来函数”。
 3.  **全资产覆盖**：原生支持 **股票 (Stock)**、**期货 (Futures)**、**期权 (Options)** 及 **基金 (Fund)** 等多种金融资产，并针对 A 股的 T+1 制度和涨跌停机制做了深度适配。
-4.  **回测实盘一体化**：坚持 "Code Once, Run Anywhere" 理念。同一套策略代码，既可以在历史数据上回测，也可以直接切换到 CTP / MiniQMT / PTrade 等实盘接口进行交易。
+4.  **回测实盘一体化**：坚持 "Code Once, Run Anywhere" 理念。同一套策略代码可以复用同一套策略/风控抽象，在历史数据上回测，并迁移到实盘网关接口；但按当前仓库实现，内置实盘主链路以 CTP 为主，MiniQMT / PTrade 仍需继续补齐真实 broker 对接。
 
 在激活的 uv 虚拟环境中，运行以下命令安装（建议使用清华源加速）：
 

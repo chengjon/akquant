@@ -71,7 +71,7 @@ AKQuant aims to solve the performance bottlenecks of traditional Python backtest
 
 ### 4. Production-Grade Risk Control and Live Trading
 *   **Built-in Risk Manager**: The engine layer includes a `RiskManager` supporting hard limits on capital, position ratios, blocklists, etc., to prevent runaway strategies.
-*   **Seamless Live Trading Switch**: Strategy code is decoupled from live trading interfaces. Theoretically, switching to live trading only requires replacing `Broker` and `DataFeed` adapters (live interface under development).
+*   **Live Gateway Abstraction**: Strategy code is decoupled from broker/data interfaces. In the current repository, the built-in live path is centered on CTP; MiniQMT/PTrade remain placeholder gateways pending further real-broker integration work.
 *   **Data Aggregator**: `DataFeed` supports multi-source aggregation, handling data alignment issues for different frequencies.
 
 ### 5. Ultimate Developer Experience

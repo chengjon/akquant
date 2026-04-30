@@ -742,6 +742,13 @@ Strict-mode notes:
 *   Cancel request sent does not imply `Cancelled`; wait for `OnRtnOrder(Cancelled)`.
 *   Error callback received does not imply `Rejected`; final status is confirmed by order callback.
 
+Current built-in boundary:
+
+*   The implemented built-in live broker path is CTP.
+*   MiniQMT and PTrade are still in-memory placeholders in the current repository.
+*   `LiveRunner.run()` currently hardcodes `engine.use_china_futures_market()`, so a real stock `broker_live` path still needs market-model work.
+*   The current injected `submit_order(...)` bridge accepts only the standard unified order fields; extra broker-specific fields are rejected unless the live contract is extended.
+
 ## 3. Core Engine
 
 ### `akquant.Engine`

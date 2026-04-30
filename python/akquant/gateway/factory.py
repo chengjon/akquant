@@ -67,6 +67,19 @@ def create_gateway_bundle(
             **kwargs,
         )
         miniqmt_trader_gateway: TraderGateway | None = MiniQMTTraderGateway(**kwargs)
+
+        # Attach xtquant bridge when qmt_path is provided
+        qmt_path = kwargs.get("qmt_path")
+        if qmt_path:
+            from .miniqmt_xtquant import QMTXtQuantBridge
+
+            bridge = QMTXtQuantBridge(
+                qmt_path=str(qmt_path),
+                account_id=str(kwargs.get("account_id", "")),
+                gateway=miniqmt_trader_gateway,
+            )
+            miniqmt_trader_gateway.set_bridge(bridge)
+
         return GatewayBundle(
             market_gateway=market_gateway,
             trader_gateway=miniqmt_trader_gateway,

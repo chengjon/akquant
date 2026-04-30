@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import time
-from typing import Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from ..akquant import DataFeed
 from .mapper import BrokerEventMapper, create_default_mapper
@@ -12,6 +14,9 @@ from .models import (
     UnifiedPosition,
     UnifiedTrade,
 )
+
+if TYPE_CHECKING:
+    from .miniqmt_xtquant import QMTXtQuantBridge
 
 
 class MiniQMTMarketGateway:
@@ -82,13 +87,22 @@ class MiniQMTTraderGateway:
         self.order_callback: Callable[[UnifiedOrderSnapshot], None] | None = None
         self.trade_callback: Callable[[UnifiedTrade], None] | None = None
         self.execution_callback: Callable[[UnifiedExecutionReport], None] | None = None
+        self._bridge: QMTXtQuantBridge | None = None
+
+    def set_bridge(self, bridge: QMTXtQuantBridge) -> None:
+        """Attach a QMT xtquant bridge for real trading."""
+        self._bridge = bridge
 
     def connect(self) -> None:
         """Connect trader channel."""
+        if self._bridge is not None:
+            self._bridge.connect()
         self.connected = True
 
     def disconnect(self) -> None:
         """Disconnect trader channel."""
+        if self._bridge is not None:
+            self._bridge.disconnect()
         self.connected = False
 
     def place_order(self, req: UnifiedOrderRequest) -> str:
@@ -112,9 +126,22 @@ class MiniQMTTraderGateway:
                     client_order_id=req.client_order_id,
                     broker_order_id=existing_broker_order_id,
                 )
+
         now_ns = time.time_ns()
-        self._order_seq += 1
-        broker_order_id = f"miniqmt-{req.client_order_id}-{self._order_seq}"
+
+        # Route through bridge when configured
+        if self._bridge is not None:
+            native_id = self._bridge.place_native_order(
+                symbol=req.symbol,
+                side=req.side,
+                quantity=req.quantity,
+                price=req.price,
+                order_type=req.order_type,
+            )
+            broker_order_id = f"miniqmt-{native_id}"
+        else:
+            self._order_seq += 1
+            broker_order_id = f"miniqmt-{req.client_order_id}-{self._order_seq}"
         snapshot = UnifiedOrderSnapshot(
             client_order_id=req.client_order_id,
             broker_order_id=broker_order_id,
@@ -138,6 +165,12 @@ class MiniQMTTraderGateway:
 
     def cancel_order(self, broker_order_id: str) -> None:
         """Cancel order."""
+        if self._bridge is not None:
+            native_id = self._parse_native_order_id(broker_order_id)
+            if native_id is not None:
+                self._bridge.cancel_native_order(native_id)
+                return
+
         order = self.orders.get(broker_order_id)
         if order is not None:
             order.status = UnifiedOrderStatus.CANCELLED
@@ -168,6 +201,16 @@ class MiniQMTTraderGateway:
 
     def query_account(self) -> UnifiedAccount | None:
         """Query account."""
+        if self._bridge is not None:
+            data = self._bridge.query_account()
+            if data is not None:
+                return UnifiedAccount(
+                    account_id=data["account_id"],
+                    equity=data["equity"],
+                    cash=data["cash"],
+                    available_cash=data["available_cash"],
+                    timestamp_ns=time.time_ns(),
+                )
         return UnifiedAccount(
             account_id=self.kwargs.get("account_id", "miniqmt"),
             equity=float(self.kwargs.get("equity", 0.0)),
@@ -178,6 +221,19 @@ class MiniQMTTraderGateway:
 
     def query_positions(self) -> list[UnifiedPosition]:
         """Query positions."""
+        if self._bridge is not None:
+            items = self._bridge.query_positions()
+            now_ns = time.time_ns()
+            return [
+                UnifiedPosition(
+                    symbol=p["symbol"],
+                    quantity=p["quantity"],
+                    available_quantity=p["available_quantity"],
+                    avg_price=p.get("avg_price", 0.0),
+                    timestamp_ns=now_ns,
+                )
+                for p in items
+            ]
         return []
 
     def on_order(self, callback: Callable[[UnifiedOrderSnapshot], None]) -> None:
@@ -211,6 +267,8 @@ class MiniQMTTraderGateway:
 
     def heartbeat(self) -> bool:
         """Heartbeat check."""
+        if self._bridge is not None:
+            return self._bridge.heartbeat()
         return self.connected
 
     def ingest_order_event(self, payload: dict[str, Any]) -> UnifiedOrderSnapshot:
@@ -278,3 +336,15 @@ class MiniQMTTraderGateway:
             UnifiedOrderStatus.CANCELLED,
             UnifiedOrderStatus.REJECTED,
         )
+
+    @staticmethod
+    def _parse_native_order_id(broker_order_id: str) -> int | None:
+        """Extract native QMT order_id from broker_order_id like 'miniqmt-12345'."""
+        text = broker_order_id.strip()
+        if not text.startswith("miniqmt-"):
+            return None
+        tail = text[len("miniqmt-"):]
+        try:
+            return int(tail)
+        except ValueError:
+            return None

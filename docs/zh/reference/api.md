@@ -779,6 +779,13 @@ runner = LiveRunner(
 *   撤单请求发送成功不等于 `Cancelled`，需等待 `OnRtnOrder(Cancelled)`。
 *   收到错误回报不等于 `Rejected`，最终状态以订单回报为准。
 
+当前内置实现边界：
+
+*   当前内置已打通的 broker_live 主链路是 CTP。
+*   MiniQMT / PTrade 在当前仓库中仍是内存占位实现。
+*   `LiveRunner.run()` 当前固定调用 `engine.use_china_futures_market()`，真实股票 `broker_live` 路径仍需补市场模型切换。
+*   当前注入的 `submit_order(...)` bridge 只接受统一标准字段；额外 broker 专有字段会被拒绝，除非先扩展 live 下单契约。
+
 ## 3. 核心引擎 (Core)
 
 ### `akquant.Engine`

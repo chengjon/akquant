@@ -20,7 +20,7 @@ Start with paper mode to verify callback flow:
   - `strategy_cls=on_bar`
   - `initialize/on_order/on_trade/on_timer/context`
 
-### 2.2 broker_live (real broker order routing)
+### 2.2 broker_live (current built-in real path: CTP)
 
 Switch to broker_live after gateway connectivity is verified:
 
@@ -32,6 +32,13 @@ Switch to broker_live after gateway connectivity is verified:
   - pass explicit `client_order_id` for idempotency tracking
   - default execution semantics is `execution_semantics_mode="strict"` (terminal states are driven by broker order callbacks)
   - optional `on_broker_event` for unified `event_type/owner_strategy_id/payload` persistence
+
+Current built-in boundary in this repository:
+
+- CTP is the built-in broker with the implemented live order-routing path today.
+- MiniQMT and PTrade are still in-memory placeholders, not real broker integrations.
+- `LiveRunner.run()` currently hardcodes `engine.use_china_futures_market()`, so a real stock `broker_live` path still needs market-model work.
+- The injected `submit_order(...)` contract currently accepts only the standard unified fields; extra broker-specific order fields are rejected unless the live bridge is extended.
 
 You can pass `execution_semantics_mode` via `gateway_options`:
 

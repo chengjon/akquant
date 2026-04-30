@@ -97,6 +97,8 @@ plugins:
             Multi-Timeframe Feed API: 多时间框架 Feed API
             Data Feed Adapter Spec: 数据适配层规范
             Broker Capability Matrix: Broker 能力矩阵
+            Gateway System Architecture: 网关系统架构
+            MiniQMT Trading Migration Note: MiniQMT 迁移说明
             Analyzer Plugin Spec: Analyzer 插件规范
             Capability Boost Plan: 能力补强路线图
             Timezone Handling: 时区处理
@@ -165,6 +167,8 @@ plugins:
             Multi-Timeframe Feed API: Multi-Timeframe Feed API
             Data Feed Adapter Spec: Data Feed Adapter Spec
             Broker Capability Matrix: Broker Capability Matrix
+            Gateway System Architecture: Gateway System Architecture
+            MiniQMT Trading Migration Note: MiniQMT Trading Migration Note
             Analyzer Plugin Spec: Analyzer Plugin Spec
             Capability Boost Plan: Capability Boost Plan
             Timezone Handling: Timezone Handling
@@ -255,6 +259,8 @@ nav:
       - Multi-Timeframe Feed API: advanced/multi_timeframe_feed_api.md
       - Data Feed Adapter Spec: advanced/data_feed_adapter_spec.md
       - Broker Capability Matrix: advanced/broker_capability_matrix.md
+      - Gateway System Architecture: reference/gateway_system.md
+      - MiniQMT Trading Migration Note: reference/miniqmt_trading_impl.md
       - Analyzer Plugin Spec: advanced/analyzer_plugin_spec.md
       - Timezone Handling: advanced/timezone.md
   - API Reference: reference/api.md

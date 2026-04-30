@@ -20,7 +20,7 @@
   - `strategy_cls=on_bar`
   - `initialize/on_order/on_trade/on_timer/context`
 
-### 2.2 broker_live（网关真实下单）
+### 2.2 broker_live（当前内置真实链路以 CTP 为主）
 
 确认网关连通后切换到 broker_live：
 
@@ -32,6 +32,13 @@
   - 显式传入 `client_order_id` 便于幂等追踪
   - 默认执行语义 `execution_semantics_mode="strict"`（终态仅由柜台订单回报推进）
   - 可选 `on_broker_event` 统一落盘 `event_type/owner_strategy_id/payload`
+
+当前仓库内置边界：
+
+- CTP 是当前内置 broker 中已经打通主实盘下单链路的一条。
+- MiniQMT / PTrade 仍是内存占位实现，不是现成可用的真实 broker 接入。
+- `LiveRunner.run()` 当前固定调用 `engine.use_china_futures_market()`，因此股票 `broker_live` 路径仍需补市场模型切换。
+- 当前注入的 `submit_order(...)` 只接受统一标准字段；若要透传 broker 专有下单字段，需要先扩展 live bridge 契约。
 
 `execution_semantics_mode` 可通过 `gateway_options` 传入：
 

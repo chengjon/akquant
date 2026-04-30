@@ -272,13 +272,75 @@ executions_by_strategy = result.executions_by_strategy() # 按策略归属聚合
   👉 <a href="https://akquant.akfamily.xyz/report_demo/">点击查看交互式报表示例 (Interactive Demo)</a>
 </p>
 
+## 核心功能模块
+
+| 模块 | 入口 | 说明 |
+|------|------|------|
+| **回测引擎** | `run_backtest()` | 一行启动回测，支持 DataFrame / List[Bar] / DataFeedAdapter 多种数据源 |
+| **策略基类** | `Strategy` | 继承后编写 `on_bar` / `on_tick` / `on_timer` 等回调，生命周期完整 |
+| **参数优化** | `run_grid_search()` | 多进程网格搜索，自动按指标排序 |
+| **滚动训练** | `run_walk_forward()` | 样本内优化 + 样本外验证，防过拟合 |
+| **因子引擎** | `FactorEngine` | Polars 驱动，支持 `Rank(Ts_Mean(Close, 10))` 等 Alpha101 表达式 |
+| **风控模块** | `RiskManager` | 最大回撤、日损失、持仓上限、杠杆率、行业集中度 |
+| **多资产支持** | `InstrumentConfig` | 股票(T+1)、期货(保证金)、期权、基金、加密货币 |
+| **实盘对接** | `LiveRunner` | CTP 主链路，MiniQMT / PTrade 占位接口 |
+| **ML 集成** | `on_train_signal` | 滚动训练信号 + PyTorch / Sklearn 适配器 |
+| **可视化** | `result.report()` | Plotly 交互式 HTML 报告、资金曲线、基准对比 |
+
 ## 文档索引
 
-*   📖 **[核心特性与架构](docs/zh/index.md#核心特性)**: 了解 AKQuant 的设计理念与性能优势。
+### 快速入门
+
 *   🛠️ **[安装指南](docs/zh/start/installation.md)**: 详细的安装步骤（含源码编译）。
-*   🚀 **[快速入门](docs/zh/start/quickstart.md)**: 更多示例与基础用法。
-*   🤖 **[机器学习指南](docs/zh/advanced/ml.md)**: 如何使用内置的 ML 框架进行滚动训练。
-*   📚 **[API 参考](docs/zh/reference/api.md)**: 详细的类与函数文档。
+*   🚀 **[快速入门](docs/zh/start/quickstart.md)**: 环境搭建与基础用法。
+*   📖 **[第一个策略](docs/zh/start/first_strategy.md)**: 从零编写完整策略。
+
+### 指南文档
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| **API 参考** | [docs/zh/reference/api.md](docs/zh/reference/api.md) | 所有公开函数签名、参数说明 |
+| **策略编写指南** | [docs/zh/guide/strategy.md](docs/zh/guide/strategy.md) | Strategy 基类、生命周期、风控 |
+| **因子表达式引擎** | [docs/zh/guide/factor.md](docs/zh/guide/factor.md) | Alpha101 风格因子语法与算子 |
+| **技术指标参考** | [docs/zh/guide/rust_indicator_reference.md](docs/zh/guide/rust_indicator_reference.md) | Rust 原生 + TA-Lib 103 个指标 |
+| **参数优化** | [docs/zh/guide/optimization.md](docs/zh/guide/optimization.md) | 网格搜索、滚动优化 |
+| **数据管理** | [docs/zh/guide/data.md](docs/zh/guide/data.md) | 数据源接入与多时间框 |
+| **可视化** | [docs/zh/guide/visualization.md](docs/zh/guide/visualization.md) | 报告生成与自定义图表 |
+| **分析模块** | [docs/zh/guide/analysis.md](docs/zh/guide/analysis.md) | 绩效分析与归因 |
+| **测试指南** | [docs/zh/guide/testing.md](docs/zh/guide/testing.md) | 单元测试与黄金测试 |
+| **横截面策略** | [docs/zh/guide/cross_section_checklist.md](docs/zh/guide/cross_section_checklist.md) | 横截面轮动策略实战清单 |
+| **示例集合** | [docs/zh/guide/examples.md](docs/zh/guide/examples.md) | 参数模型配置与完整示例 |
+
+### 进阶专题
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| **机器学习** | [docs/zh/advanced/ml.md](docs/zh/advanced/ml.md) | Walk-forward + PyTorch/Sklearn |
+| **实盘交易** | [docs/zh/advanced/live_functional_quickstart.md](docs/zh/advanced/live_functional_quickstart.md) | CTP 主链路 + MiniQMT/PTrade 占位与迁移说明 |
+| **多策略指南** | [docs/zh/advanced/multi_strategy_guide.md](docs/zh/advanced/multi_strategy_guide.md) | 多策略 slot 并发与风控 |
+| **热启动** | [docs/zh/advanced/warm_start.md](docs/zh/advanced/warm_start.md) | 状态持久化与恢复 |
+| **运行时配置** | [docs/zh/advanced/runtime_config.md](docs/zh/advanced/runtime_config.md) | 动态策略加载 |
+| **数据适配器** | [docs/zh/advanced/data_feed_adapter_spec.md](docs/zh/advanced/data_feed_adapter_spec.md) | 多时间框数据接口 |
+| **Broker 注册** | [docs/zh/advanced/custom_broker_registry.md](docs/zh/advanced/custom_broker_registry.md) | 自定义经纪商注册 |
+| **LLM 集成** | [docs/zh/advanced/llm.md](docs/zh/advanced/llm.md) | LLM 辅助策略开发 |
+| **时区处理** | [docs/zh/advanced/timezone.md](docs/zh/advanced/timezone.md) | 多时区策略开发 |
+
+### 教材
+
+系统化学习路径，从基础到实战（[教材目录](docs/zh/textbook/index.md)）：
+
+*   [量化基础](docs/zh/textbook/01_foundations.md) → [编程入门](docs/zh/textbook/02_programming.md) → [数据管理](docs/zh/textbook/03_data.md) → [回测引擎](docs/zh/textbook/04_backtest_engine.md)
+*   [策略开发](docs/zh/textbook/05_strategy.md) → [A股策略](docs/zh/textbook/06_stock_a.md) → [期货策略](docs/zh/textbook/07_futures.md) → [期权策略](docs/zh/textbook/08_options.md)
+*   [基金策略](docs/zh/textbook/09_funds.md) → [绩效分析](docs/zh/textbook/10_analysis.md) → [参数优化](docs/zh/textbook/11_optimization.md) → [机器学习](docs/zh/textbook/12_ml.md)
+*   [可视化](docs/zh/textbook/13_visualization.md) → [因子挖掘](docs/zh/textbook/14_factor.md) → [实盘交易](docs/zh/textbook/15_live_trading.md) → [Rust 指标](docs/zh/textbook/16_rust_indicators.md)
+
+### 架构与内部机制
+
+*   📖 **[架构设计](docs/zh/meta/architecture.md)**: 引擎管线、Rust-Python 桥接、事件驱动模型。
+*   🔧 **[内部机制](docs/zh/meta/internals.md)**: 零拷贝数据、撮合引擎、风控流程。
+
+### 参与贡献
+
 *   💻 **[贡献指南](CONTRIBUTING.md)**: 如何参与项目开发。
 
 ## 🧪 测试与质量保证

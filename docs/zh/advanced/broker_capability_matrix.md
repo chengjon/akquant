@@ -17,9 +17,9 @@
 | IB | Tick/Bar | Market/Limit/Stop/StopLimit | Yes | Yes | Yes | DAY/GTC/IOC | 首批优先 |
 | Oanda | Tick/Bar | Market/Limit/Stop | Yes | Yes | Yes | GTC/GTD/FOK/IOC | FX/CFD 语义 |
 | CCXT | Tick/Bar(交易所相关) | Market/Limit(主) | Yes | Yes | Yes | 交易所相关 | 需按交易所分层 |
-| CTP | Tick/Bar | Market/Limit/Stop(经映射) | Yes | Yes | Yes | 交易所相关 | 已有本地适配 |
-| MiniQMT | Tick/Bar | Market/Limit | Yes | Yes | Yes | DAY/GTC | 已有本地适配 |
-| PTrade | Bar(占位) | Market/Limit(占位) | Yes | 部分 | 部分 | DAY | 需增强 |
+| CTP | Tick/Bar | Market/Limit(经映射) | Yes | Yes | 否 | GFD/IOC/FAK/FOK(经映射) | 行情 + 下单/撤单/回报已实现；账户、持仓、当日成交与柜台查询恢复待补 |
+| MiniQMT | 否（占位） | Market/Limit(占位) | Yes(占位) | Yes(占位) | 部分（账户为构造参数，持仓为空） | DAY/GTC（占位） | 当前为纯内存占位实现，不连接真实 QMT |
+| PTrade | 否（占位） | Market/Limit(占位) | Yes(占位) | Yes(占位) | 部分（账户为构造参数，持仓为空） | DAY/GTC（占位） | 当前为纯内存占位实现，不连接真实柜台 |
 
 ## 统一错误规范
 
@@ -35,6 +35,8 @@
 - 下单后能收到状态更新与成交回报。
 - 撤单可追踪到最终状态。
 - 账户与持仓查询返回非空结构。
+
+> **注意**：以上是“生产接入的最小验收”，不是当前所有内置 broker 都已经满足的现状。以当前代码为准，CTP 还未满足“账户与持仓查询返回非空结构”，MiniQMT/PTrade 也还未满足“真实行情订阅成功并触发回调”。
 
 ## 关联代码入口
 

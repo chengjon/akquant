@@ -17,6 +17,7 @@
 - [03_parameter_optimization_advanced.py](./03_parameter_optimization_advanced.py): 参数优化进阶示例。
 - [04_mixed_assets.py](./04_mixed_assets.py): 混合资产回测示例。
 - [05_live_trading_ctp.py](./05_live_trading_ctp.py): CTP 实盘接口示例。
+- [06_live_trading_miniqmt.py](./06_live_trading_miniqmt.py): MiniQMT 占位/迁移草案示例；当前不代表真实 QMT 实盘已接通。
 - [06_complex_orders.py](./06_complex_orders.py): 复杂订单助手示例（`place_bracket_order` + 自动 OCO 联动）。
 - [07_option_test.py](./07_option_test.py): 期权回测示例。
 - [08_event_callbacks.py](./08_event_callbacks.py): 回调事件使用示例。

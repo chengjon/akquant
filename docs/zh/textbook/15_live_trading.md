@@ -37,10 +37,10 @@ python examples/textbook/ch15_strategy_loader.py
 `AKQuant` 通过适配器模式支持多种柜台接口：
 
 *   **CTP (China Trading Platform)**：期货市场标准接口，支持行情与交易链路。
-*   **MiniQMT**：面向本地 A 股交易生态的适配接口。
-*   **PTrade**：可接入券商量化终端的适配接口。
+*   **MiniQMT**：面向本地 A 股交易生态预留的接入点，当前仓库内置实现仍是占位网关。
+*   **PTrade**：面向券商量化终端预留的接入点，当前仓库内置实现仍是占位网关。
 
-在实盘模式下，`DataFeed` 切换为实时行情源，交易执行由对应 broker gateway 负责。
+在已接通真实链路的 broker 实现中，`DataFeed` 会切换为实时行情源，交易执行由对应 broker gateway 负责。以当前内置实现看，这条主链路主要对应 CTP。
 
 CTP 交易链路支持 `execution_semantics_mode`：
 
@@ -65,6 +65,18 @@ bundle = create_gateway_bundle(
 
 *   [自定义 Broker 注册](../advanced/custom_broker_registry.md)
 *   [自定义 Broker 生产接入清单](../advanced/custom_broker_production_checklist.md)
+*   [网关系统架构总览](../reference/gateway_system.md)
+*   [MiniQMT 现状与迁移方案](../reference/miniqmt_trading_impl.md)
+
+### 15.1.3 当前内置 Broker 实现边界
+
+下面是**按当前仓库代码**的能力边界，不是理想化目标能力：
+
+*   **CTP**：已具备行情、下单、撤单、订单/成交回报主链路；`execution_semantics_mode` 已实现。
+*   **CTP 缺口**：`query_account()` 当前返回 `None`，`query_positions()` 返回空列表，`sync_today_trades()` 也尚未接通真实柜台查询。
+*   **MiniQMT / PTrade**：当前仍是内存占位实现，交易状态和账户数据默认来自进程内存，不连接真实柜台。
+*   **MiniQMT 行情缺口**：当前占位网关不会自动把实时行情写入 `DataFeed`，若迁移真实 QMT 行情，必须补桥接层。
+*   **股票 broker_live 缺口**：`LiveRunner.run()` 当前固定调用 `engine.use_china_futures_market()`；若要把 MiniQMT/PTrade 迁成真实股票实盘路径，还需要补市场模型切换。
 
 ## 15.2 订单管理系统 (Order Management System, OMS)
 
@@ -94,6 +106,8 @@ OMS 是实盘交易的核心，负责维护订单的全生命周期状态。
 1.  发送撤单请求成功 ≠ `Cancelled`，必须等待 `OnRtnOrder(Cancelled)`。
 2.  收到报单错误 ≠ `Rejected`，应以最终 `OnRtnOrder` 状态为准。
 3.  `Filled` 以订单回报终态确认，成交回报用于补充成交明细与审计。
+
+同时要注意：当前 `LiveRunner` 的恢复线程虽然会周期性调用 `heartbeat()`、`sync_open_orders()`、`sync_today_trades()`，但这并不等于所有 broker 都已经实现了“真实柜台恢复同步”。是否真正查柜台，取决于具体 gateway 的实现。
 
 ## 15.3 风险管理系统 (Risk Management System, RMS)
 
