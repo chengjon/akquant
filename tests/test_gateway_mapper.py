@@ -48,3 +48,29 @@ def test_map_structured_events() -> None:
     assert order.status == UnifiedOrderStatus.FILLED
     assert trade.trade_id == "t1"
     assert report.status == UnifiedOrderStatus.FILLED
+
+
+def test_map_unknown_status_defaults_to_submitted() -> None:
+    """Unknown raw status should fall back to SUBMITTED."""
+    mapper = create_default_mapper()
+    assert mapper.map_order_status("weird_status") == UnifiedOrderStatus.SUBMITTED
+    assert mapper.map_order_status("") == UnifiedOrderStatus.SUBMITTED
+
+
+def test_map_trade_event_with_minimal_fields() -> None:
+    """Map trade event with only required fields, defaults for the rest."""
+    mapper = create_default_mapper()
+    trade = mapper.map_trade_event(
+        {
+            "trade_id": "t-min",
+            "broker_order_id": "b-min",
+            "client_order_id": "",
+            "symbol": "000001.SZ",
+            "side": "buy",
+            "quantity": 1.0,
+            "price": 10.0,
+            "timestamp_ns": 0,
+        }
+    )
+    assert trade.trade_id == "t-min"
+    assert trade.client_order_id == ""

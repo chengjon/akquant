@@ -6,14 +6,12 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
-
+from akquant.gateway.miniqmt import MiniQMTTraderGateway
 from akquant.gateway.models import (
     UnifiedOrderRequest,
     UnifiedOrderSnapshot,
     UnifiedOrderStatus,
 )
-from akquant.gateway.miniqmt import MiniQMTTraderGateway
-
 
 # ---------------------------------------------------------------------------
 # Symbol format conversion (does not require xtquant)
@@ -86,6 +84,24 @@ class TestXtquantImportFallback:
                 QMTXtQuantBridge(
                     qmt_path="/fake", account_id="test", gateway=MagicMock()
                 )
+
+    def test_bridge_init_emits_future_warning_when_available(self) -> None:
+        """QMTXtQuantBridge.__init__ should emit FutureWarning about migration."""
+        import akquant.gateway.miniqmt_xtquant as mod
+
+        if not mod.HAS_XTQUANT:
+            # Mock HAS_XTQUANT to True so we can test the warning path
+            with (
+                patch.object(mod, "HAS_XTQUANT", True),
+                patch.object(mod, "xtconstant", MagicMock()),
+                patch.object(mod, "StockAccount", MagicMock(return_value=None)),
+            ):
+                with pytest.warns(FutureWarning, match="scheduled for migration"):
+                    mod.QMTXtQuantBridge(
+                        qmt_path="/fake",
+                        account_id="test",
+                        gateway=MagicMock(),
+                    )
 
 
 # ---------------------------------------------------------------------------

@@ -923,3 +923,192 @@ def test_live_runner_emits_observable_broker_events_with_owner_strategy_id() -> 
     assert event["event_type"] == "order"
     assert event["owner_strategy_id"] == "beta"
     assert event["payload"]["client_order_id"] == "coid-obs-1"
+
+
+# ---------------------------------------------------------------------------
+# Market model selection (Change 1)
+# ---------------------------------------------------------------------------
+
+
+class TestMarketModelSelection:
+    """Test _select_market_model dispatches based on asset_class."""
+
+    def _make_runner_with_engine(self) -> tuple[Any, Any]:
+        runner = LiveRunner.__new__(LiveRunner)
+        methods_called: list[str] = []
+
+        class _DummyEngine:
+            def use_china_market(self) -> None:
+                methods_called.append("use_china_market")
+
+            def use_china_futures_market(self) -> None:
+                methods_called.append("use_china_futures_market")
+
+            def set_force_session_continuous(self, val: bool) -> None:
+                methods_called.append(f"set_force_session_continuous({val})")
+
+        engine = _DummyEngine()
+        runner.engine = cast(Any, engine)
+        return runner, methods_called
+
+    def test_selects_china_market_for_stock_broker(self) -> None:
+        """asset_class=stock should call use_china_market."""
+        from akquant.gateway.base import GatewayBundle
+
+        runner, called = self._make_runner_with_engine()
+        bundle = GatewayBundle(
+            market_gateway=None,
+            trader_gateway=None,
+            metadata={"broker": "miniqmt", "asset_class": "stock"},
+        )
+        runner._select_market_model(bundle)
+        assert "use_china_market" in called
+        assert "set_force_session_continuous(True)" in called
+
+    def test_selects_china_futures_market_for_futures_broker(self) -> None:
+        """asset_class=futures should call use_china_futures_market."""
+        from akquant.gateway.base import GatewayBundle
+
+        runner, called = self._make_runner_with_engine()
+        bundle = GatewayBundle(
+            market_gateway=None,
+            trader_gateway=None,
+            metadata={"broker": "ctp", "asset_class": "futures"},
+        )
+        runner._select_market_model(bundle)
+        assert "use_china_futures_market" in called
+        assert "set_force_session_continuous(True)" in called
+
+    def test_defaults_to_futures_when_asset_class_missing(self) -> None:
+        """Missing asset_class should default to futures."""
+        from akquant.gateway.base import GatewayBundle
+
+        runner, called = self._make_runner_with_engine()
+        bundle = GatewayBundle(
+            market_gateway=None,
+            trader_gateway=None,
+            metadata={"broker": "unknown"},
+        )
+        runner._select_market_model(bundle)
+        assert "use_china_futures_market" in called
+
+
+# ---------------------------------------------------------------------------
+# broker_options passthrough (Change 2)
+# ---------------------------------------------------------------------------
+
+
+class TestBrokerOptionsPassthrough:
+    """Test broker_options reaches UnifiedOrderRequest."""
+
+    def test_live_runner_submitter_passes_broker_options(self) -> None:
+        """submit_order(broker_options=...) should forward to place_order."""
+
+        class _CapturingGateway:
+            def __init__(self) -> None:
+                self.last_request: Any = None
+
+            def place_order(self, req: Any) -> str:
+                self.last_request = req
+                return f"b-{req.client_order_id}"
+
+        class _DummyStrategy:
+            def on_error(
+                self, error: Exception, source: str, payload: Any = None
+            ) -> None:
+                return None
+
+        runner = LiveRunner.__new__(LiveRunner)
+        runner.broker = "miniqmt"
+        runner._init_broker_bridge_state()
+        gateway = _CapturingGateway()
+        strategy = _DummyStrategy()
+        runner._install_broker_order_submitter(cast(Any, gateway), cast(Any, strategy))
+        strategy_any = cast(Any, strategy)
+
+        opts = {"retry_count": 3, "price_type": "best5"}
+        strategy_any.submit_order(
+            symbol="600000",
+            side="Buy",
+            quantity=100.0,
+            client_order_id="coid-opts-1",
+            broker_options=opts,
+        )
+
+        assert gateway.last_request is not None
+        assert gateway.last_request.broker_options == opts
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed parameter guard (Change 2)
+# ---------------------------------------------------------------------------
+
+
+class TestFailClosedParams:
+    """Test unsupported parameters raise RuntimeError."""
+
+    def _make_submitter(self) -> tuple[Any, Any]:
+        class _DummyTraderGateway:
+            def place_order(self, req: Any) -> str:
+                return f"b-{req.client_order_id}"
+
+        class _DummyStrategy:
+            def __init__(self) -> None:
+                self.errors: list[tuple[str, Any]] = []
+
+            def on_error(
+                self, error: Exception, source: str, payload: Any = None
+            ) -> None:
+                self.errors.append((source, payload))
+
+        runner = LiveRunner.__new__(LiveRunner)
+        runner.broker = "miniqmt"
+        runner._init_broker_bridge_state()
+        gateway = _DummyTraderGateway()
+        strategy = _DummyStrategy()
+        runner._install_broker_order_submitter(cast(Any, gateway), cast(Any, strategy))
+        return runner, cast(Any, strategy)
+
+    def test_submitter_raises_on_extra(self) -> None:
+        """Extra parameter must raise RuntimeError."""
+        _, strategy_any = self._make_submitter()
+        with pytest.raises(RuntimeError, match="extra broker fields"):
+            strategy_any.submit_order(
+                symbol="600000",
+                side="Buy",
+                quantity=100.0,
+                extra={"foo": "bar"},
+            )
+
+    def test_submitter_raises_on_trigger_price(self) -> None:
+        """trigger_price parameter must raise RuntimeError."""
+        _, strategy_any = self._make_submitter()
+        with pytest.raises(RuntimeError, match="trigger_price"):
+            strategy_any.submit_order(
+                symbol="600000",
+                side="Buy",
+                quantity=100.0,
+                trigger_price=10.0,
+            )
+
+    def test_submitter_raises_on_trailing_params(self) -> None:
+        """trail_offset and trail_reference_price must raise RuntimeError."""
+        _, strategy_any = self._make_submitter()
+        with pytest.raises(RuntimeError, match="trailing orders"):
+            strategy_any.submit_order(
+                symbol="600000",
+                side="Buy",
+                quantity=100.0,
+                trail_offset=0.5,
+            )
+
+    def test_submitter_raises_on_fill_policy_slippage_commission(self) -> None:
+        """fill_policy, slippage, commission must raise RuntimeError."""
+        _, strategy_any = self._make_submitter()
+        with pytest.raises(RuntimeError, match="fill_policy/slippage/commission"):
+            strategy_any.submit_order(
+                symbol="600000",
+                side="Buy",
+                quantity=100.0,
+                fill_policy="immediate",
+            )
