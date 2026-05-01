@@ -683,6 +683,13 @@ class LiveRunner:
                     "fill_policy/slippage/commission are not supported "
                     "in current broker_live mode"
                 )
+            _supported_order_types = {"market", "limit"}
+            if order_type.lower() not in _supported_order_types:
+                raise RuntimeError(
+                    f"order_type '{order_type}' is not supported in "
+                    f"current broker_live mode (supported: "
+                    f"{', '.join(sorted(_supported_order_types))})"
+                )
             request_client_order_id = client_order_id or self._next_client_order_id()
             owner_strategy_id = str(getattr(strategy, "_owner_strategy_id", "_default"))
             if not self.can_submit_client_order(request_client_order_id):
@@ -991,8 +998,18 @@ class LiveRunner:
             "broker_live": True,
             "client_order_id": True,
             "order_type": True,
+            "supported_order_types": ["Market", "Limit"],
             "time_in_force_str": True,
-            "broker_extra_fields": [],
+            "broker_options": True,
+            "unsupported_params": [
+                "extra",
+                "trigger_price",
+                "trail_offset",
+                "trail_reference_price",
+                "fill_policy",
+                "slippage",
+                "commission",
+            ],
         }
 
     def _notify_strategy_error(

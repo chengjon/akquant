@@ -1112,3 +1112,46 @@ class TestFailClosedParams:
                 quantity=100.0,
                 fill_policy="immediate",
             )
+
+    def test_submitter_raises_on_stop_trail_order_type(self) -> None:
+        """StopTrail order_type must raise RuntimeError."""
+        _, strategy_any = self._make_submitter()
+        with pytest.raises(RuntimeError, match="order_type.*not supported"):
+            strategy_any.submit_order(
+                symbol="600000",
+                side="Buy",
+                quantity=100.0,
+                order_type="StopTrail",
+            )
+
+
+class TestExecutionCapabilities:
+    """Test get_execution_capabilities reflects current support."""
+
+    def test_capabilities_reports_broker_options_support(self) -> None:
+        """Capabilities should list broker_options as supported."""
+
+        class _DummyTraderGateway:
+            def place_order(self, req: Any) -> str:
+                return f"b-{req.client_order_id}"
+
+        class _DummyStrategy:
+            def on_error(self, error: Exception, source: str, payload: Any = None) -> None:
+                return None
+
+        runner = LiveRunner.__new__(LiveRunner)
+        runner.broker = "miniqmt"
+        runner._init_broker_bridge_state()
+        gateway = _DummyTraderGateway()
+        strategy = _DummyStrategy()
+        runner._install_broker_order_submitter(
+            cast(Any, gateway), cast(Any, strategy)
+        )
+        strategy_any = cast(Any, strategy)
+        caps = strategy_any.get_execution_capabilities()
+
+        assert caps["broker_options"] is True
+        assert "Market" in caps["supported_order_types"]
+        assert "Limit" in caps["supported_order_types"]
+        assert "unsupported_params" in caps
+        assert "extra" in caps["unsupported_params"]
