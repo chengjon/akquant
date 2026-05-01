@@ -1,6 +1,7 @@
 # AKQuant 功能开发路线图
 
 > 生成日期：2026-05-01
+> 更新日期：2026-05-02
 > 基于当前工作树的代码扫描结果（包含 gateway 收口中的在途改动）
 
 ---
@@ -16,58 +17,53 @@
 
 ---
 
-## 2. P0 — Rust Engine Python 绑定补齐
+## 2. ~~P0 — Rust Engine Python 绑定补齐~~ ✅ 已完成
 
-43 个跳过的测试全部因为 Rust 引擎未暴露 Python API。这些测试的脚手架已就绪，只需在 Rust 侧完成绑定。
+> 原 43 个 skipped tests 全部通过（161 passed, 0 skipped）。所有策略级风控、多策略 Slot、优先级/预算、填充策略、手续费前缀方法已在 `src/engine/python.rs` 的 `#[pymethods]` 块中暴露。
 
-### 2.1 策略级风控绑定（19 项）
+### 2.1 策略级风控绑定（19 项） ✅
 
-**文件**: `src/engine/core.rs` → `src/lib.rs` 暴露到 Python
-
-| 方法 | 说明 |
+| 方法 | 状态 |
 |------|------|
-| `set_strategy_max_order_value_limits` | 策略级单笔限额 |
-| `set_strategy_max_order_size_limits` | 策略级单笔数量限额 |
-| `set_strategy_max_position_size_limits` | 策略级持仓限额 |
-| `set_strategy_max_daily_loss_limits` | 策略级日损失限额 |
-| `set_strategy_max_drawdown_limits` | 策略级回撤限额 |
-| `set_strategy_reduce_only_after_risk` | 策略级只减仓标记 |
-| `set_strategy_risk_cooldown_bars` | 策略级冷却 K 线数 |
+| `set_strategy_max_order_value_limits` | ✅ 已暴露 |
+| `set_strategy_max_order_size_limits` | ✅ 已暴露 |
+| `set_strategy_max_position_size_limits` | ✅ 已暴露 |
+| `set_strategy_max_daily_loss_limits` | ✅ 已暴露 |
+| `set_strategy_max_drawdown_limits` | ✅ 已暴露 |
+| `set_strategy_reduce_only_after_risk` | ✅ 已暴露 |
+| `set_strategy_risk_cooldown_bars` | ✅ 已暴露 |
 
-**测试文件**: `tests/test_engine.py` (19 个 skipped)
-**相关 Python 代码**: `python/akquant/risk.py` 的 `apply_risk_config()` 使用 `hasattr` 防御
+### 2.2 多策略 Slot 绑定（3 项） ✅
 
-### 2.2 多策略 Slot 绑定（3 项）
-
-| 方法 | 说明 |
+| 方法 | 状态 |
 |------|------|
-| `set_strategy_slots` | 注册策略 slot id 列表 |
-| `set_default_strategy_id` | 默认策略 id |
-| `set_strategy_for_slot` | 绑定策略实例到 slot |
+| `set_strategy_slots` | ✅ 已暴露 |
+| `set_default_strategy_id` | ✅ 已暴露 |
+| `set_strategy_for_slot` | ✅ 已暴露 |
 
-### 2.3 策略优先级与冷却（4 项）
+### 2.3 策略优先级与冷却（4 项） ✅
 
-| 方法 | 说明 |
+| 方法 | 状态 |
 |------|------|
-| `set_strategy_priorities` | 策略优先级 |
-| `set_strategy_risk_budget_limits` | 策略级风险预算 |
-| `set_portfolio_risk_budget_limit` | 组合级风险预算 |
-| `set_risk_budget_mode` / `set_risk_budget_reset_daily` | 预算模式与重置 |
+| `set_strategy_priorities` | ✅ 已暴露 |
+| `set_strategy_risk_budget_limits` | ✅ 已暴露 |
+| `set_portfolio_risk_budget_limit` | ✅ 已暴露 |
+| `set_risk_budget_mode` / `set_risk_budget_reset_daily` | ✅ 已暴露 |
 
-### 2.4 填充策略（2 项）
+### 2.4 填充策略（2 项） ✅
 
-| 方法 | 说明 |
+| 方法 | 状态 |
 |------|------|
-| `set_fill_policy` | 成交策略配置 |
-| 预留填充基差 `mid_quote` / `vwap_window` / `twap_window` | `python/akquant/backtest/engine.py:148,177` — 预留字符串但 raise NotImplementedError |
+| `set_fill_policy` / `get_fill_policy` | ✅ 已暴露 |
+| 预留填充基差 `mid_quote` / `vwap_window` / `twap_window` | 仍为 NotImplementedError（P1 填充策略实现） |
 
-### 2.5 期货/期权手续费（3 项）
+### 2.5 期货/期权手续费（3 项） ✅
 
-| 方法 | 说明 |
+| 方法 | 状态 |
 |------|------|
-| `set_futures_prefix_fee` | 期货手续费率 |
-| `set_options_prefix_fee` | 期权手续费率 |
-| `validate_futures_prefix` | 期货合约前缀校验 |
+| `set_futures_fee_rules_by_prefix` | ✅ 已暴露 |
+| `set_options_fee_rules_by_prefix` | ✅ 已暴露 |
+| `set_futures_validation_options_by_prefix` | ✅ 已暴露 |
 
 ---
 
@@ -256,18 +252,18 @@
 ## 11. 实施顺序建议
 
 ```
-Phase 1 (P0) ── Rust 绑定补齐
-  ├── 2.1 策略级风控绑定 (19 项)
-  ├── 2.2 多策略 Slot 绑定 (3 项)
-  ├── 2.3 优先级/冷却/预算 (4 项)
-  ├── 2.4 填充策略 (2 项)
-  └── 2.5 期货/期权手续费 (3 项)
+Phase 1 (P0) ── Rust 绑定补齐 ✅ 已完成
+  ├── 2.1 策略级风控绑定 (19 项) ✅
+  ├── 2.2 多策略 Slot 绑定 (3 项) ✅
+  ├── 2.3 优先级/冷却/预算 (4 项) ✅
+  ├── 2.4 填充策略 (2 项) ✅
+  └── 2.5 期货/期权手续费 (3 项) ✅
 
 Phase 2 (P1) ── Gateway 收口 + 资产类模块
-  ├── 4.1 Gateway 契约与边界收口
+  ├── 4.1 Gateway 契约与边界收口 ✅
   ├── 3.x futures/stock/option/fund Python 封装
   ├── 5.x 填充策略实现 (mid_quote/vwap/twap)
-  ├── 4.2 MiniQMT 行情网关
+  ├── 4.2 MiniQMT 行情网关 (依赖 miniQMT)
   ├── 4.3 MiniQMT HTTP Bridge 对接 (依赖 miniQMT Phase A)
   └── 4.4 PTrade 真实对接 (在 MiniQMT 之后)
 
@@ -283,15 +279,9 @@ Phase 4 (P3) ── 体验优化
 
 ---
 
-## 12. 跳过测试清单
+## 12. ~~跳过测试清单~~ ✅ 已全部通过
 
-以下测试因 Rust 绑定未暴露而跳过，完成后应取消跳过：
-
-```bash
-uv run pytest tests/test_engine.py -k "skip" --collect-only -q 2>/dev/null | grep "<"
-```
-
-总计 43 项，分布在 `tests/test_engine.py` 中。
+原 43 项 skipped tests 已全部通过（`tests/test_engine.py`: 161 passed, 0 skipped）。原因是已编译的二进制文件已包含所有 `#[pymethods]` 绑定。
 
 ---
 
