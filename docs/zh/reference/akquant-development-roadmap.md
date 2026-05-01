@@ -103,10 +103,10 @@
 - 现有测试已覆盖市场模型选择、`broker_options` 透传、`bridge_url` guard、`FutureWarning`、以及 `extra` / `trigger_price` / trailing / `fill_policy` / `slippage` / `commission` 的 fail-closed
 
 **剩余收口项**:
-- 在 broker_live 路径中补上对未支持 `order_type` 的显式限制，避免 `StopTrail` / `StopTrailLimit` 等值被下游误当成普通限价单
-- 校准 `get_execution_capabilities()` 的输出；当前 `broker_extra_fields` 仍为 `[]`，需要与 `broker_options` 支持现状及 fail-closed 边界保持一致
-- 同步 `docs/zh/reference/gateway_system.md`，补充 `UnifiedOrderRequest.broker_options` 字段说明，并把 gateway 当前状态写成“核心实现已落地，剩余测试/文档收口”
-- 统一 `docs/zh/reference/gateway-completion-and-boundary-plan.md`、路线图与实现现状，避免文档继续描述旧缺口为“当前现状”
+- ~~在 broker_live 路径中补上对未支持 `order_type` 的显式限制~~ ✅ (55dc386)
+- ~~校准 `get_execution_capabilities()` 的输出~~ ✅ (55dc386)
+- ~~同步 `docs/zh/reference/gateway_system.md`~~ ✅ 补充 `broker_options` 字段与参数边界表
+- ~~统一 `docs/zh/reference/gateway-completion-and-boundary-plan.md`、路线图与实现现状~~ ✅
 
 **相关文件**:
 - `python/akquant/live.py`

@@ -95,7 +95,7 @@ class GatewayBundle:
 |------|------|----------|
 | `UnifiedOrderStatus` | 订单生命周期枚举 | `NEW`, `SUBMITTED`, `PARTIALLY_FILLED`, `FILLED`, `CANCELLED`, `REJECTED` |
 | `UnifiedErrorType` | 错误分类枚举 | `RETRYABLE`, `NON_RETRYABLE`, `RISK_REJECTED` |
-| `UnifiedOrderRequest` | 下单请求 | `client_order_id`, `symbol`, `side`, `quantity`, `price`, `order_type`, `time_in_force` |
+| `UnifiedOrderRequest` | 下单请求 | `client_order_id`, `symbol`, `side`, `quantity`, `price`, `order_type`, `time_in_force`, `broker_options` |
 | `UnifiedOrderSnapshot` | 订单状态快照 | `client_order_id`, `broker_order_id`, `status`, `filled_quantity`, `avg_fill_price`, `reject_reason` |
 | `UnifiedTrade` | 成交记录 | `trade_id`, `broker_order_id`, `symbol`, `side`, `quantity`, `price` |
 | `UnifiedExecutionReport` | 执行报告 | `broker_order_id`, `status`, `filled_quantity`, `avg_fill_price` |
@@ -757,4 +757,22 @@ MiniQMT 和 PTrade 目前为内存中的占位实现。它们实现了统一 `Tr
 | **可靠性** | 已有心跳检测、事件去重和本地状态回放；broker 侧查询恢复仍待补 |
 | **执行语义** | strict（精确）/ compatible（兼容）两种模式 |
 | **扩展性** | registry 注册系统支持运行时添加自定义券商 |
+
+### broker_live 参数边界
+
+`broker_live` 模式下的 `submit_order` 支持以下参数：
+
+| 参数 | 状态 |
+|------|------|
+| `symbol`, `side`, `quantity`, `price` | ✅ 透传至 `UnifiedOrderRequest` |
+| `order_type` | ✅ 仅支持 `Market` / `Limit`，其余 raise RuntimeError |
+| `time_in_force` | ✅ 透传 |
+| `broker_options` | ✅ 透传至 `UnifiedOrderRequest.broker_options` |
+| `client_order_id` | ✅ 自动生成或透传 |
+| `extra` | ❌ fail-closed，raise RuntimeError |
+| `trigger_price` | ❌ fail-closed，raise RuntimeError |
+| `trail_offset` / `trail_reference_price` | ❌ fail-closed，raise RuntimeError |
+| `fill_policy` / `slippage` / `commission` | ❌ fail-closed，raise RuntimeError |
+
+市场模型根据 `GatewayBundle.metadata["asset_class"]` 自动选择：`stock` → `use_china_market()`，`futures` → `use_china_futures_market()`。
 | **切换成本** | `trading_mode` 一行切换回测/模拟/实盘 |
