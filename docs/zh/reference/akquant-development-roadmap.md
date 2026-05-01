@@ -90,19 +90,19 @@
 
 ## 4. P1 — Gateway 完善
 
-### 4.1 Gateway 契约与边界收口（进行中）
+### 4.1 Gateway 契约与边界收口（当前工作树已基本完成，待合并）
 
 **当前状态**:
 - `factory.py` 已按 broker metadata 区分 `asset_class`，`LiveRunner.run()` 会根据 `GatewayBundle.metadata` 选择 `use_china_market()` / `use_china_futures_market()`
 - `UnifiedOrderRequest` 已增加 `broker_options` 字段，broker_live 注入的 `submit_order` 也已补齐 `broker_options`、`slippage`、`commission` 等公开参数入口，避免直接 `TypeError`
 - `bridge_url` 入口已预留并明确 `raise NotImplementedError`，`QMTXtQuantBridge` 构造时会发 `FutureWarning` 标记迁移边界
-- 现有测试已覆盖市场模型选择、`broker_options` 透传、`bridge_url` guard、`FutureWarning`、以及 `extra` / `trigger_price` / trailing / `fill_policy` / `slippage` / `commission` 的 fail-closed
+- `broker_live` 已对未支持 `order_type` 做显式限制；`get_execution_capabilities()` 也已补充 `supported_order_types`、`broker_options`、`unsupported_params`
+- 现有测试已覆盖市场模型选择、`broker_options` 透传、`bridge_url` guard、`FutureWarning`、`order_type` 限制，以及 `extra` / `trigger_price` / trailing / `fill_policy` / `slippage` / `commission` 的 fail-closed
 
-**剩余收口项**:
-- ~~在 broker_live 路径中补上对未支持 `order_type` 的显式限制~~ ✅ (55dc386)
-- ~~校准 `get_execution_capabilities()` 的输出~~ ✅ (55dc386)
-- ~~同步 `docs/zh/reference/gateway_system.md`~~ ✅ 补充 `broker_options` 字段与参数边界表
-- ~~统一 `docs/zh/reference/gateway-completion-and-boundary-plan.md`、路线图与实现现状~~ ✅
+**后续动作**:
+- 将当前工作树中的 gateway 收口改动合并到主线
+- 合并后把 4.1 从“活跃收口项”降为“已完成里程碑”，避免路线图继续把它当成主要缺口
+- 后续若 broker_live 新增真实高级订单能力，再单列新 roadmap 项，不复用当前 fail-closed 收口项
 
 **相关文件**:
 - `python/akquant/live.py`
@@ -154,7 +154,7 @@
 - 行情 + 交易双通道
 - 认证与重连机制
 
-**备注**: 依赖 PTrade 券商 SDK 可用性，执行顺序晚于 4.1/4.2/4.3
+**备注**: 依赖 PTrade 券商 SDK 可用性，执行顺序晚于 4.2/4.3
 
 ---
 
