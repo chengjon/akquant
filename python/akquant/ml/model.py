@@ -303,3 +303,97 @@ class PyTorchAdapter(QuantModel):
         import torch
 
         self.network.load_state_dict(torch.load(path))
+
+
+class LightGBMAdapter(QuantModel):
+    """Adapter for LightGBM models."""
+
+    def __init__(
+        self,
+        params: dict[str, Any] | None = None,
+        num_boost_round: int = 100,
+    ) -> None:
+        """
+        Initialize the LightGBM adapter.
+
+        Args:
+            params: LightGBM parameters dict.
+            num_boost_round: Number of boosting iterations.
+        """
+        super().__init__()
+        self.params = params or {"objective": "regression", "metric": "rmse"}
+        self.num_boost_round = num_boost_round
+        self.model: Any = None
+
+    def fit(self, X: DataType, y: DataType) -> None:
+        """Train the LightGBM model."""
+        import lightgbm as lgb
+
+        if self.validation_config and self.validation_config.verbose:
+            print("Training LightGBM Model")
+
+        train_data = lgb.Dataset(X, label=y)
+        self.model = lgb.train(self.params, train_data, self.num_boost_round)
+
+    def predict(self, X: DataType) -> np.ndarray:
+        """Predict using the LightGBM model."""
+        return self.model.predict(X)
+
+    def save(self, path: str) -> None:
+        """Save the LightGBM model."""
+        self.model.save_model(path)
+
+    def load(self, path: str) -> None:
+        """Load the LightGBM model."""
+        import lightgbm as lgb
+
+        self.model = lgb.Booster(model_file=path)
+
+
+class XGBoostAdapter(QuantModel):
+    """Adapter for XGBoost models."""
+
+    def __init__(
+        self,
+        params: dict[str, Any] | None = None,
+        num_boost_round: int = 100,
+    ) -> None:
+        """
+        Initialize the XGBoost adapter.
+
+        Args:
+            params: XGBoost parameters dict.
+            num_boost_round: Number of boosting iterations.
+        """
+        super().__init__()
+        self.params = params or {"objective": "reg:squarederror"}
+        self.num_boost_round = num_boost_round
+        self.model: Any = None
+
+    def fit(self, X: DataType, y: DataType) -> None:
+        """Train the XGBoost model."""
+        import xgboost as xgb
+
+        if self.validation_config and self.validation_config.verbose:
+            print("Training XGBoost Model")
+
+        dtrain = xgb.DMatrix(X, label=y)
+        self.model = xgb.train(self.params, dtrain, self.num_boost_round)
+
+    def predict(self, X: DataType) -> np.ndarray:
+        """Predict using the XGBoost model."""
+        import xgboost as xgb
+
+        dtest = xgb.DMatrix(X)
+        return self.model.predict(dtest)
+
+    def save(self, path: str) -> None:
+        """Save the XGBoost model."""
+        self.model.save_model(path)
+
+    def load(self, path: str) -> None:
+        """Load the XGBoost model."""
+        import xgboost as xgb
+
+        self.model = xgb.Booster()
+        self.model.load_model(path)
