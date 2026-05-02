@@ -14,6 +14,7 @@ from .analysis import (
     plot_trades_distribution,
     plot_yearly_returns,
 )
+from .comparison import plot_comparison
 from .dashboard import plot_dashboard
 from .strategy import plot_strategy
 from .utils import check_plotly
@@ -396,6 +397,8 @@ HTML_TEMPLATE = """
         <div class="metrics-grid">
             {metrics_html}
         </div>
+
+        {comparison_section_html}
 
         <div class="section-title">权益与回撤 (Equity & Drawdown)</div>
         <div class="chart-container">
@@ -1876,6 +1879,8 @@ def plot_report(
     include_trade_kline: bool = True,
     benchmark: Optional[Union[str, pd.Series]] = None,
     curve_freq: str = "raw",
+    comparison_results: Optional[list[Any]] = None,
+    comparison_labels: Optional[list[str]] = None,
 ) -> None:
     """
     生成类似 QuantStats 的整合版 HTML 报告 (中文优化版).
@@ -1911,6 +1916,27 @@ def plot_report(
         result, compact_currency=compact_currency
     )
 
+    comparison_section_html = ""
+    if comparison_results:
+        all_results = [result] + list(comparison_results)
+        default_labels = [f"Strategy {i + 1}" for i in range(len(all_results))]
+        all_labels = comparison_labels or default_labels
+        if len(all_labels) != len(all_results):
+            all_labels = default_labels
+        fig_comparison = plot_comparison(
+            all_results, labels=all_labels, theme="light", show=False,
+        )
+        if fig_comparison:
+            cmp_config = {"responsive": True}
+            cmp_html = fig_comparison.to_html(
+                full_html=False, include_plotlyjs=False, config=cmp_config,
+            )
+            comparison_section_html = (
+                '<div class="section-title">'
+                '策略对比 (Strategy Comparison)</div>'
+                f'<div class="chart-container">{cmp_html}</div>'
+            )
+
     # 4. Assemble HTML
     html_content = HTML_TEMPLATE.format(
         title=title,
@@ -1923,6 +1949,7 @@ def plot_report(
         initial_cash=summary_context["initial_cash"],
         final_equity=summary_context["final_equity"],
         metrics_html=metrics_html,
+        comparison_section_html=comparison_section_html,
         dashboard_html=chart_sections["dashboard_html"],
         yearly_returns_html=chart_sections["yearly_returns_html"],
         returns_dist_html=chart_sections["returns_dist_html"],

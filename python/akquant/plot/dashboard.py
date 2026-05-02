@@ -230,13 +230,73 @@ def plot_dashboard(
     grid_color = get_color(theme, "grid_color")
 
     fig.update_layout(
-        title=dict(text=title, y=0.98),  # Adjust main title position
+        title=dict(text=title, y=0.98),
         height=800,
         template="plotly_white" if theme == "light" else "plotly_dark",
         plot_bgcolor=bg_color,
         paper_bgcolor=bg_color,
         font=dict(color=text_color),
-        margin=dict(t=80, b=50, l=50, r=50),  # Increase top margin for titles
+        margin=dict(t=80, b=50, l=50, r=50),
+        xaxis1=dict(
+            rangeselector=dict(
+                buttons=[
+                    dict(count=1, label="1M", step="month", stepmode="backward"),
+                    dict(count=3, label="3M", step="month", stepmode="backward"),
+                    dict(count=6, label="6M", step="month", stepmode="backward"),
+                    dict(count=1, label="1Y", step="year", stepmode="backward"),
+                    dict(label="ALL", step="all"),
+                ],
+                x=0.0,
+                xanchor="left",
+                y=1.12,
+                yanchor="bottom",
+                bgcolor=bg_color,
+                font=dict(size=11),
+            ),
+        ),
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="left",
+                x=1.0,
+                xanchor="right",
+                y=1.12,
+                yanchor="bottom",
+                bgcolor=bg_color,
+                font=dict(size=11),
+                buttons=[
+                    dict(
+                        label="全部显示",
+                        method="update",
+                        args=[{"visible": [True] * len(fig.data)}],
+                    ),
+                    dict(
+                        label="仅权益",
+                        method="update",
+                        args=[
+                            {
+                                "visible": [
+                                    True if i == 0 else False
+                                    for i in range(len(fig.data))
+                                ]
+                            }
+                        ],
+                    ),
+                    dict(
+                        label="仅回撤",
+                        method="update",
+                        args=[
+                            {
+                                "visible": [
+                                    True if i == 1 else False
+                                    for i in range(len(fig.data))
+                                ]
+                            }
+                        ],
+                    ),
+                ],
+            )
+        ],
     )
 
     # Manually adjust subplot titles by adding annotations padding if needed,
