@@ -67,24 +67,20 @@
 
 ---
 
-## 3. P1 — 资产类模块 Python 封装
+## 3. ~~P1 — 资产类模块 Python 封装~~ ✅ 已完成
 
-### 3.1 空模块填充
+> 四个资产类模块已全部实现，含 41 个单元测试。公式与 Rust 侧 `src/market/` 和 `src/margin/calculator.rs` 一致。
 
-以下四个模块目前只有空 `__init__.py`，无任何 Python 层逻辑。Rust 侧已有对应功能（golden 测试中 `futures_margin`、`option_basic` 通过）。
+### 3.1 已实现模块
 
-| 模块 | 路径 | 需要封装的能力 |
+| 模块 | 路径 | 已封装的能力 |
 |------|------|----------------|
-| `futures` | `python/akquant/futures/` | 保证金计算、合约乘数、交割规则、结算价 |
-| `stock` | `python/akquant/stock/` | T+1 规则、涨跌停、ST 标记、板块分类 |
-| `option` | `python/akquant/option/` | Greeks 计算、行权规则、波动率曲面 |
-| `fund` | `python/akquant/fund/` | NAV 计算、份额申购赎回规则 |
+| `futures` | `python/akquant/futures/` | `FuturesContract`, `FuturesFeeConfig`, `calculate_commission`, `calculate_margin`, `calculate_notional`, `resolve_commission_rate`, `is_t_plus_zero` |
+| `stock` | `python/akquant/stock/` | `StockInfo`, `StockFeeConfig`, `calculate_commission`（含印花税）, `is_t_plus_one` |
+| `option` | `python/akquant/option/` | `OptionContract`, `OptionFeeConfig`, `calculate_commission`, `calculate_option_margin`（long=0 / short 公式）, `is_t_plus_zero` |
+| `fund` | `python/akquant/fund/` | `FundInfo`, `FundFeeConfig`, `calculate_commission`, `is_t_plus_one` |
 
-### 3.2 实施路径
-
-1. 先从 `futures` 开始（有 golden 测试参照）
-2. 每个模块结构：`__init__.py` + `models.py`（数据类）+ `rules.py`（交易规则）+ `queries.py`（查询接口）
-3. 封装 Rust 引擎已暴露的 API，不重新实现
+每个模块结构：`__init__.py` + `models.py`（数据类）+ `rules.py`（交易规则）+ `queries.py`（计算接口）
 
 ---
 
@@ -174,18 +170,18 @@
 
 ---
 
-## 6. P2 — 仓位管理器扩展
+## 6. ~~P2 — 仓位管理器扩展~~ ✅ 已完成
 
 **文件**: `python/akquant/sizer.py`
 
 **已有**: `FixedSize`、`PercentSizer`、`AllInSizer`
 
-**可扩展**:
+**已扩展**:
 
 | Sizer | 说明 |
 |-------|------|
 | `ATRSizer` | 基于 ATR 波动率动态调仓 |
-| `KellySizer` | Kelly 公式仓位计算 |
+| `KellySizer` | Kelly 公式仓位计算（默认 half-Kelly） |
 | `RiskParitySizer` | 风险平价分配 |
 | `EqualWeightSizer` | 等权分配（多标的场景） |
 
@@ -206,35 +202,36 @@
 
 ---
 
-## 8. P2 — Indicator 增量更新
+## 8. ~~P2 — Indicator 增量更新~~ ✅ 已完成
 
 **文件**: `python/akquant/indicator.py`
 
-**当前**: 仅 `SMA` 子类实现了 `update()` 增量更新，其他指标未实现。
-
-**需要实现**:
-- `EMA.update()` — 指数移动平均增量公式
-- `RSI.update()` — RSI 增量更新
-- `MACD.update()` — MACD 增量更新
-- 基类 `Indicator.update()` 保留 NotImplementedError，子类各自实现
+**已实现**:
+- `EMA.update()` — alpha=2/(window+1) 指数移动平均增量公式
+- `RSI.update()` — 平滑涨跌均值增量更新，window+1 个值后返回有效值
+- `MACD.update()` — fast/slow EMA 增量 + signal line + histogram
+- 所有指标支持 `__getstate__`/`__setstate__` pickle 序列化
 
 ---
 
-## 9. P2 — ML 适配器扩展
+## 9. ~~P2 — ML 适配器扩展~~ ✅ 部分完成
 
 **文件**: `python/akquant/ml/model.py`
 
 **已有**: `SklearnAdapter`、`PyTorchAdapter`
 
-**可扩展**:
+**已扩展**:
 
 | 适配器 | 说明 |
 |--------|------|
-| `LightGBMAdapter` | LightGBM 原生 API（非 sklearn wrapper） |
-| `XGBoostAdapter` | XGBoost 原生 API |
-| `TensorFlowAdapter` | TensorFlow/Keras 模型 |
+| `LightGBMAdapter` | LightGBM 原生 API（lazy import），save_model/load_model |
+| `XGBoostAdapter` | XGBoost 原生 API（DMatrix），save_model/load_model |
 
-**备注**: XGBoost/LightGBM 的 sklearn 兼容接口已可通过 `SklearnAdapter` 使用，原生适配器可提供更好的训练控制
+**未扩展**:
+
+| 适配器 | 说明 |
+|--------|------|
+| `TensorFlowAdapter` | TensorFlow/Keras 模型 |
 
 ---
 
@@ -261,17 +258,17 @@ Phase 1 (P0) ── Rust 绑定补齐 ✅ 已完成
 
 Phase 2 (P1) ── Gateway 收口 + 资产类模块
   ├── 4.1 Gateway 契约与边界收口 ✅
-  ├── 3.x futures/stock/option/fund Python 封装
-  ├── 5.x 填充策略实现 (mid_quote/vwap/twap)
+  ├── 3.x futures/stock/option/fund Python 封装 ✅
+  ├── 5.x 填充策略实现 (mid_quote/vwap/twap) — 待 Rust Engine 支持
   ├── 4.2 MiniQMT 行情网关 (依赖 miniQMT)
   ├── 4.3 MiniQMT HTTP Bridge 对接 (依赖 miniQMT Phase A)
   └── 4.4 PTrade 真实对接 (在 MiniQMT 之后)
 
 Phase 3 (P2) ── 扩展能力
-  ├── 6.x Sizer 扩展 (ATR/Kelly/RiskParity)
-  ├── 7.x TA-Lib 指标扩展
-  ├── 8.x Indicator 增量更新
-  └── 9.x ML 适配器扩展
+  ├── 6.x Sizer 扩展 (ATR/Kelly/RiskParity) ✅
+  ├── 7.x TA-Lib 指标扩展 — 待 Rust 实现
+  ├── 8.x Indicator 增量更新 ✅
+  └── 9.x ML 适配器扩展 (LightGBM/XGBoost) ✅
 
 Phase 4 (P3) ── 体验优化
   └── 10.x 可视化增强
