@@ -229,6 +229,9 @@ pub enum PriceBasis {
     Close,
     Ohlc4,
     Hl2,
+    MidQuote,
+    Typical,
+    VwapBar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -297,10 +300,16 @@ impl ExecutionPolicyCore {
             (PriceBasis::Close, 1) => ExecutionMode::NextClose,
             (PriceBasis::Ohlc4, 1) => ExecutionMode::NextAverage,
             (PriceBasis::Hl2, 1) => ExecutionMode::NextHighLowMid,
+            (PriceBasis::MidQuote, 1) => ExecutionMode::NextHighLowMid,
+            (PriceBasis::Typical, 1) => ExecutionMode::NextAverage,
+            (PriceBasis::VwapBar, 1) => ExecutionMode::NextAverage,
             (PriceBasis::Open, _) => ExecutionMode::NextOpen,
             (PriceBasis::Close, _) => ExecutionMode::CurrentClose,
             (PriceBasis::Ohlc4, _) => ExecutionMode::NextAverage,
             (PriceBasis::Hl2, _) => ExecutionMode::NextHighLowMid,
+            (PriceBasis::MidQuote, _) => ExecutionMode::NextHighLowMid,
+            (PriceBasis::Typical, _) => ExecutionMode::NextAverage,
+            (PriceBasis::VwapBar, _) => ExecutionMode::NextAverage,
         }
     }
 

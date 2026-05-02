@@ -184,12 +184,31 @@ impl CommonMatcher {
                         (bar.open + bar.high + bar.low + bar.close) / Decimal::from(4)
                     }
                     (PriceBasis::Hl2, 1) => (bar.high + bar.low) / Decimal::from(2),
+                    (PriceBasis::MidQuote, 1) => (bar.high + bar.low) / Decimal::from(2),
+                    (PriceBasis::Typical, 1) => {
+                        (bar.high + bar.low + bar.close) / Decimal::from(3)
+                    }
+                    (PriceBasis::VwapBar, 1) => {
+                        let typical = (bar.high + bar.low + bar.close) / Decimal::from(3);
+                        if bar.volume > Decimal::ZERO {
+                            typical * bar.volume / bar.volume
+                        } else {
+                            typical
+                        }
+                    }
                     (PriceBasis::Open, _) => bar.open,
                     (PriceBasis::Close, _) => bar.close,
                     (PriceBasis::Ohlc4, _) => {
                         (bar.open + bar.high + bar.low + bar.close) / Decimal::from(4)
                     }
                     (PriceBasis::Hl2, _) => (bar.high + bar.low) / Decimal::from(2),
+                    (PriceBasis::MidQuote, _) => (bar.high + bar.low) / Decimal::from(2),
+                    (PriceBasis::Typical, _) => {
+                        (bar.high + bar.low + bar.close) / Decimal::from(3)
+                    }
+                    (PriceBasis::VwapBar, _) => {
+                        (bar.high + bar.low + bar.close) / Decimal::from(3)
+                    }
                 };
 
                 match order.order_type {

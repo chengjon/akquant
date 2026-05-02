@@ -698,9 +698,12 @@ impl Engine {
             "close" => PriceBasis::Close,
             "ohlc4" => PriceBasis::Ohlc4,
             "hl2" => PriceBasis::Hl2,
+            "mid_quote" => PriceBasis::MidQuote,
+            "typical" => PriceBasis::Typical,
+            "vwap_bar" => PriceBasis::VwapBar,
             _ => {
                 return Err(PyValueError::new_err(format!(
-                    "Unknown price_basis '{}', expected one of: open, close, ohlc4, hl2",
+                    "Unknown price_basis '{}', expected one of: open, close, ohlc4, hl2, mid_quote, typical, vwap_bar",
                     price_basis
                 )));
             }
@@ -720,9 +723,16 @@ impl Engine {
             }
         };
         match basis {
-            PriceBasis::Open | PriceBasis::Ohlc4 | PriceBasis::Hl2 if bar_offset != 1 => {
+            PriceBasis::Open
+            | PriceBasis::Ohlc4
+            | PriceBasis::Hl2
+            | PriceBasis::MidQuote
+            | PriceBasis::Typical
+            | PriceBasis::VwapBar
+                if bar_offset != 1 =>
+            {
                 return Err(PyValueError::new_err(
-                    "price_basis=open|ohlc4|hl2 requires bar_offset=1",
+                    "price_basis=open|ohlc4|hl2|mid_quote|typical|vwap_bar requires bar_offset=1",
                 ));
             }
             _ => {}
@@ -743,6 +753,9 @@ impl Engine {
             PriceBasis::Close => "close",
             PriceBasis::Ohlc4 => "ohlc4",
             PriceBasis::Hl2 => "hl2",
+            PriceBasis::MidQuote => "mid_quote",
+            PriceBasis::Typical => "typical",
+            PriceBasis::VwapBar => "vwap_bar",
         }
         .to_string();
         (
