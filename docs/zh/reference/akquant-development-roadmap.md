@@ -154,19 +154,22 @@
 
 ---
 
-## 5. P1 — 回测引擎填充策略
+## 5. ~~P1 — 回测引擎填充策略~~ ✅ 部分完成
 
-### 5.1 预留填充基差实现
+### 5.1 已实现填充基差
 
-**文件**: `python/akquant/backtest/engine.py:148,177`
+**文件**: `src/model/types.rs`, `src/execution/common.rs`, `src/engine/python.rs`
 
-| 填充基差 | 说明 | 实施建议 |
-|----------|------|----------|
-| `mid_quote` | 使用买卖中间价成交 | 需要买卖盘数据支持 |
-| `vwap_window` | 时间窗口加权平均价 | 需要分笔或分钟数据 |
-| `twap_window` | 时间窗口等权平均价 | 按时间切片拆单 |
-
-**前置条件**: Rust 侧 Engine 支持 `set_fill_policy` 绑定
+| 填充基差 | 说明 | 状态 |
+|----------|------|------|
+| `open` | 开盘价成交 | ✅ 已有 |
+| `close` | 收盘价成交 | ✅ 已有 |
+| `ohlc4` | OHLC 均价 | ✅ 已有 |
+| `hl2` | (H+L)/2 | ✅ 已有 |
+| `mid_quote` | (H+L)/2 中间价 | ✅ 新增 |
+| `typical` | (H+L+C)/3 典型价 | ✅ 新增 |
+| `vwap_bar` | 单 bar VWAP 近似 | ✅ 新增 |
+| `twap` | 多 bar 时间加权拆单 | 待实现（需 ExecutionProcessor 架构改动） |
 
 ---
 
@@ -235,14 +238,19 @@
 
 ---
 
-## 10. P3 — 可视化增强
+## 10. ~~P3 — 可视化增强~~ ✅ 部分完成
 
 **文件**: `python/akquant/plot/`
 
-**可扩展**:
+**已实现**:
+- `plot_comparison()` 策略对比面板（多策略权益/回撤/指标叠加）
+- Dashboard `rangeselector`（1M/3M/6M/1Y/ALL）和 `updatemenus` 显示控制
+- Report 模板支持 `comparison_results` 参数
+
+**可继续扩展**:
 - 实时交易仪表盘（WebSocket 推送）
 - 交互式回测浏览器（代替静态 HTML）
-- 策略对比面板（多策略叠加展示）
+- Jupyter FigureWidget 集成
 
 ---
 
