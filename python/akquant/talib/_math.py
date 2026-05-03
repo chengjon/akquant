@@ -23,6 +23,9 @@ from ..akquant import DIV as RustDIV
 from ..akquant import EXP as RustEXP
 from ..akquant import EXPM1 as RustEXPM1
 from ..akquant import FLOOR as RustFLOOR
+from ..akquant import HT_DCPERIOD as RustHT_DCPERIOD
+from ..akquant import HT_DCPHASE as RustHT_DCPHASE
+from ..akquant import HT_PHASOR as RustHT_PHASOR
 from ..akquant import HT_TRENDLINE as RustHT_TRENDLINE
 from ..akquant import INV_SQRT as RustINV_SQRT
 from ..akquant import LN as RustLN
@@ -46,6 +49,7 @@ from ..akquant import TANH as RustTANH
 from ._dispatch import (
     _batch_call,
     _run_rust_dual_series,
+    _run_rust_single_pair_series,
     _run_rust_single_series,
 )
 from .backend import resolve_backend
@@ -716,4 +720,63 @@ def HT_TRENDLINE(
         ),
     )
     return finalize_output(out, as_series=as_series)
+
+
+def HT_DCPERIOD(
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Hilbert Transform - Dominant Cycle Period."""
+    backend_key = resolve_backend(backend)
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustHT_DCPERIOD()
+        out = _run_rust_single_series(close_series, indicator.update)
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(np.nan, index=close_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def HT_DCPHASE(
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Hilbert Transform - Dominant Cycle Phase (degrees, 0-360)."""
+    backend_key = resolve_backend(backend)
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustHT_DCPHASE()
+        out = _run_rust_single_series(close_series, indicator.update)
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(np.nan, index=close_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def HT_PHASOR(
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> tuple[pd.Series | object, pd.Series | object]:
+    """Hilbert Transform - Phasor Components (in_phase, quadrature)."""
+    backend_key = resolve_backend(backend)
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustHT_PHASOR()
+        in_phase_s, quadrature_s = _run_rust_single_pair_series(
+            close_series, indicator.update
+        )
+        return (
+            finalize_output(in_phase_s, as_series=as_series),
+            finalize_output(quadrature_s, as_series=as_series),
+        )
+    nan_s = pd.Series(np.nan, index=close_series.index)
+    return (
+        finalize_output(nan_s, as_series=as_series),
+        finalize_output(nan_s.copy(), as_series=as_series),
+    )
 

@@ -1,12 +1,14 @@
 use pyo3::prelude::*;
 
 mod candlestick;
+mod hilbert;
 mod momentum;
 mod moving_average;
 mod trend;
 mod volatility;
 mod volume;
 
+pub use hilbert::{HT_DCPERIOD, HT_DCPHASE, HT_PHASOR};
 pub use momentum::{CMO, MOM, ROC, ROCP, ROCR, ROCR100, RSI, WILLR};
 pub use moving_average::{
     ABS, ACOS, ADD, APO, ASIN, ATAN, AVGDEV, CEIL, CLAMP01, CLIP, COS, COSH, CUBE, DEG2RAD, DEMA,
@@ -26,6 +28,7 @@ pub use volume::{AD, ADOSC, BOP, MFI, OBV};
 
 pub fn register_py_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
     candlestick::register_classes(m)?;
+    hilbert::register_classes(m)?;
     moving_average::register_classes(m)?;
     momentum::register_classes(m)?;
     trend::register_classes(m)?;
