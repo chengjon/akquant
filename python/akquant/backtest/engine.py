@@ -207,10 +207,10 @@ def run_backtest(
     :param slippage: 滑点 (默认 0.0)
     :param volume_limit_pct: 成交量限制比例 (默认 0.25)
     :param fill_policy: 统一成交语义配置（可选），格式:
-        {"price_basis": "open|close|ohlc4|hl2",
+        {"price_basis": "open|close|ohlc4|hl2|twap_window",
          "bar_offset": "0|1",
          "temporal": "same_cycle|next_event"}。
-        预留未实现 price_basis: mid_quote、vwap_window、twap_window。
+        预留未实现 price_basis: mid_quote、vwap_window。
     :param legacy_execution_policy_compat: 已移除，不再支持。
     :param strict_strategy_params: 是否严格校验策略构造参数。True 时若参数不匹配将抛错；
                                    False 时保持兼容行为（忽略未知参数并在失败时
@@ -1434,10 +1434,12 @@ def run_backtest(
         raise RuntimeError(
             "Engine binary does not expose set_fill_policy; please rebuild bindings"
         )
+    twap_bars_val = resolved_policy.twap_bars
     cast(Any, engine).set_fill_policy(
         resolved_policy.price_basis,
         resolved_policy.bar_offset,
         resolved_policy.temporal,
+        twap_bars_val,
     )
     default_fill_policy: FillPolicy = {
         "price_basis": resolved_policy.price_basis,
@@ -2861,10 +2863,12 @@ def run_warm_start(
             raise RuntimeError(
                 "Engine binary does not expose set_fill_policy; please rebuild bindings"
             )
+        twap_bars_ws = resolved_policy_warm_start.twap_bars
         cast(Any, engine).set_fill_policy(
             resolved_policy_warm_start.price_basis,
             resolved_policy_warm_start.bar_offset,
             resolved_policy_warm_start.temporal,
+            twap_bars_ws,
         )
     if stream_on_event is not None:
         cast(Any, engine).set_stream_callback(stream_on_event)

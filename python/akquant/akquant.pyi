@@ -489,11 +489,14 @@ class Engine:
 
     def set_fill_policy(
         self,
-        price_basis: typing.Literal["open", "close", "ohlc4", "hl2"],
+        price_basis: typing.Literal[
+            "open", "close", "ohlc4", "hl2", "mid_quote", "typical", "vwap_bar", "twap_window"
+        ],
         bar_offset: int,
         temporal: typing.Literal["same_cycle", "next_event"],
+        twap_bars: int = 0,
     ) -> None: ...
-    def get_fill_policy(self) -> tuple[str, int, str]: ...
+    def get_fill_policy(self) -> tuple[str, int, str, int]: ...
     def use_simple_market(self, commission_rate: float) -> None:
         r"""
         启用 SimpleMarket (7x24小时, T+0, 无税, 简单佣金).

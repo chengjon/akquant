@@ -462,6 +462,7 @@ def _normalize_strategy_fill_policy_map(
             "price_basis": resolved.price_basis,
             "bar_offset": int(resolved.bar_offset),
             "temporal": resolved.temporal,
+            "twap_bars": resolved.twap_bars,
         }
     unknown_keys = sorted(set(normalized.keys()).difference(set(configured_slot_ids)))
     if unknown_keys:

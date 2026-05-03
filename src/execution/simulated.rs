@@ -1,8 +1,9 @@
 use crate::event::Event;
 use crate::execution::matcher::{ExecutionMatcher, MatchContext};
 use crate::execution::slippage::{SlippageModel, ZeroSlippage};
+use crate::execution::twap::TwapScheduler;
 use crate::execution::{ExecutionClient, crypto, forex, futures, option, stock};
-use crate::model::{AssetType, Order, OrderStatus, TimeInForce, TradingSession};
+use crate::model::{AssetType, Order, OrderStatus, PriceBasis, TimeInForce, TradingSession};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
 use std::collections::HashMap;
@@ -18,6 +19,8 @@ pub struct SimulatedExecutionClient {
     order_queue: Vec<String>,
     // Matchers
     matchers: HashMap<AssetType, Box<dyn ExecutionMatcher>>,
+    // TWAP order scheduler
+    twap_scheduler: TwapScheduler,
     futures_enforce_tick_size: bool,
     futures_enforce_lot_size: bool,
     futures_validation_by_prefix: Vec<(String, Option<bool>, Option<bool>)>,
@@ -57,6 +60,7 @@ impl SimulatedExecutionClient {
             orders: HashMap::new(),
             order_queue: Vec::new(),
             matchers,
+            twap_scheduler: TwapScheduler::new(),
             futures_enforce_tick_size: true,
             futures_enforce_lot_size: true,
             futures_validation_by_prefix: Vec::new(),
@@ -133,6 +137,9 @@ impl ExecutionClient for SimulatedExecutionClient {
     }
 
     fn on_cancel(&mut self, order_id: &str) {
+        // Check TWAP schedules first
+        self.twap_scheduler.cancel(order_id);
+
         if let Some(order) = self.orders.get_mut(order_id)
             && (order.status == OrderStatus::Submitted
                 || order.status == OrderStatus::PartiallyFilled
@@ -176,6 +183,11 @@ impl ExecutionClient for SimulatedExecutionClient {
             return reports;
         }
 
+        // --- TWAP bar counter ---
+        if matches!(event, Event::Bar(_)) {
+            self.twap_scheduler.on_bar();
+        }
+
         // Track available margin for this step (snapshot of portfolio + changes in this loop)
         let mut projected_portfolio = ctx.portfolio.clone();
         let mut current_free_margin =
@@ -191,6 +203,57 @@ impl ExecutionClient for SimulatedExecutionClient {
                 })
                 .unwrap_or(2_u8)
         });
+
+        // --- TWAP pre-processing: register orders + save state for post-match adjustment ---
+        // We do NOT cap order.quantity before the matcher. Instead, we save the pre-match
+        // filled_quantity and adjust both the report and self.orders AFTER the matcher runs.
+        struct TwapPreMatch {
+            prev_filled: Decimal,
+            prev_avg_price: Decimal,
+            original_qty: Decimal,
+            slice_qty: Decimal,
+        }
+        let mut twap_pre_match: HashMap<String, TwapPreMatch> = HashMap::new();
+        {
+            for order_id in &queue {
+                let order = match self.orders.get(order_id) {
+                    Some(o) => o,
+                    None => continue,
+                };
+                if order.status == OrderStatus::Cancelled
+                    || order.status == OrderStatus::Filled
+                    || order.status == OrderStatus::Rejected
+                    || order.status == OrderStatus::Expired
+                {
+                    continue;
+                }
+                if !TwapScheduler::is_twap_order(order, ctx.execution_policy_core.price_basis) {
+                    continue;
+                }
+                let id = order.id.clone();
+                if !self.twap_scheduler.is_twap(&id) {
+                    let twap_bars =
+                        TwapScheduler::get_twap_bars(order, ctx.execution_policy_core.twap_bars);
+                    if twap_bars > 0 {
+                        self.twap_scheduler.register(order, twap_bars);
+                    }
+                }
+                if self.twap_scheduler.is_twap(&id) {
+                    let remaining = order.quantity - order.filled_quantity;
+                    if let Some(slice) = self.twap_scheduler.slice_quantity(&id, remaining) {
+                        twap_pre_match.insert(
+                            id,
+                            TwapPreMatch {
+                                prev_filled: order.filled_quantity,
+                                prev_avg_price: order.average_filled_price.unwrap_or(Decimal::ZERO),
+                                original_qty: order.quantity,
+                                slice_qty: slice,
+                            },
+                        );
+                    }
+                }
+            }
+        }
 
         let matchers = &self.matchers;
 
@@ -315,6 +378,34 @@ impl ExecutionClient for SimulatedExecutionClient {
                                 report = new_report;
                             }
 
+                            // --- TWAP cap: limit trade quantity to per-bar slice ---
+                            if let Event::ExecutionReport(ref mut report_order, Some(ref mut trade)) = report {
+                                if let Some(pre) = twap_pre_match.get(&report_order.id) {
+                                    if trade.quantity > pre.slice_qty {
+                                        trade.quantity = pre.slice_qty;
+                                    }
+                                    let new_filled = pre.prev_filled + trade.quantity;
+                                    report_order.filled_quantity = new_filled;
+                                    report_order.quantity = pre.original_qty;
+                                    if new_filled > Decimal::ZERO {
+                                        let prev_avg = if pre.prev_avg_price > Decimal::ZERO {
+                                            pre.prev_avg_price
+                                        } else {
+                                            trade.price
+                                        };
+                                        report_order.average_filled_price = Some(
+                                            (pre.prev_filled * prev_avg + trade.quantity * trade.price)
+                                            / new_filled,
+                                        );
+                                    }
+                                    if new_filled >= pre.original_qty {
+                                        report_order.status = OrderStatus::Filled;
+                                    } else {
+                                        report_order.status = OrderStatus::PartiallyFilled;
+                                    }
+                                }
+                            }
+
                             if let Event::ExecutionReport(_, Some(ref trade)) = report
                                 && trade.quantity > Decimal::ZERO
                             {
@@ -391,12 +482,17 @@ impl ExecutionClient for SimulatedExecutionClient {
             }
         }
 
-        for id in finished_ids {
-            self.orders.remove(&id);
+        for id in &finished_ids {
+            self.orders.remove(id.as_str());
         }
 
         // Retain only existing orders in queue
         self.order_queue.retain(|id| self.orders.contains_key(id));
+
+        // Cleanup TWAP tracking for finished orders
+        for id in &finished_ids {
+            self.twap_scheduler.remove(id);
+        }
 
         reports
     }
@@ -588,6 +684,7 @@ mod tests {
                 price_basis: PriceBasis::Close,
                 bar_offset: 1,
                 temporal: TemporalPolicy::SameCycle,
+                twap_bars: 0,
             },
             bar_index: 0,
             current_time: 0,

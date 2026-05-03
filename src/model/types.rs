@@ -232,6 +232,7 @@ pub enum PriceBasis {
     MidQuote,
     Typical,
     VwapBar,
+    TwapWindow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -245,6 +246,7 @@ pub struct ExecutionPolicyCore {
     pub price_basis: PriceBasis,
     pub bar_offset: u8,
     pub temporal: TemporalPolicy,
+    pub twap_bars: u32,
 }
 
 impl Default for ExecutionPolicyCore {
@@ -253,6 +255,7 @@ impl Default for ExecutionPolicyCore {
             price_basis: PriceBasis::Open,
             bar_offset: 1,
             temporal: TemporalPolicy::SameCycle,
+            twap_bars: 0,
         }
     }
 }
@@ -269,26 +272,31 @@ impl ExecutionPolicyCore {
                 price_basis: PriceBasis::Close,
                 bar_offset: 0,
                 temporal,
+                twap_bars: 0,
             },
             ExecutionMode::NextOpen => Self {
                 price_basis: PriceBasis::Open,
                 bar_offset: 1,
                 temporal,
+                twap_bars: 0,
             },
             ExecutionMode::NextClose => Self {
                 price_basis: PriceBasis::Close,
                 bar_offset: 1,
                 temporal,
+                twap_bars: 0,
             },
             ExecutionMode::NextAverage => Self {
                 price_basis: PriceBasis::Ohlc4,
                 bar_offset: 1,
                 temporal,
+                twap_bars: 0,
             },
             ExecutionMode::NextHighLowMid => Self {
                 price_basis: PriceBasis::Hl2,
                 bar_offset: 1,
                 temporal,
+                twap_bars: 0,
             },
         }
     }
@@ -303,6 +311,7 @@ impl ExecutionPolicyCore {
             (PriceBasis::MidQuote, 1) => ExecutionMode::NextHighLowMid,
             (PriceBasis::Typical, 1) => ExecutionMode::NextAverage,
             (PriceBasis::VwapBar, 1) => ExecutionMode::NextAverage,
+            (PriceBasis::TwapWindow, _) => ExecutionMode::NextAverage,
             (PriceBasis::Open, _) => ExecutionMode::NextOpen,
             (PriceBasis::Close, _) => ExecutionMode::CurrentClose,
             (PriceBasis::Ohlc4, _) => ExecutionMode::NextAverage,

@@ -32,6 +32,7 @@ def _resolve_execution_policy(
     resolved_price_basis = "open"
     resolved_bar_offset = 1
     resolved_source: Literal["fill_policy", "legacy"] = "legacy"
+    resolved_twap_bars = 0
     if fill_policy is not None:
         if not isinstance(fill_policy, dict):
             raise TypeError("fill_policy must be a dict")
@@ -45,8 +46,8 @@ def _resolve_execution_policy(
                 )
             raise ValueError(
                 "fill_policy.price_basis must be one of: "
-                "open, close, ohlc4, hl2; "
-                "reserved: mid_quote, vwap_window, twap_window"
+                "open, close, ohlc4, hl2, twap_window; "
+                "reserved: mid_quote, vwap_window"
             )
         if raw_temporal not in _SUPPORTED_FILL_TEMPORAL:
             raise ValueError(
@@ -74,6 +75,16 @@ def _resolve_execution_policy(
         elif raw_basis == "ohlc4":
             if raw_offset != 1:
                 raise ValueError("fill_policy(ohlc4) requires bar_offset=1")
+            basis_mode = _RUNTIME_MODE_NEXT_AVERAGE
+        elif raw_basis == "twap_window":
+            if raw_offset != 1:
+                raise ValueError("fill_policy(twap_window) requires bar_offset=1")
+            twap_bars = fill_policy.get("twap_bars")
+            if twap_bars is None or int(twap_bars) <= 0:
+                raise ValueError(
+                    "fill_policy(twap_window) requires twap_bars > 0"
+                )
+            resolved_twap_bars = int(twap_bars)
             basis_mode = _RUNTIME_MODE_NEXT_AVERAGE
         else:
             if raw_offset != 1:
@@ -154,6 +165,7 @@ def _resolve_execution_policy(
         temporal=resolved_timer_policy,
         execution_mode=resolved_mode_enum,
         source=resolved_source,
+        twap_bars=resolved_twap_bars,
     )
 
 

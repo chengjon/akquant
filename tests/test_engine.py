@@ -1474,8 +1474,8 @@ def test_engine_set_fill_policy_roundtrip() -> None:
     if not hasattr(engine, "set_fill_policy"):
         pytest.skip("Engine binary does not expose fill policy methods")
     cast(Any, engine).set_fill_policy("close", 1, "next_event")
-    basis, bar_offset, temporal = cast(
-        tuple[str, int, str], cast(Any, engine).get_fill_policy()
+    basis, bar_offset, temporal, twap_bars = cast(
+        tuple[str, int, str, int], cast(Any, engine).get_fill_policy()
     )
     assert basis == "close"
     assert int(bar_offset) == 1

@@ -9,6 +9,7 @@ pub mod realtime;
 pub mod simulated;
 pub mod slippage;
 pub mod stock;
+pub mod twap;
 
 pub use common::CommonMatcher;
 pub use matcher::ExecutionMatcher;

@@ -305,6 +305,123 @@ class PyTorchAdapter(QuantModel):
         self.network.load_state_dict(torch.load(path))
 
 
+class TensorFlowAdapter(QuantModel):
+    """Adapter for TensorFlow/Keras models."""
+
+    def __init__(
+        self,
+        model: Any,
+        optimizer: Any = None,
+        loss_fn: Any = None,
+        epochs: int = 10,
+        batch_size: int = 64,
+        device: str = "/CPU:0",
+    ):
+        """
+        Initialize the TensorFlow adapter.
+
+        Args:
+            model: A tf.keras.Model instance.
+            optimizer: TensorFlow optimizer instance (e.g. tf.keras.optimizers.Adam).
+                If None, defaults to Adam(learning_rate=0.001).
+            loss_fn: Loss function (e.g. tf.keras.losses.MeanSquaredError).
+                If None, defaults to MeanSquaredError.
+            epochs: Number of training epochs.
+            batch_size: Batch size for training.
+            device: Device string (e.g. '/CPU:0', '/GPU:0').
+        """
+        super().__init__()
+        import tensorflow as tf
+
+        self.model = model
+        self.optimizer = optimizer or tf.keras.optimizers.Adam(learning_rate=0.001)
+        self.loss_fn = loss_fn or tf.keras.losses.MeanSquaredError()
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.device = device
+
+        self.initial_weights = [w.numpy().copy() for w in model.trainable_weights]
+
+    def _reset_weights(self) -> None:
+        for w, init_w in zip(self.model.trainable_weights, self.initial_weights):
+            w.assign(init_w)
+
+    def fit(self, X: DataType, y: DataType) -> None:
+        """Train the TensorFlow model."""
+        import tensorflow as tf
+
+        incremental = (
+            self.validation_config.incremental if self.validation_config else False
+        )
+        verbose = (
+            self.validation_config.verbose if self.validation_config else False
+        )
+
+        if not incremental:
+            self._reset_weights()
+
+        X_array = X.values if isinstance(X, pd.DataFrame) else np.asarray(X)
+        y_array = (
+            y.values
+            if isinstance(y, (pd.DataFrame, pd.Series))
+            else np.asarray(y)
+        )
+        if y_array.ndim > 1 and y_array.shape[-1] == 1:
+            y_array = y_array.squeeze(-1)
+
+        dataset = (
+            tf.data.Dataset.from_tensor_slices(
+                (X_array.astype(np.float32), y_array.astype(np.float32))
+            )
+            .shuffle(min(self.batch_size * 10, len(X_array)))
+            .batch(self.batch_size)
+        )
+
+        with tf.device(self.device):
+            for epoch in range(self.epochs):
+                total_loss = 0.0
+                num_batches = 0
+                for batch_X, batch_y in dataset:
+                    with tf.GradientTape() as tape:
+                        outputs = self.model(batch_X, training=True)
+                        if isinstance(outputs, (list, tuple)):
+                            outputs = outputs[0]
+                        if outputs.ndim > 1 and outputs.shape[-1] == 1:
+                            outputs = tf.squeeze(outputs, axis=-1)
+                        loss = self.loss_fn(batch_y, outputs)
+                    grads = tape.gradient(loss, self.model.trainable_variables)
+                    self.optimizer.apply_gradients(
+                        zip(grads, self.model.trainable_variables)
+                    )
+                    total_loss += float(loss)
+                    num_batches += 1
+
+                if verbose:
+                    avg_loss = total_loss / num_batches if num_batches > 0 else 0
+                    print(f"Epoch [{epoch + 1}/{self.epochs}], Loss: {avg_loss:.4f}")
+
+    def predict(self, X: DataType) -> np.ndarray:
+        """Predict using the TensorFlow model."""
+        import tensorflow as tf
+
+        X_array = X.values if isinstance(X, pd.DataFrame) else np.asarray(X)
+        with tf.device(self.device):
+            outputs = self.model(X_array.astype(np.float32), training=False)
+            if isinstance(outputs, (list, tuple)):
+                outputs = outputs[0]
+        return np.asarray(outputs).flatten()
+
+    def save(self, path: str) -> None:
+        """Save the TensorFlow model using SavedModel format."""
+        self.model.save(path)
+
+    def load(self, path: str) -> None:
+        """Load the TensorFlow model from SavedModel format."""
+        import tensorflow as tf
+
+        self.model = tf.keras.models.load_model(path)
+
+
 class LightGBMAdapter(QuantModel):
     """Adapter for LightGBM models."""
 

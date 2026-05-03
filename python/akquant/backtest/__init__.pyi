@@ -53,14 +53,16 @@ ImplementedPriceBasis = Literal[
     "close",
     "ohlc4",
     "hl2",
+    "twap_window",
 ]
 
-ExperimentalPriceBasis = Literal["mid_quote", "vwap_window", "twap_window"]
+ExperimentalPriceBasis = Literal["mid_quote", "vwap_window"]
 
 class FillPolicy(TypedDict):
     price_basis: ImplementedPriceBasis
     bar_offset: NotRequired[Literal[0, 1]]
     temporal: Literal["same_cycle", "next_event"]
+    twap_bars: NotRequired[int]
 
 class ExperimentalFillPolicy(TypedDict):
     price_basis: ExperimentalPriceBasis

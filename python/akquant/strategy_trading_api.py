@@ -267,7 +267,7 @@ def _submit_buy_side(
         )
 
     effective_fill_policy = _resolve_effective_order_fill_policy(strategy, fill_policy)
-    fill_price_basis, fill_bar_offset, fill_temporal = _normalize_order_fill_policy(
+    fill_price_basis, fill_bar_offset, fill_temporal, fill_twap_bars = _normalize_order_fill_policy(
         effective_fill_policy
     )
     effective_slippage = _resolve_effective_order_slippage(strategy, slippage)
@@ -314,6 +314,7 @@ def _submit_buy_side(
                 fill_price_basis,
                 fill_bar_offset,
                 fill_temporal,
+                fill_twap_bars,
                 fill_slippage_type,
                 fill_slippage_value,
                 fill_commission_type,
@@ -352,7 +353,7 @@ def _submit_sell_side(
             return ""
 
     effective_fill_policy = _resolve_effective_order_fill_policy(strategy, fill_policy)
-    fill_price_basis, fill_bar_offset, fill_temporal = _normalize_order_fill_policy(
+    fill_price_basis, fill_bar_offset, fill_temporal, fill_twap_bars = _normalize_order_fill_policy(
         effective_fill_policy
     )
     effective_slippage = _resolve_effective_order_slippage(strategy, slippage)
@@ -393,6 +394,7 @@ def _submit_sell_side(
                 fill_price_basis,
                 fill_bar_offset,
                 fill_temporal,
+                fill_twap_bars,
                 fill_slippage_type,
                 fill_slippage_value,
                 fill_commission_type,
@@ -518,16 +520,16 @@ def _parse_order_type(order_type: Optional[str]) -> Tuple[Optional[str], Optiona
 
 def _normalize_order_fill_policy(
     fill_policy: Optional[OrderFillPolicy],
-) -> Tuple[Optional[str], Optional[int], Optional[str]]:
+) -> Tuple[Optional[str], Optional[int], Optional[str], Optional[int]]:
     if fill_policy is None:
-        return None, None, None
+        return None, None, None, None
     if not isinstance(fill_policy, dict):
         raise TypeError("fill_policy must be a dict when provided")
     raw_basis = str(fill_policy.get("price_basis", "open")).strip().lower()
     raw_temporal = str(fill_policy.get("temporal", "same_cycle")).strip().lower()
-    if raw_basis not in {"open", "close", "ohlc4", "hl2"}:
+    if raw_basis not in {"open", "close", "ohlc4", "hl2", "twap_window"}:
         raise ValueError(
-            "fill_policy.price_basis must be one of: open, close, ohlc4, hl2"
+            "fill_policy.price_basis must be one of: open, close, ohlc4, hl2, twap_window"
         )
     if raw_temporal not in {"same_cycle", "next_event"}:
         raise ValueError("fill_policy.temporal must be one of: same_cycle, next_event")
@@ -541,9 +543,15 @@ def _normalize_order_fill_policy(
         raise ValueError("fill_policy.bar_offset must be 0 or 1") from None
     if raw_offset not in {0, 1}:
         raise ValueError("fill_policy.bar_offset must be 0 or 1")
-    if raw_basis in {"open", "ohlc4", "hl2"} and raw_offset != 1:
+    if raw_basis in {"open", "ohlc4", "hl2", "twap_window"} and raw_offset != 1:
         raise ValueError(f"fill_policy({raw_basis}) requires bar_offset=1")
-    return raw_basis, raw_offset, raw_temporal
+    raw_twap_bars: Optional[int] = None
+    if raw_basis == "twap_window":
+        twap_bars_val = fill_policy.get("twap_bars")
+        if twap_bars_val is None or int(twap_bars_val) <= 0:
+            raise ValueError("fill_policy(twap_window) requires twap_bars > 0")
+        raw_twap_bars = int(twap_bars_val)
+    return raw_basis, raw_offset, raw_temporal, raw_twap_bars
 
 
 def _normalize_order_slippage(
@@ -1037,7 +1045,7 @@ def order_target_weights(
         )
         if stored_fill_policy is not None:
             effective_fill_policy = dict(stored_fill_policy)
-    fill_price_basis, fill_bar_offset, fill_temporal = _normalize_order_fill_policy(
+    fill_price_basis, fill_bar_offset, fill_temporal, fill_twap_bars = _normalize_order_fill_policy(
         effective_fill_policy
     )
     defer_buy_legs = (

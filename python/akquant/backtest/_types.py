@@ -55,6 +55,7 @@ class FillPolicy(TypedDict, total=False):
     price_basis: str
     temporal: str
     bar_offset: int
+    twap_bars: int
 
 
 class SlippagePolicy(TypedDict, total=False):
@@ -93,6 +94,7 @@ class ResolvedExecutionPolicy:
     temporal: str
     execution_mode: Any
     source: Literal["fill_policy", "legacy"]
+    twap_bars: int = 0
 
 
 @dataclass
@@ -109,8 +111,8 @@ class PreparedStreamRuntime:
     stream_mode: str
 
 
-_SUPPORTED_FILL_PRICE_BASIS: set[str] = {"open", "close", "ohlc4", "hl2"}
-_RESERVED_FILL_PRICE_BASIS: set[str] = {"mid_quote", "vwap_window", "twap_window"}
+_SUPPORTED_FILL_PRICE_BASIS: set[str] = {"open", "close", "ohlc4", "hl2", "twap_window"}
+_RESERVED_FILL_PRICE_BASIS: set[str] = {"mid_quote", "vwap_window"}
 _SUPPORTED_FILL_TEMPORAL: set[str] = {"same_cycle", "next_event"}
 _SUPPORTED_FILL_BAR_OFFSET: set[int] = {0, 1}
 _DEFAULT_FILL_BAR_OFFSET: Dict[str, int] = {
@@ -118,6 +120,7 @@ _DEFAULT_FILL_BAR_OFFSET: Dict[str, int] = {
     "close": 0,
     "ohlc4": 1,
     "hl2": 1,
+    "twap_window": 1,
 }
 
 
@@ -145,8 +148,8 @@ def _resolve_execution_policy(
                 )
             raise ValueError(
                 "fill_policy.price_basis must be one of: "
-                "open, close, ohlc4, hl2; "
-                "reserved: mid_quote, vwap_window, twap_window"
+                "open, close, ohlc4, hl2, twap_window; "
+                "reserved: mid_quote, vwap_window"
             )
         if raw_temporal not in _SUPPORTED_FILL_TEMPORAL:
             raise ValueError(

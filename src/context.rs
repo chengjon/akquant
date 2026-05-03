@@ -71,6 +71,7 @@ fn parse_order_fill_policy_override(
     fill_price_basis: Option<String>,
     fill_bar_offset: Option<u8>,
     fill_temporal: Option<String>,
+    fill_twap_bars: Option<u32>,
 ) -> PyResult<Option<ExecutionPolicyCore>> {
     if fill_price_basis.is_none() && fill_bar_offset.is_none() && fill_temporal.is_none() {
         return Ok(None);
@@ -82,9 +83,10 @@ fn parse_order_fill_policy_override(
         "close" => PriceBasis::Close,
         "ohlc4" => PriceBasis::Ohlc4,
         "hl2" => PriceBasis::Hl2,
+        "twap_window" => PriceBasis::TwapWindow,
         _ => {
             return Err(PyValueError::new_err(
-                "fill_policy.price_basis must be one of: open, close, ohlc4, hl2",
+                "fill_policy.price_basis must be one of: open, close, ohlc4, hl2, twap_window",
             ));
         }
     };
@@ -119,12 +121,28 @@ fn parse_order_fill_policy_override(
         PriceBasis::Hl2 if bar_offset != 1 => {
             return Err(PyValueError::new_err("fill_policy(hl2) requires bar_offset=1"));
         }
+        PriceBasis::TwapWindow if bar_offset != 1 => {
+            return Err(PyValueError::new_err("fill_policy(twap_window) requires bar_offset=1"));
+        }
         _ => {}
     }
+    let twap_bars = match basis {
+        PriceBasis::TwapWindow => {
+            let bars = fill_twap_bars.unwrap_or(0);
+            if bars == 0 {
+                return Err(PyValueError::new_err(
+                    "fill_policy(twap_window) requires twap_bars > 0",
+                ));
+            }
+            bars
+        }
+        _ => 0,
+    };
     Ok(Some(ExecutionPolicyCore {
         price_basis: basis,
         bar_offset,
         temporal,
+        twap_bars,
     }))
 }
 
@@ -497,7 +515,7 @@ impl StrategyContext {
     /// :param trigger_price: 触发价格 (可选, 用于止损/止盈单)
     /// :param tag: 订单标签 (可选)
     /// :return: 订单 ID
-    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None, fill_price_basis=None, fill_bar_offset=None, fill_temporal=None, fill_slippage_type=None, fill_slippage_value=None, fill_commission_type=None, fill_commission_value=None, allow_quantity_auto_resize=false))]
+    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None, fill_price_basis=None, fill_bar_offset=None, fill_temporal=None, fill_twap_bars=None, fill_slippage_type=None, fill_slippage_value=None, fill_commission_type=None, fill_commission_value=None, allow_quantity_auto_resize=false))]
     #[allow(clippy::too_many_arguments)]
     fn buy(
         &mut self,
@@ -513,6 +531,7 @@ impl StrategyContext {
         fill_price_basis: Option<String>,
         fill_bar_offset: Option<u8>,
         fill_temporal: Option<String>,
+        fill_twap_bars: Option<u32>,
         fill_slippage_type: Option<String>,
         fill_slippage_value: Option<&Bound<'_, PyAny>>,
         fill_commission_type: Option<String>,
@@ -551,6 +570,7 @@ impl StrategyContext {
             fill_price_basis,
             fill_bar_offset,
             fill_temporal,
+            fill_twap_bars,
         )?;
         let (slippage_type_override, slippage_value_override) =
             parse_order_slippage_override(fill_slippage_type, fill_slippage_value)?;
@@ -606,7 +626,7 @@ impl StrategyContext {
     /// :param trigger_price: 触发价格 (可选, 用于止损/止盈单)
     /// :param tag: 订单标签 (可选)
     /// :return: 订单 ID
-    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None, fill_price_basis=None, fill_bar_offset=None, fill_temporal=None, fill_slippage_type=None, fill_slippage_value=None, fill_commission_type=None, fill_commission_value=None))]
+    #[pyo3(signature = (symbol, quantity, price=None, time_in_force=None, trigger_price=None, tag=None, order_type=None, trail_offset=None, trail_reference_price=None, fill_price_basis=None, fill_bar_offset=None, fill_temporal=None, fill_twap_bars=None, fill_slippage_type=None, fill_slippage_value=None, fill_commission_type=None, fill_commission_value=None))]
     #[allow(clippy::too_many_arguments)]
     fn sell(
         &mut self,
@@ -622,6 +642,7 @@ impl StrategyContext {
         fill_price_basis: Option<String>,
         fill_bar_offset: Option<u8>,
         fill_temporal: Option<String>,
+        fill_twap_bars: Option<u32>,
         fill_slippage_type: Option<String>,
         fill_slippage_value: Option<&Bound<'_, PyAny>>,
         fill_commission_type: Option<String>,
@@ -659,6 +680,7 @@ impl StrategyContext {
             fill_price_basis,
             fill_bar_offset,
             fill_temporal,
+            fill_twap_bars,
         )?;
         let (slippage_type_override, slippage_value_override) =
             parse_order_slippage_override(fill_slippage_type, fill_slippage_value)?;

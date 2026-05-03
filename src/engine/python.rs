@@ -686,11 +686,13 @@ impl Engine {
             .register_matcher(asset_type, py_matcher);
     }
 
+    #[pyo3(signature = (price_basis, bar_offset, temporal, twap_bars=0))]
     fn set_fill_policy(
         &mut self,
         price_basis: &str,
         bar_offset: u8,
         temporal: &str,
+        twap_bars: u32,
     ) -> PyResult<()> {
         let normalized_basis = price_basis.trim().to_lowercase();
         let basis = match normalized_basis.as_str() {
@@ -701,15 +703,21 @@ impl Engine {
             "mid_quote" => PriceBasis::MidQuote,
             "typical" => PriceBasis::Typical,
             "vwap_bar" => PriceBasis::VwapBar,
+            "twap_window" => PriceBasis::TwapWindow,
             _ => {
                 return Err(PyValueError::new_err(format!(
-                    "Unknown price_basis '{}', expected one of: open, close, ohlc4, hl2, mid_quote, typical, vwap_bar",
+                    "Unknown price_basis '{}', expected one of: open, close, ohlc4, hl2, mid_quote, typical, vwap_bar, twap_window",
                     price_basis
                 )));
             }
         };
         if bar_offset > 1 {
             return Err(PyValueError::new_err("bar_offset must be 0 or 1"));
+        }
+        if basis == PriceBasis::TwapWindow && twap_bars == 0 {
+            return Err(PyValueError::new_err(
+                "twap_window requires twap_bars > 0",
+            ));
         }
         let normalized_temporal = temporal.trim().to_lowercase();
         let temporal_policy = match normalized_temporal.as_str() {
@@ -729,10 +737,11 @@ impl Engine {
             | PriceBasis::MidQuote
             | PriceBasis::Typical
             | PriceBasis::VwapBar
+            | PriceBasis::TwapWindow
                 if bar_offset != 1 =>
             {
                 return Err(PyValueError::new_err(
-                    "price_basis=open|ohlc4|hl2|mid_quote|typical|vwap_bar requires bar_offset=1",
+                    "price_basis=open|ohlc4|hl2|mid_quote|typical|vwap_bar|twap_window requires bar_offset=1",
                 ));
             }
             _ => {}
@@ -741,12 +750,13 @@ impl Engine {
             price_basis: basis,
             bar_offset,
             temporal: temporal_policy,
+            twap_bars,
         };
         self.set_execution_policy_core(policy);
         Ok(())
     }
 
-    fn get_fill_policy(&self) -> (String, u8, String) {
+    fn get_fill_policy(&self) -> (String, u8, String, u32) {
         let policy = self.execution_policy_core();
         let basis = match policy.price_basis {
             PriceBasis::Open => "open",
@@ -756,12 +766,14 @@ impl Engine {
             PriceBasis::MidQuote => "mid_quote",
             PriceBasis::Typical => "typical",
             PriceBasis::VwapBar => "vwap_bar",
+            PriceBasis::TwapWindow => "twap_window",
         }
         .to_string();
         (
             basis,
             policy.bar_offset,
             policy.temporal_as_str().to_string(),
+            policy.twap_bars,
         )
     }
 

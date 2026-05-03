@@ -196,6 +196,7 @@ mod tests {
                 price_basis: PriceBasis::Close,
                 bar_offset: 0,
                 temporal: TemporalPolicy::NextEvent,
+                twap_bars: 0,
             },
             slippage: &crate::execution::slippage::ZeroSlippage,
             volume_limit_pct: Decimal::ZERO,

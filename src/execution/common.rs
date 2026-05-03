@@ -196,6 +196,9 @@ impl CommonMatcher {
                             typical
                         }
                     }
+                    (PriceBasis::TwapWindow, _) => {
+                        (bar.open + bar.high + bar.low + bar.close) / Decimal::from(4)
+                    }
                     (PriceBasis::Open, _) => bar.open,
                     (PriceBasis::Close, _) => bar.close,
                     (PriceBasis::Ohlc4, _) => {

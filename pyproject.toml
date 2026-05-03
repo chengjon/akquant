@@ -49,6 +49,7 @@ plot = [
 ml = [
     "scikit-learn>=1.0.0",
     "torch>=2.0.0",
+    "tensorflow>=2.12.0",
 ]
 docs = [
     "mkdocs>=1.5.0",
@@ -60,6 +61,7 @@ full = [
     "plotly>=5.0.0",
     "scikit-learn>=1.0.0",
     "torch>=2.0.0",
+    "tensorflow>=2.12.0",
     "quantstats>=0.0.60",
 ]
 dev = [
@@ -99,6 +101,7 @@ check_untyped_defs = true
 module = [
     "torch.*",
     "sklearn.*",
+    "tensorflow.*",
     "akshare.*",
     "pyarrow",
     "pyarrow.*",
