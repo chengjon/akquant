@@ -56,6 +56,16 @@ from ..akquant import CDLRICKSHAWMAN as RustCDLRICKSHAWMAN
 from ..akquant import CDLTAKURI as RustCDLTAKURI
 from ..akquant import CDLUNIQUE3RIVER as RustCDLUNIQUE3RIVER
 from ..akquant import CDLMATCHINGHIGH as RustCDLMATCHINGHIGH
+from ..akquant import CDLABANDONEDBABY as RustCDLABANDONEDBABY
+from ..akquant import CDLDOJISTAR as RustCDLDOJISTAR
+from ..akquant import CDLEVENINGDOJISTAR as RustCDLEVENINGDOJISTAR
+from ..akquant import CDLHIGHWAVE as RustCDLHIGHWAVE
+from ..akquant import CDLHIKKAKE as RustCDLHIKKAKE
+from ..akquant import CDLINVERTEDHAMMER as RustCDLINVERTEDHAMMER
+from ..akquant import CDLKICKINGBYLENGTH as RustCDLKICKINGBYLENGTH
+from ..akquant import CDLLONGLEGGEDDOJI as RustCDLLONGLEGGEDDOJI
+from ..akquant import CDLMORNINGDOJISTAR as RustCDLMORNINGDOJISTAR
+from ..akquant import CDLSTICKSANDWICH as RustCDLSTICKSANDWICH
 from ._dispatch import (
     _run_rust_ohlc_series,
 )
@@ -1307,6 +1317,256 @@ def CDLMATCHINGHIGH(
     close_series = to_series(close, name="close")
     if backend_key == "rust":
         indicator = RustCDLMATCHINGHIGH()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLABANDONEDBABY(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Abandoned Baby pattern (reversal, 3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLABANDONEDBABY()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLDOJISTAR(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Doji Star pattern (reversal, 2-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLDOJISTAR()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLEVENINGDOJISTAR(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Evening Doji Star pattern (bearish reversal, 3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLEVENINGDOJISTAR()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLHIGHWAVE(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """High Wave pattern (indecision, 1-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLHIGHWAVE()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLHIKKAKE(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Hikkake pattern (continuation/failure, 4-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLHIKKAKE()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLINVERTEDHAMMER(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Inverted Hammer pattern (bullish reversal, 1-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLINVERTEDHAMMER()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLKICKINGBYLENGTH(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Kicking by Length pattern (reversal, 2-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLKICKINGBYLENGTH()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLLONGLEGGEDDOJI(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Long Legged Doji pattern (indecision, 1-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLLONGLEGGEDDOJI()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLMORNINGDOJISTAR(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Morning Doji Star pattern (bullish reversal, 3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLMORNINGDOJISTAR()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLSTICKSANDWICH(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Stick Sandwich pattern (bullish reversal, 3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLSTICKSANDWICH()
         out = _run_rust_ohlc_series(
             open_series, high_series, low_series, close_series, indicator.update,
         )

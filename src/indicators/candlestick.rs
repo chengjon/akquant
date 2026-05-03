@@ -3615,6 +3615,717 @@ impl CDLMATCHINGHIGH {
     }
 }
 
+// --- CDLABANDONEDBABY ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLABANDONEDBABY {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLABANDONEDBABY {
+    #[new]
+    pub fn new() -> Self {
+        CDLABANDONEDBABY {
+            bars: VecDeque::with_capacity(3),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 3);
+        if self.bars.len() < 3 {
+            self.current_value = None;
+            return None;
+        }
+        let b1 = &self.bars[self.bars.len() - 3];
+        let b2 = &self.bars[self.bars.len() - 2];
+        let b3 = &self.bars[self.bars.len() - 1];
+        let result =
+            // Bullish: bar1 bearish, bar2 doji gap down (bar2 high < bar1 low), bar3 bullish gap up (bar3 low > bar2 high)
+            if is_bearish(b1.open, b1.close)
+                && is_doji(b2.open, b2.high, b2.low, b2.close)
+                && b2.high < b1.low
+                && is_bullish(b3.open, b3.close)
+                && b3.low > b2.high
+            {
+                100
+            }
+            // Bearish: bar1 bullish, bar2 doji gap up (bar2 low > bar1 high), bar3 bearish gap down (bar3 high < bar2 low)
+            else if is_bullish(b1.open, b1.close)
+                && is_doji(b2.open, b2.high, b2.low, b2.close)
+                && b2.low > b1.high
+                && is_bearish(b3.open, b3.close)
+                && b3.high < b2.low
+            {
+                -100
+            } else {
+                0
+            };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLDOJISTAR ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLDOJISTAR {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLDOJISTAR {
+    #[new]
+    pub fn new() -> Self {
+        CDLDOJISTAR {
+            bars: VecDeque::with_capacity(2),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 2);
+        if self.bars.len() < 2 {
+            self.current_value = None;
+            return None;
+        }
+        let prev = &self.bars[self.bars.len() - 2];
+        let cur = &self.bars[self.bars.len() - 1];
+        let r = range(prev.high, prev.low);
+        let large_body = body(prev.open, prev.close) >= r * 0.4;
+        let result =
+            // Bullish: bar1 bearish large body, bar2 doji gap down (bar2 high < bar1 low)
+            if is_bearish(prev.open, prev.close)
+                && large_body
+                && is_doji(cur.open, cur.high, cur.low, cur.close)
+                && cur.high < prev.low
+            {
+                100
+            }
+            // Bearish: bar1 bullish large body, bar2 doji gap up (bar2 low > bar1 high)
+            else if is_bullish(prev.open, prev.close)
+                && large_body
+                && is_doji(cur.open, cur.high, cur.low, cur.close)
+                && cur.low > prev.high
+            {
+                -100
+            } else {
+                0
+            };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLEVENINGDOJISTAR ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLEVENINGDOJISTAR {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLEVENINGDOJISTAR {
+    #[new]
+    pub fn new() -> Self {
+        CDLEVENINGDOJISTAR {
+            bars: VecDeque::with_capacity(3),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 3);
+        if self.bars.len() < 3 {
+            self.current_value = None;
+            return None;
+        }
+        let b1 = &self.bars[self.bars.len() - 3];
+        let b2 = &self.bars[self.bars.len() - 2];
+        let b3 = &self.bars[self.bars.len() - 1];
+        let midpoint = (b1.open + b1.close) / 2.0;
+        let result =
+            // Bar1 bullish, bar2 doji gap up (bar2 low > bar1 high), bar3 bearish closing well into bar1 body
+            if is_bullish(b1.open, b1.close)
+                && is_doji(b2.open, b2.high, b2.low, b2.close)
+                && b2.low > b1.high
+                && is_bearish(b3.open, b3.close)
+                && b3.close < midpoint
+            {
+                -100
+            } else {
+                0
+            };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLHIGHWAVE ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLHIGHWAVE {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLHIGHWAVE {
+    #[new]
+    pub fn new() -> Self {
+        CDLHIGHWAVE {
+            bars: VecDeque::with_capacity(1),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 1);
+        let bar = &self.bars[0];
+        let b = body(bar.open, bar.close);
+        let us = upper_shadow(bar.open, bar.high, bar.close);
+        let ls = lower_shadow(bar.open, bar.low, bar.close);
+        let result = if b > f64::EPSILON && us >= b * 3.0 && ls >= b * 3.0 {
+            if is_bullish(bar.open, bar.close) {
+                100
+            } else {
+                -100
+            }
+        } else {
+            0
+        };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLHIKKAKE ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLHIKKAKE {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLHIKKAKE {
+    #[new]
+    pub fn new() -> Self {
+        CDLHIKKAKE {
+            bars: VecDeque::with_capacity(4),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 4);
+        if self.bars.len() < 4 {
+            self.current_value = None;
+            return None;
+        }
+        let b1 = &self.bars[self.bars.len() - 4];
+        let b2 = &self.bars[self.bars.len() - 3];
+        let b3 = &self.bars[self.bars.len() - 2];
+        let b4 = &self.bars[self.bars.len() - 1];
+        // Inside bar: b2 has lower high and higher low than b1
+        let inside_bar = b2.high <= b1.high && b2.low >= b1.low;
+        let result = if inside_bar {
+            // Bullish: b3 breaks above b2 high, b4 confirms by staying above b2 high
+            if b3.high > b2.high && b4.low > b2.low {
+                100
+            }
+            // Bearish: b3 breaks below b2 low, b4 confirms by staying below b2 low
+            else if b3.low < b2.low && b4.high < b2.high {
+                -100
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLINVERTEDHAMMER ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLINVERTEDHAMMER {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLINVERTEDHAMMER {
+    #[new]
+    pub fn new() -> Self {
+        CDLINVERTEDHAMMER {
+            bars: VecDeque::with_capacity(1),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 1);
+        let bar = &self.bars[0];
+        let b = body(bar.open, bar.close);
+        let us = upper_shadow(bar.open, bar.high, bar.close);
+        let ls = lower_shadow(bar.open, bar.low, bar.close);
+        // Small body at lower end, long upper shadow (>= 2 * body), little/no lower shadow
+        let result = if b > f64::EPSILON && us >= b * 2.0 && ls <= b * 0.3 {
+            100
+        } else {
+            0
+        };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLKICKINGBYLENGTH ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLKICKINGBYLENGTH {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLKICKINGBYLENGTH {
+    #[new]
+    pub fn new() -> Self {
+        CDLKICKINGBYLENGTH {
+            bars: VecDeque::with_capacity(2),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 2);
+        if self.bars.len() < 2 {
+            self.current_value = None;
+            return None;
+        }
+        let prev = &self.bars[self.bars.len() - 2];
+        let cur = &self.bars[self.bars.len() - 1];
+        let is_marubozu = |b: &OhlcBar| -> bool {
+            let r = range(b.high, b.low);
+            r > f64::EPSILON
+                && upper_shadow(b.open, b.high, b.close) / r <= 0.1
+                && lower_shadow(b.open, b.low, b.close) / r <= 0.1
+        };
+        let prev_body = body(prev.open, prev.close);
+        let cur_body = body(cur.open, cur.close);
+        let result = if is_marubozu(prev)
+            && is_marubozu(cur)
+            && cur_body >= prev_body * 1.5
+        {
+            // Bullish: prev bearish, cur bullish gap up
+            if is_bearish(prev.open, prev.close)
+                && is_bullish(cur.open, cur.close)
+                && cur.open > prev.close
+            {
+                100
+            }
+            // Bearish: prev bullish, cur bearish gap down
+            else if is_bullish(prev.open, prev.close)
+                && is_bearish(cur.open, cur.close)
+                && cur.open < prev.close
+            {
+                -100
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLLONGLEGGEDDOJI ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLLONGLEGGEDDOJI {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLLONGLEGGEDDOJI {
+    #[new]
+    pub fn new() -> Self {
+        CDLLONGLEGGEDDOJI {
+            bars: VecDeque::with_capacity(1),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 1);
+        let bar = &self.bars[0];
+        let r = range(bar.high, bar.low);
+        let us = upper_shadow(bar.open, bar.high, bar.close);
+        let ls = lower_shadow(bar.open, bar.low, bar.close);
+        let result = if is_doji(bar.open, bar.high, bar.low, bar.close)
+            && r > f64::EPSILON
+            && us >= r * 0.3
+            && ls >= r * 0.3
+        {
+            100
+        } else {
+            0
+        };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLMORNINGDOJISTAR ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLMORNINGDOJISTAR {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLMORNINGDOJISTAR {
+    #[new]
+    pub fn new() -> Self {
+        CDLMORNINGDOJISTAR {
+            bars: VecDeque::with_capacity(3),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 3);
+        if self.bars.len() < 3 {
+            self.current_value = None;
+            return None;
+        }
+        let b1 = &self.bars[self.bars.len() - 3];
+        let b2 = &self.bars[self.bars.len() - 2];
+        let b3 = &self.bars[self.bars.len() - 1];
+        let midpoint = (b1.open + b1.close) / 2.0;
+        let result =
+            // Bar1 bearish, bar2 doji gap down (bar2 high < bar1 low), bar3 bullish closing well into bar1 body
+            if is_bearish(b1.open, b1.close)
+                && is_doji(b2.open, b2.high, b2.low, b2.close)
+                && b2.high < b1.low
+                && is_bullish(b3.open, b3.close)
+                && b3.close > midpoint
+            {
+                100
+            } else {
+                0
+            };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
+// --- CDLSTICKSANDWICH ---
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct CDLSTICKSANDWICH {
+    bars: VecDeque<OhlcBar>,
+    current_value: Option<i32>,
+}
+
+#[pymethods]
+impl CDLSTICKSANDWICH {
+    #[new]
+    pub fn new() -> Self {
+        CDLSTICKSANDWICH {
+            bars: VecDeque::with_capacity(3),
+            current_value: None,
+        }
+    }
+
+    pub fn update(&mut self, open: f64, high: f64, low: f64, close: f64) -> Option<i32> {
+        push_bar(&mut self.bars, OhlcBar { open, high, low, close }, 3);
+        if self.bars.len() < 3 {
+            self.current_value = None;
+            return None;
+        }
+        let b1 = &self.bars[self.bars.len() - 3];
+        let b2 = &self.bars[self.bars.len() - 2];
+        let b3 = &self.bars[self.bars.len() - 1];
+        let tol = b1.close.abs().max(b3.close.abs()) * 0.05;
+        let result =
+            // Bar1 bearish, bar2 bullish, bar3 bearish with bar3 close ~= bar1 close
+            if is_bearish(b1.open, b1.close)
+                && is_bullish(b2.open, b2.close)
+                && is_bearish(b3.open, b3.close)
+                && (b3.close - b1.close).abs() <= tol
+            {
+                100
+            } else {
+                0
+            };
+        self.current_value = Some(result);
+        Some(result)
+    }
+
+    pub fn update_many_ohlc<'py>(
+        &mut self,
+        py: Python<'py>,
+        opens: Vec<f64>,
+        highs: Vec<f64>,
+        lows: Vec<f64>,
+        closes: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        let n = opens.len();
+        if highs.len() != n || lows.len() != n || closes.len() != n {
+            return Err(PyValueError::new_err("OHLC length mismatch"));
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(self.update(opens[i], highs[i], lows[i], closes[i]).unwrap_or(0));
+        }
+        Ok(PyArray1::from_vec(py, out))
+    }
+
+    #[getter]
+    pub fn value(&self) -> Option<i32> {
+        self.current_value
+    }
+}
+
 // --- Registration ---
 
 pub fn register_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -3668,5 +4379,15 @@ pub fn register_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CDLTAKURI>()?;
     m.add_class::<CDLUNIQUE3RIVER>()?;
     m.add_class::<CDLMATCHINGHIGH>()?;
+    m.add_class::<CDLABANDONEDBABY>()?;
+    m.add_class::<CDLDOJISTAR>()?;
+    m.add_class::<CDLEVENINGDOJISTAR>()?;
+    m.add_class::<CDLHIGHWAVE>()?;
+    m.add_class::<CDLHIKKAKE>()?;
+    m.add_class::<CDLINVERTEDHAMMER>()?;
+    m.add_class::<CDLKICKINGBYLENGTH>()?;
+    m.add_class::<CDLLONGLEGGEDDOJI>()?;
+    m.add_class::<CDLMORNINGDOJISTAR>()?;
+    m.add_class::<CDLSTICKSANDWICH>()?;
     Ok(())
 }
