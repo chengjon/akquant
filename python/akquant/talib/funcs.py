@@ -5,6 +5,16 @@ Internal helpers live in ``._dispatch``.
 """
 
 from ._candlestick import (  # noqa: F401
+    CDL2CROWS,
+    CDL3INSIDE,
+    CDL3OUTSIDE,
+    CDLBELTHOLD,
+    CDLCLOSINGMARUBOZU,
+    CDLDRAGONFLYDOJI,
+    CDLGRAVESTONEDOJI,
+    CDLLONGLINE,
+    CDLSHORTLINE,
+    CDLSTALLEDPATTERN,
     CDL_3BLACKCROWS,
     CDL_3WHITESOLDIERS,
     CDL_ENGULFING,

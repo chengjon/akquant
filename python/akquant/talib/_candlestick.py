@@ -6,6 +6,16 @@ from typing import cast
 
 import pandas as pd
 
+from ..akquant import CDL2CROWS as RustCDL2CROWS
+from ..akquant import CDL3INSIDE as RustCDL3INSIDE
+from ..akquant import CDL3OUTSIDE as RustCDL3OUTSIDE
+from ..akquant import CDLBELTHOLD as RustCDLBELTHOLD
+from ..akquant import CDLCLOSINGMARUBOZU as RustCDLCLOSINGMARUBOZU
+from ..akquant import CDLDRAGONFLYDOJI as RustCDLDRAGONFLYDOJI
+from ..akquant import CDLGRAVESTONEDOJI as RustCDLGRAVESTONEDOJI
+from ..akquant import CDLLONGLINE as RustCDLLONGLINE
+from ..akquant import CDLSHORTLINE as RustCDLSHORTLINE
+from ..akquant import CDLSTALLEDPATTERN as RustCDLSTALLEDPATTERN
 from ..akquant import CDL_3BLACKCROWS as RustCDL_3BLACKCROWS
 from ..akquant import CDL_3WHITESOLDIERS as RustCDL_3WHITESOLDIERS
 from ..akquant import CDL_ENGULFING as RustCDL_ENGULFING
@@ -527,6 +537,256 @@ def CDL_SHOOTINGSTAR(
     close_series = to_series(close, name="close")
     if backend_key == "rust":
         indicator = RustCDL_SHOOTINGSTAR()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDL2CROWS(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Two Crows candlestick pattern (bearish reversal, 3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDL2CROWS()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDL3INSIDE(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Three Inside Up/Down candlestick pattern (3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDL3INSIDE()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDL3OUTSIDE(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Three Outside Up/Down candlestick pattern (3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDL3OUTSIDE()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLBELTHOLD(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Belt-hold candlestick pattern (1-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLBELTHOLD()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLCLOSINGMARUBOZU(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Closing Marubozu candlestick pattern (1-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLCLOSINGMARUBOZU()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLDRAGONFLYDOJI(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Dragonfly Doji candlestick pattern (bullish, 1-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLDRAGONFLYDOJI()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLGRAVESTONEDOJI(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Gravestone Doji candlestick pattern (bearish, 1-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLGRAVESTONEDOJI()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLLONGLINE(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Long Line candlestick pattern (1-bar, body > 70% of range)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLLONGLINE()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLSHORTLINE(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Short Line candlestick pattern (1-bar, body < 30% of range)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLSHORTLINE()
+        out = _run_rust_ohlc_series(
+            open_series, high_series, low_series, close_series, indicator.update,
+        )
+        return finalize_output(out, as_series=as_series)
+    out = pd.Series(0.0, index=open_series.index)
+    return finalize_output(out, as_series=as_series)
+
+
+def CDLSTALLEDPATTERN(
+    open: SeriesLike,
+    high: SeriesLike,
+    low: SeriesLike,
+    close: SeriesLike,
+    *,
+    as_series: bool = False,
+    backend: str = "auto",
+) -> pd.Series | object:
+    """Stalled Pattern candlestick pattern (bearish, 3-bar)."""
+    backend_key = resolve_backend(backend)
+    open_series = to_series(open, name="open")
+    high_series = to_series(high, name="high")
+    low_series = to_series(low, name="low")
+    close_series = to_series(close, name="close")
+    if backend_key == "rust":
+        indicator = RustCDLSTALLEDPATTERN()
         out = _run_rust_ohlc_series(
             open_series, high_series, low_series, close_series, indicator.update,
         )
