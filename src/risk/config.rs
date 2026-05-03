@@ -36,6 +36,18 @@ pub struct RiskConfig {
     pub allow_force_liquidation: bool,
     #[pyo3(get, set)]
     pub liquidation_priority: String,
+    pub max_portfolio_delta: Option<Decimal>,
+    pub max_portfolio_gamma: Option<Decimal>,
+    pub max_portfolio_vega: Option<Decimal>,
+    pub slot_max_delta: Option<Decimal>,
+    pub slot_max_gamma: Option<Decimal>,
+    pub slot_max_vega: Option<Decimal>,
+    #[pyo3(get, set)]
+    pub option_risk_free_rate: f64,
+    #[pyo3(get, set)]
+    pub option_default_volatility: f64,
+    #[pyo3(get, set)]
+    pub option_greek_per_underlying: bool,
 }
 
 #[pymethods]
@@ -58,6 +70,15 @@ impl RiskConfig {
             borrow_rate_annual: 0.10,
             allow_force_liquidation: true,
             liquidation_priority: "short_first".to_string(),
+            max_portfolio_delta: None,
+            max_portfolio_gamma: None,
+            max_portfolio_vega: None,
+            slot_max_delta: None,
+            slot_max_gamma: None,
+            slot_max_vega: None,
+            option_risk_free_rate: 0.02,
+            option_default_volatility: 0.25,
+            option_greek_per_underlying: true,
         }
     }
 
@@ -98,6 +119,93 @@ impl RiskConfig {
     #[setter]
     pub fn set_max_position_size(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         self.max_position_size = match value {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_max_portfolio_delta(&self) -> Option<f64> {
+        self.max_portfolio_delta
+            .map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    pub fn set_max_portfolio_delta(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.max_portfolio_delta = match value {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_max_portfolio_gamma(&self) -> Option<f64> {
+        self.max_portfolio_gamma
+            .map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    pub fn set_max_portfolio_gamma(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.max_portfolio_gamma = match value {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_max_portfolio_vega(&self) -> Option<f64> {
+        self.max_portfolio_vega
+            .map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    pub fn set_max_portfolio_vega(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.max_portfolio_vega = match value {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_slot_max_delta(&self) -> Option<f64> {
+        self.slot_max_delta.map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    pub fn set_slot_max_delta(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.slot_max_delta = match value {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_slot_max_gamma(&self) -> Option<f64> {
+        self.slot_max_gamma.map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    pub fn set_slot_max_gamma(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.slot_max_gamma = match value {
+            Some(v) => Some(extract_decimal(v)?),
+            None => None,
+        };
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_slot_max_vega(&self) -> Option<f64> {
+        self.slot_max_vega.map(|d| d.to_f64().unwrap_or_default())
+    }
+
+    #[setter]
+    pub fn set_slot_max_vega(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.slot_max_vega = match value {
             Some(v) => Some(extract_decimal(v)?),
             None => None,
         };

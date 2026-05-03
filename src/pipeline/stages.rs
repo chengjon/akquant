@@ -41,6 +41,9 @@ fn process_order_request(engine: &mut Engine, py: Python<'_>, mut order: Order) 
     if strategy_limit_err.is_none() {
         strategy_limit_err = engine.check_portfolio_risk_budget_limit(&order);
     }
+    if strategy_limit_err.is_none() {
+        strategy_limit_err = engine.check_strategy_slot_greek_limit(&order, current_time);
+    }
     if triggers_risk_fallback {
         engine.activate_strategy_reduce_only_if_configured(&order);
         engine.activate_strategy_risk_cooldown_if_configured(&order);

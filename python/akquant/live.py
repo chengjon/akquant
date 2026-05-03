@@ -7,59 +7,15 @@ from .akquant import Bar, DataFeed, Engine, Instrument
 from .gateway.base import GatewayBundle
 from .gateway.factory import create_gateway_bundle
 from .gateway.models import UnifiedOrderRequest
+from .live_helpers import (  # noqa: F401
+    _StrategyCallbackFanout,
+    is_terminal_status,
+    payload_field,
+    payload_to_dict,
+)
 from .strategy import Strategy
 from .strategy_loader import resolve_strategy_input
 from .utils import format_metric_value
-
-
-class _StrategyCallbackFanout:
-    def __init__(self, strategies: List[Strategy]):
-        self._strategies = strategies
-
-    def on_order(self, order: Any) -> None:
-        for strategy in self._strategies:
-            callback = getattr(strategy, "on_order", None)
-            if callback is None:
-                continue
-            try:
-                callback(order)
-            except Exception as exc:
-                on_error = getattr(strategy, "on_error", None)
-                if on_error is not None:
-                    try:
-                        on_error(exc, "on_order", order)
-                    except Exception:
-                        pass
-
-    def on_trade(self, trade: Any) -> None:
-        for strategy in self._strategies:
-            callback = getattr(strategy, "on_trade", None)
-            if callback is None:
-                continue
-            try:
-                callback(trade)
-            except Exception as exc:
-                on_error = getattr(strategy, "on_error", None)
-                if on_error is not None:
-                    try:
-                        on_error(exc, "on_trade", trade)
-                    except Exception:
-                        pass
-
-    def on_execution_report(self, report: Any) -> None:
-        for strategy in self._strategies:
-            callback = getattr(strategy, "on_execution_report", None)
-            if callback is None:
-                continue
-            try:
-                callback(report)
-            except Exception as exc:
-                on_error = getattr(strategy, "on_error", None)
-                if on_error is not None:
-                    try:
-                        on_error(exc, "on_execution_report", report)
-                    except Exception:
-                        pass
 
 
 class LiveRunner:
@@ -801,7 +757,7 @@ class LiveRunner:
                             "owner_strategy_id": self._resolve_owner_strategy_id(
                                 payload
                             ),
-                            "payload": self._payload_to_dict(payload),
+                            "payload": payload_to_dict(payload),
                         }
                     )
                 except Exception:
@@ -856,60 +812,55 @@ class LiveRunner:
 
     def _update_broker_state(self, event_name: str, payload: Any) -> None:
         if event_name == "order":
-            broker_order_id = str(self._payload_field(payload, "broker_order_id"))
-            client_order_id = str(self._payload_field(payload, "client_order_id"))
+            broker_order_id = str(payload_field(payload, "broker_order_id"))
+            client_order_id = str(payload_field(payload, "client_order_id"))
             self._sync_order_id_mapping(client_order_id, broker_order_id)
             if broker_order_id:
                 self._broker_order_states[broker_order_id] = payload
-                status = self._payload_field(payload, "status")
-                if self._is_terminal_status(status):
+                status = payload_field(payload, "status")
+                if is_terminal_status(status):
                     self._close_order_mapping(client_order_id, broker_order_id)
         elif event_name == "trade":
-            trade_key = str(self._payload_field(payload, "trade_id"))
-            broker_order_id = str(self._payload_field(payload, "broker_order_id"))
-            client_order_id = str(self._payload_field(payload, "client_order_id"))
+            trade_key = str(payload_field(payload, "trade_id"))
+            broker_order_id = str(payload_field(payload, "broker_order_id"))
+            client_order_id = str(payload_field(payload, "client_order_id"))
             if not client_order_id and broker_order_id:
                 client_order_id = self._resolve_client_order_id(broker_order_id)
             self._sync_order_id_mapping(client_order_id, broker_order_id)
             if trade_key:
                 self._broker_trade_keys.add(trade_key)
         elif event_name == "execution_report":
-            broker_order_id = str(self._payload_field(payload, "broker_order_id"))
-            client_order_id = str(self._payload_field(payload, "client_order_id"))
+            broker_order_id = str(payload_field(payload, "broker_order_id"))
+            client_order_id = str(payload_field(payload, "client_order_id"))
             self._sync_order_id_mapping(client_order_id, broker_order_id)
-            status = self._payload_field(payload, "status")
-            if self._is_terminal_status(status):
+            status = payload_field(payload, "status")
+            if is_terminal_status(status):
                 self._close_order_mapping(client_order_id, broker_order_id)
             report_key = (
-                f"{self._payload_field(payload, 'broker_order_id')}-"
-                f"{self._payload_field(payload, 'status')}-"
-                f"{self._payload_field(payload, 'timestamp_ns')}"
+                f"{payload_field(payload, 'broker_order_id')}-"
+                f"{payload_field(payload, 'status')}-"
+                f"{payload_field(payload, 'timestamp_ns')}"
             )
             if report_key:
                 self._broker_report_keys.add(report_key)
 
     def _make_event_key(self, event_name: str, payload: Any) -> str:
         if event_name == "trade":
-            trade_id = str(self._payload_field(payload, "trade_id"))
+            trade_id = str(payload_field(payload, "trade_id"))
             if trade_id:
                 return f"trade:{trade_id}"
         if event_name == "order":
-            broker_order_id = str(self._payload_field(payload, "broker_order_id"))
-            status = str(self._payload_field(payload, "status"))
-            filled_quantity = str(self._payload_field(payload, "filled_quantity"))
-            timestamp_ns = str(self._payload_field(payload, "timestamp_ns"))
+            broker_order_id = str(payload_field(payload, "broker_order_id"))
+            status = str(payload_field(payload, "status"))
+            filled_quantity = str(payload_field(payload, "filled_quantity"))
+            timestamp_ns = str(payload_field(payload, "timestamp_ns"))
             return f"order:{broker_order_id}:{status}:{filled_quantity}:{timestamp_ns}"
         if event_name == "execution_report":
-            broker_order_id = str(self._payload_field(payload, "broker_order_id"))
-            status = str(self._payload_field(payload, "status"))
-            timestamp_ns = str(self._payload_field(payload, "timestamp_ns"))
+            broker_order_id = str(payload_field(payload, "broker_order_id"))
+            status = str(payload_field(payload, "status"))
+            timestamp_ns = str(payload_field(payload, "timestamp_ns"))
             return f"execution_report:{broker_order_id}:{status}:{timestamp_ns}"
         return f"{event_name}:{id(payload)}"
-
-    def _payload_field(self, payload: Any, field: str) -> Any:
-        if isinstance(payload, dict):
-            return payload.get(field, "")
-        return getattr(payload, field, "")
 
     def _next_client_order_id(self) -> str:
         with self._broker_submit_lock:
@@ -935,12 +886,12 @@ class LiveRunner:
 
     def _resolve_owner_strategy_id(self, payload: Any) -> str:
         owner_strategy_id = str(
-            self._payload_field(payload, "owner_strategy_id")
+            payload_field(payload, "owner_strategy_id")
         ).strip()
         if owner_strategy_id:
             return owner_strategy_id
-        broker_order_id = str(self._payload_field(payload, "broker_order_id")).strip()
-        client_order_id = str(self._payload_field(payload, "client_order_id")).strip()
+        broker_order_id = str(payload_field(payload, "broker_order_id")).strip()
+        client_order_id = str(payload_field(payload, "client_order_id")).strip()
         if not client_order_id and broker_order_id:
             client_order_id = self._resolve_client_order_id(broker_order_id)
         if client_order_id:
@@ -952,13 +903,6 @@ class LiveRunner:
             if mapped:
                 return mapped
         return "_default"
-
-    def _payload_to_dict(self, payload: Any) -> Dict[str, Any]:
-        if isinstance(payload, dict):
-            return dict(payload)
-        if hasattr(payload, "__dict__"):
-            return dict(getattr(payload, "__dict__"))
-        return {}
 
     def _resolve_client_order_id(self, broker_order_id: str) -> str:
         return self._broker_to_client_order_ids.get(broker_order_id, "")
@@ -975,10 +919,6 @@ class LiveRunner:
             self._broker_to_strategy_ids.pop(broker_order_id, None)
             self._closed_broker_order_ids.add(broker_order_id)
 
-    def _is_terminal_status(self, status: Any) -> bool:
-        status_text = str(status).strip().lower()
-        return status_text in {"filled", "cancelled", "canceled", "rejected"}
-
     def can_submit_client_order(self, client_order_id: str) -> bool:
         """Check whether a client order id can be submitted again."""
         broker_order_id = self._resolve_broker_order_id(client_order_id)
@@ -989,8 +929,8 @@ class LiveRunner:
         snapshot = self._broker_order_states.get(broker_order_id)
         if snapshot is None:
             return False
-        status = self._payload_field(snapshot, "status")
-        return self._is_terminal_status(status)
+        status = payload_field(snapshot, "status")
+        return is_terminal_status(status)
 
     def get_execution_capabilities(self) -> dict[str, Any]:
         """Return execution capabilities for broker live mode."""

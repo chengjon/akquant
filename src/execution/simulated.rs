@@ -755,13 +755,14 @@ mod tests {
 
         // Buy 1000 shares @ 100 = 100,000 value.
         // But cash is only 50,000.
-        let order = create_test_order(
+        let mut order = create_test_order(
             "AAPL",
             crate::model::OrderSide::Buy,
             crate::model::OrderType::Market,
             Decimal::from(1000),
             None,
         );
+        order.allow_quantity_auto_resize = true;
         sim.on_order(order);
 
         let bar = create_test_bar(

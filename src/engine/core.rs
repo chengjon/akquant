@@ -547,6 +547,27 @@ impl Engine {
         ))
     }
 
+    /// Check per-slot Greek risk limits (delta, gamma, vega).
+    ///
+    /// Delegates to `risk::option::check_slot_greek_limit` using this slot's positions,
+    /// instruments, and prices. Returns an error string if any limit is breached.
+    pub(crate) fn check_strategy_slot_greek_limit(
+        &self,
+        order: &Order,
+        current_time: i64,
+    ) -> Option<String> {
+        let strategy_id = Self::normalized_order_strategy_id(order)?;
+        let slot_positions = self.strategy_positions.get(&strategy_id)?;
+        crate::risk::option::check_slot_greek_limit(
+            &strategy_id,
+            slot_positions,
+            &self.instruments,
+            &self.last_prices,
+            current_time,
+            &self.risk_manager.config,
+        )
+    }
+
     pub(crate) fn ensure_strategy_context_capacity(&mut self) {
         self.ensure_strategy_slot_exists();
         while self.strategy_contexts.len() < self.strategy_slots.len() {

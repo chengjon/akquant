@@ -463,6 +463,17 @@ class RiskConfig:
     allow_force_liquidation: bool = True
     liquidation_priority: str = "short_first"
 
+    # Option Greek risk limits
+    max_portfolio_delta: Optional[float] = None
+    max_portfolio_gamma: Optional[float] = None
+    max_portfolio_vega: Optional[float] = None
+    slot_max_delta: Optional[float] = None
+    slot_max_gamma: Optional[float] = None
+    slot_max_vega: Optional[float] = None
+    option_risk_free_rate: float = 0.02
+    option_default_volatility: float = 0.25
+    option_greek_per_underlying: bool = True
+
 
 @dataclass
 class StrategyConfig:

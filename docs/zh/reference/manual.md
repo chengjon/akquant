@@ -27,6 +27,7 @@ AKQuant 是一个高性能量化交易框架，以 **纯库** 形式提供（无
 - [17. ML 集成](#17-ml-集成)
 - [18. 工具函数](#18-工具函数)
 - [19. TA-Lib 封装](#19-ta-lib-封装)
+- [20. 期权 Greeks 与定价](#20-期权-greeks-与定价)
 
 ---
 
@@ -85,6 +86,12 @@ AKQuant 是一个高性能量化交易框架，以 **纯库** 形式提供（无
 | `TradePnL` | 逐笔盈亏 |
 | `ClosedTrade` | 已平仓交易记录 |
 | `LiquidationAudit` | 强平审计记录 |
+
+### 期权定价与 Greeks
+
+| 类 | 说明 |
+|----|------|
+| `PyGreeksResult` | Greeks 计算结果（delta/gamma/theta/vega/rho/price） |
 
 ### 风控
 
@@ -761,6 +768,17 @@ class RiskConfig:
 
     # 行业集中度
     sector_concentration: Optional[Tuple] = None     # 行业集中度限制
+
+    # 期权 Greek 风控
+    max_portfolio_delta: Optional[float] = None      # 组合级 Delta 绝对值限额
+    max_portfolio_gamma: Optional[float] = None      # 组合级 Gamma 绝对值限额
+    max_portfolio_vega: Optional[float] = None       # 组合级 Vega 绝对值限额
+    slot_max_delta: Optional[float] = None           # 策略槽级 Delta 限额
+    slot_max_gamma: Optional[float] = None           # 策略槽级 Gamma 限额
+    slot_max_vega: Optional[float] = None            # 策略槽级 Vega 限额
+    option_risk_free_rate: float = 0.02              # BSM 无风险利率
+    option_default_volatility: float = 0.25          # 默认隐含波动率
+    option_greek_per_underlying: bool = True         # 按标的聚合 Greek（False=组合级）
 ```
 
 ### 8.2 风控应用
@@ -1162,6 +1180,96 @@ from akquant.talib import SMA, EMA, RSI, MACD, BBANDS
 
 # 在策略中使用
 sma = SMA(close_prices, timeperiod=20)
+```
+
+---
+
+## 20. 期权 Greeks 与定价
+
+文件：`src/pricing/`（Rust）+ `python/akquant/risk.py`（Python 绑定）
+
+### 20.1 Greeks 计算
+
+```python
+from akquant import calculate_option_greeks
+
+result = calculate_option_greeks(
+    underlying_price=100.0,       # 标的当前价格
+    strike=100.0,                 # 行权价
+    time_to_expiry_years=0.25,    # 距到期年化时间
+    risk_free_rate=0.02,          # 无风险利率
+    volatility=0.25,              # 隐含波动率
+    option_type="CALL",           # "CALL" | "PUT"
+)
+
+result.delta    # float: Delta
+result.gamma    # float: Gamma
+result.theta    # float: Theta
+result.vega     # float: Vega
+result.rho      # float: Rho
+result.price    # float: BSM 理论价格
+```
+
+### 20.2 隐含波动率求解
+
+```python
+from akquant import calculate_implied_volatility
+
+iv = calculate_implied_volatility(
+    underlying_price=100.0,       # 标的当前价格
+    strike=100.0,                 # 行权价
+    time_to_expiry_years=0.25,    # 距到期年化时间
+    risk_free_rate=0.02,          # 无风险利率
+    market_price=5.0,             # 市场观察价格
+    option_type="CALL",           # "CALL" | "PUT"
+    initial_guess=0.25,           # 初始波动率猜测（可选）
+    max_iterations=100,           # 最大迭代次数（可选）
+    tolerance=1e-8,               # 收敛容差（可选）
+)
+# 返回: float — 隐含波动率
+```
+
+### 20.3 期权保证金计算
+
+```python
+from akquant.option.queries import calculate_option_margin
+
+# 中国交易所标准公式：
+# Max(权利金 + Max(12%×标的 - OTM, 7%×标的), 权利金 + 标的×保证金率)
+margin = calculate_option_margin(
+    underlying_price=100.0,       # 标的价格
+    strike=100.0,                 # 行权价
+    premium=5.0,                  # 权利金
+    option_type="CALL",           # "CALL" | "PUT"
+    multiplier=10000.0,           # 合约乘数
+    margin_ratio=0.10,            # 保证金率
+    position="short",             # "long" | "short"
+)
+# Long 仓位返回 0，Short 返回交易所标准保证金
+```
+
+### 20.4 Greek 风控配置示例
+
+```python
+from akquant import run_backtest
+from akquant.config import RiskConfig
+
+risk_config = RiskConfig(
+    max_portfolio_delta=200.0,     # 组合 Delta 绝对值上限
+    max_portfolio_gamma=50.0,      # 组合 Gamma 绝对值上限
+    option_default_volatility=0.25,  # 默认 IV
+    option_risk_free_rate=0.02,    # 无风险利率
+    option_greek_per_underlying=True,  # 按标的聚合
+    slot_max_delta=100.0,          # 策略槽 Delta 上限
+)
+
+result = run_backtest(
+    data=df,
+    strategy=MyOptionStrategy,
+    risk_config=risk_config,
+    ...
+)
+# 超过限额的订单将被风控拒绝
 ```
 
 ---

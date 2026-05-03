@@ -72,6 +72,51 @@ def apply_risk_config(engine: "Engine", config: Optional[PyRiskConfig]) -> None:
     if liquidation_priority is not None:
         setattr(rust_config, "liquidation_priority", str(liquidation_priority))
 
+    # Option Greek risk limits
+    max_portfolio_delta = getattr(config, "max_portfolio_delta", None)
+    if max_portfolio_delta is not None:
+        rust_config.max_portfolio_delta = max_portfolio_delta
+
+    max_portfolio_gamma = getattr(config, "max_portfolio_gamma", None)
+    if max_portfolio_gamma is not None:
+        rust_config.max_portfolio_gamma = max_portfolio_gamma
+
+    max_portfolio_vega = getattr(config, "max_portfolio_vega", None)
+    if max_portfolio_vega is not None:
+        rust_config.max_portfolio_vega = max_portfolio_vega
+
+    slot_max_delta = getattr(config, "slot_max_delta", None)
+    if slot_max_delta is not None:
+        rust_config.slot_max_delta = slot_max_delta
+
+    slot_max_gamma = getattr(config, "slot_max_gamma", None)
+    if slot_max_gamma is not None:
+        rust_config.slot_max_gamma = slot_max_gamma
+
+    slot_max_vega = getattr(config, "slot_max_vega", None)
+    if slot_max_vega is not None:
+        rust_config.slot_max_vega = slot_max_vega
+
+    option_risk_free_rate = getattr(config, "option_risk_free_rate", None)
+    if option_risk_free_rate is not None:
+        setattr(rust_config, "option_risk_free_rate", float(option_risk_free_rate))
+
+    option_default_volatility = getattr(config, "option_default_volatility", None)
+    if option_default_volatility is not None:
+        setattr(
+            rust_config,
+            "option_default_volatility",
+            float(option_default_volatility),
+        )
+
+    option_greek_per_underlying = getattr(config, "option_greek_per_underlying", None)
+    if option_greek_per_underlying is not None:
+        setattr(
+            rust_config,
+            "option_greek_per_underlying",
+            bool(option_greek_per_underlying),
+        )
+
     # Use the dedicated setter method to ensure the update propagates to the Engine
     # Direct attribute assignment (engine.risk_manager.config = ...) might only
     # update a copy

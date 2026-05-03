@@ -1,4 +1,6 @@
 use crate::model::Instrument;
+use crate::model::instrument::InstrumentEnum;
+use crate::model::types::OptionType;
 use rust_decimal::Decimal;
 
 fn checked_mul_or_cap(lhs: Decimal, rhs: Decimal) -> Decimal {
@@ -88,25 +90,53 @@ impl MarginCalculator for OptionMarginCalculator {
         use rust_decimal::prelude::*;
 
         if quantity > Decimal::ZERO {
-            Decimal::ZERO
-        } else {
-            let abs_qty = quantity.abs();
-            let underlying_price = underlying_price.unwrap_or(Decimal::ZERO).abs();
-            let multiplier = instrument.multiplier().abs();
-            let margin_ratio = instrument.margin_ratio().abs();
-            let option_price = price.abs();
-
-            let margin_per_unit = if underlying_price > Decimal::ZERO {
-                checked_add_or_cap(
-                    option_price,
-                    checked_mul_or_cap(underlying_price, margin_ratio),
-                )
-            } else {
-                checked_mul_or_cap(option_price, checked_add_or_cap(Decimal::ONE, margin_ratio))
-            };
-
-            checked_mul_or_cap(checked_mul_or_cap(margin_per_unit, multiplier), abs_qty)
+            return Decimal::ZERO;
         }
+
+        let abs_qty = quantity.abs();
+        let underlying_price = underlying_price.unwrap_or(Decimal::ZERO).abs();
+        let multiplier = instrument.multiplier().abs();
+        let margin_ratio = instrument.margin_ratio().abs();
+        let premium = price.abs();
+
+        // Get strike and option_type from instrument
+        let (strike, option_type) = match &instrument.inner {
+            InstrumentEnum::Option(opt) => (opt.strike_price, opt.option_type),
+            _ => {
+                // Fallback for non-option instruments (shouldn't happen)
+                let margin_per_unit = if underlying_price > Decimal::ZERO {
+                    checked_add_or_cap(premium, checked_mul_or_cap(underlying_price, margin_ratio))
+                } else {
+                    checked_mul_or_cap(premium, checked_add_or_cap(Decimal::ONE, margin_ratio))
+                };
+                return checked_mul_or_cap(checked_mul_or_cap(margin_per_unit, multiplier), abs_qty);
+            }
+        };
+
+        if underlying_price <= Decimal::ZERO {
+            let margin_per_unit = checked_mul_or_cap(premium, checked_add_or_cap(Decimal::ONE, margin_ratio));
+            return checked_mul_or_cap(checked_mul_or_cap(margin_per_unit, multiplier), abs_qty);
+        }
+
+        // Chinese exchange standard formula
+        let otm = match option_type {
+            OptionType::Call => (strike - underlying_price).max(Decimal::ZERO),
+            OptionType::Put => (underlying_price - strike).max(Decimal::ZERO),
+        };
+
+        let twelve_pct = Decimal::from_str("0.12").unwrap_or(Decimal::new(12, 2));
+        let seven_pct = Decimal::from_str("0.07").unwrap_or(Decimal::new(7, 2));
+
+        // max(premium + max(0.12 * underlying - otm, 0.07 * underlying), premium + underlying * margin_ratio)
+        let term1_inner = checked_mul_or_cap(twelve_pct, underlying_price)
+            .checked_sub(otm)
+            .unwrap_or(Decimal::ZERO)
+            .max(checked_mul_or_cap(seven_pct, underlying_price));
+        let term1 = checked_add_or_cap(premium, term1_inner);
+        let term2 = checked_add_or_cap(premium, checked_mul_or_cap(underlying_price, margin_ratio));
+        let margin_per_unit = term1.max(term2);
+
+        checked_mul_or_cap(checked_mul_or_cap(margin_per_unit, multiplier), abs_qty)
     }
 }
 

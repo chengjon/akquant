@@ -22,14 +22,16 @@
 
 **AKQuant** 是一款专为量化投研设计的**下一代高性能混合框架**。核心引擎采用 **Rust** 编写以确保极致的执行效率，同时提供优雅的 **Python** 接口以维持灵活的策略开发体验。
 
+> **[总体设计方案与功能介绍](docs/zh/reference/design-overview.md)** — 完整的架构说明、模块详解、数据流与设计模式文档。
+
 🚀 **核心亮点：**
 
 *   **极致性能**：得益于 Rust 的零开销抽象与 **Zero-Copy** 数据架构，回测速度较传统纯 Python 框架（如 Backtrader）提升 **X倍+**。
 *   **原生 ML 支持**：内置 **Walk-forward Validation**（滚动训练）框架，无缝集成 PyTorch/Scikit-learn，让 AI 策略开发从实验到回测一气呵成。
-*   **TA-Lib 指标生态**：内置 `akquant.talib` 双后端（`python/rust`）兼容能力，支持 **103 个指标**。
+*   **TA-Lib 指标生态**：内置 `akquant.talib` 双后端（`python/rust`）兼容能力，支持 **135 个指标**（含 20 个 K 线形态）。
 *   **因子表达式引擎**：内置 **Polars** 驱动的高性能因子计算引擎，支持 `Rank(Ts_Mean(Close, 5))` 等 Alpha101 风格公式，自动处理并行计算与数据对齐。
 *   **参数优化**：内置多进程网格搜索（Grid Search）框架，支持策略参数的高效并行优化。
-*   **专业级风控**：内置完善的订单流管理与即时风控模块，支持多资产组合回测。
+*   **专业级风控**：内置完善的订单流管理与即时风控模块，支持多资产组合回测。期权风控支持 **Delta/Gamma/Vega 限额**（按标的聚合），内置 **Black-Scholes-Merton** 定价与 Greeks 计算。
 
 👉 **[阅读完整文档](https://akquant.akfamily.xyz/)** | **[English Documentation](https://akquant.akfamily.xyz/en/)**
 
@@ -281,7 +283,9 @@ executions_by_strategy = result.executions_by_strategy() # 按策略归属聚合
 | **参数优化** | `run_grid_search()` | 多进程网格搜索，自动按指标排序 |
 | **滚动训练** | `run_walk_forward()` | 样本内优化 + 样本外验证，防过拟合 |
 | **因子引擎** | `FactorEngine` | Polars 驱动，支持 `Rank(Ts_Mean(Close, 10))` 等 Alpha101 表达式 |
-| **风控模块** | `RiskManager` | 最大回撤、日损失、持仓上限、杠杆率、行业集中度 |
+| **风控模块** | `RiskManager` | 最大回撤、日损失、持仓上限、杠杆率、行业集中度、期权 Greek 限额 |
+| **期权定价** | `calculate_option_greeks()` | Black-Scholes-Merton 定价与 Greeks（Delta/Gamma/Theta/Vega/Rho） |
+| **隐含波动率** | `calculate_implied_volatility()` | Newton-Raphson 迭代求解 IV |
 | **多资产支持** | `InstrumentConfig` | 股票(T+1)、期货(保证金)、期权、基金、加密货币 |
 | **实盘对接** | `LiveRunner` | CTP 主链路，MiniQMT / PTrade 占位接口 |
 | **ML 集成** | `on_train_signal` | 滚动训练信号 + PyTorch / Sklearn 适配器 |
@@ -307,6 +311,7 @@ executions_by_strategy = result.executions_by_strategy() # 按策略归属聚合
 | **数据管理** | [docs/zh/guide/data.md](docs/zh/guide/data.md) | 数据源接入与多时间框 |
 | **可视化** | [docs/zh/guide/visualization.md](docs/zh/guide/visualization.md) | 报告生成与自定义图表 |
 | **分析模块** | [docs/zh/guide/analysis.md](docs/zh/guide/analysis.md) | 绩效分析与归因 |
+| **期权风控** | [docs/zh/guide/option_risk.md](docs/zh/guide/option_risk.md) | Greek 限额、BSM 定价、保证金计算 |
 | **测试指南** | [docs/zh/guide/testing.md](docs/zh/guide/testing.md) | 单元测试与黄金测试 |
 | **横截面策略** | [docs/zh/guide/cross_section_checklist.md](docs/zh/guide/cross_section_checklist.md) | 横截面轮动策略实战清单 |
 | **示例集合** | [docs/zh/guide/examples.md](docs/zh/guide/examples.md) | 参数模型配置与完整示例 |

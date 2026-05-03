@@ -1,7 +1,6 @@
 import datetime as dt
 import logging
 from collections import defaultdict, deque
-from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -68,6 +67,21 @@ from .strategy_order_events import (
 )
 from .strategy_order_events import (
     trade_event_key as _trade_event_key_impl,
+)
+from .strategy_order_groups import (
+    create_oco_order_group as _create_oco_order_group_impl,
+)
+from .strategy_order_groups import (
+    detach_oco_order as _detach_oco_order_impl,
+)
+from .strategy_order_groups import (
+    place_bracket_order as _place_bracket_order_impl,
+)
+from .strategy_order_groups import (
+    process_order_groups as _process_order_groups_impl,
+)
+from .strategy_order_groups import (
+    remove_oco_group as _remove_oco_group_impl,
 )
 from .strategy_position import Position
 from .strategy_scheduler import add_daily_timer as _add_daily_timer_impl
@@ -156,64 +170,18 @@ from .strategy_trading_api import (
 from .strategy_trading_api import (
     submit_order as _submit_order_impl,
 )
+from .strategy_types import (  # noqa: F401
+    InstrumentAssetTypeName,
+    InstrumentOptionTypeName,
+    InstrumentSettlementMode,
+    InstrumentSnapshot,
+    InstrumentStaticValue,
+    StrategyRuntimeConfig,
+)
 
 if TYPE_CHECKING:
     from .indicator import Indicator
     from .ml.model import QuantModel
-
-
-@dataclass
-class StrategyRuntimeConfig:
-    """策略运行时行为配置."""
-
-    enable_precise_day_boundary_hooks: bool = False
-    portfolio_update_eps: float = 0.0
-    error_mode: Literal["raise", "continue", "legacy"] = "raise"
-    re_raise_on_error: bool = True
-    indicator_mode: Literal["incremental", "precompute"] = "precompute"
-
-    def __post_init__(self) -> None:
-        """校验并标准化配置."""
-        self.portfolio_update_eps = float(self.portfolio_update_eps)
-        if self.portfolio_update_eps < 0.0:
-            raise ValueError("portfolio_update_eps must be >= 0")
-        mode = str(self.error_mode).strip().lower()
-        if mode not in {"raise", "continue", "legacy"}:
-            raise ValueError("error_mode must be one of: raise, continue, legacy")
-        self.error_mode = cast(Literal["raise", "continue", "legacy"], mode)
-        indicator_mode = str(self.indicator_mode).strip().lower()
-        if indicator_mode not in {"incremental", "precompute"}:
-            raise ValueError("indicator_mode must be one of: incremental, precompute")
-        self.indicator_mode = cast(Literal["incremental", "precompute"], indicator_mode)
-        self.enable_precise_day_boundary_hooks = bool(
-            self.enable_precise_day_boundary_hooks
-        )
-        self.re_raise_on_error = bool(self.re_raise_on_error)
-
-
-InstrumentStaticValue = Union[str, int, float, bool]
-InstrumentAssetTypeName = Literal["STOCK", "FUTURES", "FUND", "OPTION"]
-InstrumentOptionTypeName = Literal["CALL", "PUT"]
-InstrumentSettlementMode = Literal["CASH", "SETTLEMENT_PRICE", "FORCE_CLOSE"]
-
-
-@dataclass(frozen=True)
-class InstrumentSnapshot:
-    """策略侧可访问的标的静态属性快照."""
-
-    symbol: str
-    asset_type: InstrumentAssetTypeName
-    multiplier: float
-    margin_ratio: float
-    tick_size: float
-    lot_size: float
-    option_type: Optional[InstrumentOptionTypeName] = None
-    strike_price: Optional[float] = None
-    expiry_date: Optional[int] = None
-    underlying_symbol: Optional[str] = None
-    settlement_type: Optional[InstrumentSettlementMode] = None
-    settlement_price: Optional[float] = None
-    static_attrs: Dict[str, InstrumentStaticValue] = field(default_factory=dict)
 
 
 class Strategy:
@@ -1399,37 +1367,9 @@ class Strategy:
 
         当组内任一订单成交时，自动撤销另一订单。
         """
-        first = first_order_id.strip()
-        second = second_order_id.strip()
-        if not first or not second:
-            raise ValueError("OCO order ids cannot be empty")
-        if first == second:
-            raise ValueError("OCO order ids must be different")
-
-        if group_id is None or not str(group_id).strip():
-            self._order_group_seq += 1
-            group_id = f"oco-{self._order_group_seq}"
-        group_key = str(group_id).strip()
-
-        engine = getattr(self, "_engine", None)
-        register_oco = getattr(engine, "register_oco_group", None)
-        if callable(register_oco):
-            try:
-                register_oco(group_key, first, second)
-                self._use_engine_oco = True
-                return group_key
-            except Exception:
-                self._pending_engine_oco_groups.append((group_key, first, second))
-                self._use_engine_oco = True
-                return group_key
-
-        self._detach_oco_order(first)
-        self._detach_oco_order(second)
-
-        self._oco_groups[group_key] = {first, second}
-        self._oco_order_to_group[first] = group_key
-        self._oco_order_to_group[second] = group_key
-        return group_key
+        return _create_oco_order_group_impl(
+            self, first_order_id, second_order_id, group_id
+        )
 
     def place_bracket_order(
         self,
@@ -1448,144 +1388,37 @@ class Strategy:
 
         先提交进场单，待进场成交后自动挂出止损/止盈，并绑定 OCO。
         """
-        if quantity <= 0:
-            raise ValueError("quantity must be > 0")
-        if stop_trigger_price is None and take_profit_price is None:
-            raise ValueError("stop_trigger_price or take_profit_price must be provided")
-
-        entry_order_id = self.buy(
-            symbol=symbol,
-            quantity=quantity,
-            price=entry_price,
-            time_in_force=time_in_force,
-            tag=entry_tag,
+        return _place_bracket_order_impl(
+            self,
+            symbol,
+            quantity,
+            entry_price,
+            stop_trigger_price,
+            take_profit_price,
+            time_in_force,
+            entry_tag,
+            stop_tag,
+            take_profit_tag,
         )
-        if not entry_order_id:
-            raise RuntimeError("failed to submit bracket entry order")
-
-        engine = getattr(self, "_engine", None)
-        register_bracket = getattr(engine, "register_bracket_plan", None)
-        if callable(register_bracket):
-            try:
-                register_bracket(
-                    entry_order_id,
-                    stop_trigger_price,
-                    take_profit_price,
-                    time_in_force,
-                    stop_tag,
-                    take_profit_tag,
-                )
-                self._use_engine_bracket = True
-                return entry_order_id
-            except Exception:
-                self._pending_engine_bracket_plans.append(
-                    (
-                        entry_order_id,
-                        stop_trigger_price,
-                        take_profit_price,
-                        time_in_force,
-                        stop_tag,
-                        take_profit_tag,
-                    )
-                )
-                self._use_engine_bracket = True
-                return entry_order_id
-
-        self._pending_brackets[entry_order_id] = {
-            "symbol": symbol,
-            "quantity": float(quantity),
-            "stop_trigger_price": stop_trigger_price,
-            "take_profit_price": take_profit_price,
-            "time_in_force": time_in_force,
-            "stop_tag": stop_tag,
-            "take_profit_tag": take_profit_tag,
-        }
-        return entry_order_id
 
     def _process_order_groups(self, trade: Any) -> None:
-        self._process_pending_bracket(trade)
-        self._process_oco_trade(trade)
+        _process_order_groups_impl(self, trade)
 
     def _process_pending_bracket(self, trade: Any) -> None:
-        if self._use_engine_bracket:
-            return
-        order_id = str(getattr(trade, "order_id", "") or "")
-        if not order_id:
-            return
+        from .strategy_order_groups import process_pending_bracket
 
-        bracket = self._pending_brackets.pop(order_id, None)
-        if bracket is None:
-            return
-
-        trade_symbol = getattr(trade, "symbol", None)
-        symbol = str(trade_symbol) if trade_symbol else str(bracket["symbol"])
-
-        trade_qty = getattr(trade, "quantity", None)
-        if trade_qty is None:
-            quantity = float(bracket["quantity"])
-        else:
-            quantity = float(trade_qty)
-
-        stop_order_id = ""
-        take_order_id = ""
-        stop_trigger_price = bracket["stop_trigger_price"]
-        take_profit_price = bracket["take_profit_price"]
-        time_in_force = cast(Optional[TimeInForce], bracket["time_in_force"])
-
-        if stop_trigger_price is not None:
-            stop_order_id = self.sell(
-                symbol=symbol,
-                quantity=quantity,
-                trigger_price=float(stop_trigger_price),
-                time_in_force=time_in_force,
-                tag=cast(Optional[str], bracket["stop_tag"]),
-            )
-
-        if take_profit_price is not None:
-            take_order_id = self.sell(
-                symbol=symbol,
-                quantity=quantity,
-                price=float(take_profit_price),
-                time_in_force=time_in_force,
-                tag=cast(Optional[str], bracket["take_profit_tag"]),
-            )
-
-        if stop_order_id and take_order_id:
-            self.create_oco_order_group(stop_order_id, take_order_id)
+        process_pending_bracket(self, trade)
 
     def _process_oco_trade(self, trade: Any) -> None:
-        if self._use_engine_oco:
-            return
-        order_id = str(getattr(trade, "order_id", "") or "")
-        if not order_id:
-            return
+        from .strategy_order_groups import process_oco_trade
 
-        group_id = self._oco_order_to_group.get(order_id)
-        if not group_id:
-            return
-
-        group_orders = self._oco_groups.get(group_id, set())
-        peer_orders = [oid for oid in group_orders if oid != order_id]
-        for peer_order_id in peer_orders:
-            self.cancel_order(peer_order_id)
-
-        self._remove_oco_group(group_id)
+        process_oco_trade(self, trade)
 
     def _detach_oco_order(self, order_id: str) -> None:
-        old_group = self._oco_order_to_group.get(order_id)
-        if not old_group:
-            return
-        group_orders = self._oco_groups.get(old_group)
-        if group_orders is not None:
-            group_orders.discard(order_id)
-            if len(group_orders) <= 1:
-                self._remove_oco_group(old_group)
-        self._oco_order_to_group.pop(order_id, None)
+        _detach_oco_order_impl(self, order_id)
 
     def _remove_oco_group(self, group_id: str) -> None:
-        group_orders = self._oco_groups.pop(group_id, set())
-        for oid in group_orders:
-            self._oco_order_to_group.pop(oid, None)
+        _remove_oco_group_impl(self, group_id)
 
     def buy(
         self,

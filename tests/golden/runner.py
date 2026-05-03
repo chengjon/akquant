@@ -27,6 +27,7 @@ sys.path.append(str(Path(__file__).parent / "strategies"))
 
 from futures_margin import FutureMarginStrategy  # noqa: E402
 from option_basic import OptionBasicStrategy  # noqa: E402
+from option_greek_risk import OptionGreekRiskStrategy  # noqa: E402
 from stock_t1 import StockT1Strategy  # noqa: E402
 
 BASE_DIR = Path(__file__).parent
@@ -236,8 +237,11 @@ def run_test(
     instr_configs = config.get("instruments_config", [])
 
     # Create BacktestConfig
+    strat_config = StrategyConfig(initial_cash=initial_cash)
+    if "risk_config" in config:
+        strat_config.risk = config["risk_config"]
     bc_config = BacktestConfig(
-        strategy_config=StrategyConfig(initial_cash=initial_cash),
+        strategy_config=strat_config,
         instruments_config=instr_configs,
     )
 
@@ -535,6 +539,48 @@ def main(generate_baseline: bool = False) -> None:
     )
     if errs:
         failures.append("option_basic")
+
+    # 4. Option Greek Risk Test
+    # Buy call options with max_portfolio_delta limit; some orders should be rejected
+    from akquant.config import RiskConfig
+
+    greek_risk_config = RiskConfig(
+        max_portfolio_delta=200.0,
+        option_default_volatility=0.25,
+        option_risk_free_rate=0.02,
+    )
+    greek_opt_config = InstrumentConfig(
+        symbol="CALL_OPT",
+        asset_type="OPTION",
+        multiplier=10000.0,
+        margin_ratio=1.0,
+        tick_size=0.0001,
+        option_type="CALL",
+        strike_price=100.0,
+        expiry_date=20240201,
+        underlying_symbol="UL",
+    )
+    greek_ul_config = InstrumentConfig(
+        symbol="UL",
+        asset_type="STOCK",
+        multiplier=1.0,
+        margin_ratio=1.0,
+        tick_size=0.01,
+    )
+    errs = run_test(
+        "option_greek_risk",
+        OptionGreekRiskStrategy,
+        "option_greek_risk.parquet",
+        {
+            "initial_cash": 500000.0,
+            "instruments_config": [greek_opt_config, greek_ul_config],
+            "commission_rate": 0.0,
+            "risk_config": greek_risk_config,
+        },
+        generate_baseline,
+    )
+    if errs:
+        failures.append("option_greek_risk")
 
     if failures:
         print(f"\nGolden Suite FAILED: {failures}")

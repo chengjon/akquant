@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 
+mod candlestick;
 mod momentum;
 mod moving_average;
 mod trend;
@@ -24,6 +25,7 @@ pub use volatility::{
 pub use volume::{AD, ADOSC, BOP, MFI, OBV};
 
 pub fn register_py_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    candlestick::register_classes(m)?;
     moving_average::register_classes(m)?;
     momentum::register_classes(m)?;
     trend::register_classes(m)?;

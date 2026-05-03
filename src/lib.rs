@@ -18,6 +18,7 @@ pub mod model;
 pub mod order_manager;
 pub mod pipeline;
 mod portfolio;
+mod pricing;
 mod risk;
 pub mod settlement;
 pub mod statistics;
@@ -67,6 +68,7 @@ fn akquant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RiskManager>()?;
     m.add_class::<RiskConfig>()?;
     indicators::register_py_classes(m)?;
+    pricing::python::register(m)?;
     Ok(())
 }
 
