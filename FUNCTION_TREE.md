@@ -1,6 +1,6 @@
 # AKQuant 功能树
 
-> 更新日期：2026-05-03
+> 更新日期：2026-05-04
 > 基于 v0.2.8 开发分支代码扫描
 
 **[总体设计方案与功能介绍](docs/zh/reference/design-overview.md)** — 完整的架构说明、模块详解、数据流与设计模式文档。
@@ -23,14 +23,15 @@
 | `Order`, `Trade` | 订单/成交 |
 | `Instrument` | 标的定义（lot_size, price_tick 等） |
 | `OrderType` | Market, Limit, StopMarket, StopLimit, StopTrail, StopTrailLimit |
-| `PriceBasis` | Open, Close, Ohlc4, Hl2, **MidQuote**, **Typical**, **VwapBar** |
+| `PriceBasis` | Open, Close, Ohlc4, Hl2, MidQuote, Typical, VwapBar, **TwapWindow** |
 | `TimeInForce` | GTC, IOC, FOK |
-| `ExecutionPolicy` | 价格基准 + bar 偏移 + 时态模式 |
+| `ExecutionPolicy` | 价格基准 + bar 偏移 + 时态模式 + **TWAP 分单** |
 
 ### 1.3 执行 (`src/execution/`)
 | 模块 | 说明 |
 |------|------|
 | `common.rs` | 通用撮合逻辑（穿透检查、Bar 内止损、滑点） |
+| **`twap.rs`** | **TWAP 分单调度（TwapSchedule/TwapScheduler，均匀拆单、多 bar 执行、提前完成）** |
 | `stock.rs` | A 股撮合（T+1、涨跌停、整手） |
 | `futures.rs` | 期货撮合（保证金、多头/空头） |
 | `option.rs` | 期权撮合 |
@@ -171,6 +172,7 @@
 |--------|------|
 | `SklearnAdapter` | scikit-learn，支持 partial_fit |
 | `PyTorchAdapter` | PyTorch，增量学习控制 |
+| `TensorFlowAdapter` | TensorFlow/Keras，增量与非增量训练 |
 | `LightGBMAdapter` | LightGBM 原生 API |
 | `XGBoostAdapter` | XGBoost 原生 API |
 
@@ -253,7 +255,7 @@
 | `test_strategy_timers_indicators.py` | 定时器与指标集成 |
 | `test_stop_orders.py` | 止损单生命周期（触发、成交、撤销） |
 | `test_partial_filled_status.py` | 部分成交状态转换 |
-| `test_fill_policy.py` | PriceBasis 填充策略 |
+| `test_fill_policy.py` | PriceBasis 填充策略、**TWAP 多 bar 分单** |
 | `test_t_plus_one.py` | T+1 结算规则 |
 | `test_portfolio.py` | 组合计算 |
 | `test_orders_df.py` | 订单 DataFrame 导出 |
