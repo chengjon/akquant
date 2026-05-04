@@ -11,26 +11,50 @@
 """
 
 import akquant as aq
-import akshare as ak
+import numpy as np
 import pandas as pd
 from akquant import Bar, Strategy
+
+try:
+    import akshare as ak
+
+    HAS_AKSHARE = True
+except ImportError:
+    HAS_AKSHARE = False
 
 
 def get_data() -> pd.DataFrame:
     """
     步骤 1: 数据获取.
 
-    使用 akshare 获取浦发银行 (600000) 的历史日线数据。
+    优先使用 akshare 获取浦发银行 (600000) 的历史日线数据。
+    若未安装 akshare，则使用合成数据。
     """
-    print("正在获取数据...")
-    # 获取前复权数据
-    df = ak.stock_zh_a_daily(
-        symbol="sh600000", start_date="20200101", end_date="20231231", adjust="qfq"
+    if HAS_AKSHARE:
+        print("正在获取数据 (akshare)...")
+        df = ak.stock_zh_a_daily(
+            symbol="sh600000", start_date="20200101", end_date="20231231", adjust="qfq"
+        )
+        df["symbol"] = "600000"
+        if "date" not in df.columns:
+            df = df.reset_index().rename(columns={"index": "date"})
+        return df  # type: ignore
+
+    print("未安装 akshare，使用合成数据...")
+    np.random.seed(42)
+    dates = pd.date_range(start="2020-01-01", periods=500, freq="D")
+    prices = 10 + np.cumsum(np.random.randn(500) * 0.1)
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": prices + np.random.rand(500) * 0.2,
+            "high": prices + 0.3,
+            "low": prices - 0.3,
+            "close": prices,
+            "volume": 1000000,
+            "symbol": "600000",
+        }
     )
-    df["symbol"] = "600000"
-    if "date" not in df.columns:
-        df = df.reset_index().rename(columns={"index": "date"})
-    return df  # type: ignore
 
 
 class DualMAStrategy(Strategy):

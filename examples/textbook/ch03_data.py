@@ -13,8 +13,15 @@
 import os
 from pathlib import Path
 
-import akshare as ak
+import numpy as np
 import pandas as pd
+
+try:
+    import akshare as ak
+
+    HAS_AKSHARE = True
+except ImportError:
+    HAS_AKSHARE = False
 
 
 def fetch_and_clean_data(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
@@ -27,6 +34,24 @@ def fetch_and_clean_data(symbol: str, start_date: str, end_date: str) -> pd.Data
     :return: 清洗后的 DataFrame
     """
     print(f"正在获取 {symbol} 的历史数据 ({start_date}-{end_date})...")
+
+    if not HAS_AKSHARE:
+        print("未安装 akshare，使用合成数据...")
+        np.random.seed(42)
+        n = 500
+        dates = pd.date_range(start=start_date, periods=n, freq="D")
+        prices = 10 + np.cumsum(np.random.randn(n) * 0.1)
+        return pd.DataFrame(
+            {
+                "date": dates,
+                "open": prices + np.random.rand(n) * 0.2,
+                "high": prices + 0.3,
+                "low": prices - 0.3,
+                "close": prices,
+                "volume": 1000000,
+                "symbol": symbol,
+            }
+        )
 
     # 1. 获取数据
     # 使用 stock_zh_a_hist 接口获取历史行情

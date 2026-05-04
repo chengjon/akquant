@@ -121,6 +121,7 @@ if __name__ == "__main__":
     rb_opt_config = InstrumentConfig(
         symbol="RB2310-C-3800",
         asset_type="OPTION",  # 期权类型
+        underlying_symbol="RB2310",  # 标的期货合约
         multiplier=10.0,  # 1张期权对应1手期货 (10吨)
         margin_ratio=0.0,  # 期权买方不收保证金，卖方收 (引擎会自动计算卖方保证金)
     )

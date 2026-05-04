@@ -86,7 +86,7 @@
 ### 第六部分：指标工程与工具链 (Indicator Engineering)
 
 *   **[第 16 章：AKQuant 指标全景与工程化使用](16_rust_indicators.md)**
-    *   AKQuant 支持的 103 个指标分类、解释与 warmup 口径
+    *   AKQuant 支持的 178 个指标分类、解释与 warmup 口径
     *   指标词典与教学脚手架联动（见 [AKQuant 指标全量说明](../guide/rust_indicator_reference.md)）
 
 ## 章节示例映射（主示例 / 进阶示例 / 对应指南）
